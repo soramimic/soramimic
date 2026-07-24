@@ -1,0 +1,209 @@
+// js/TextAnalyzer.js から移植(ロジック無改変、ESモジュール化のみ)
+import { removeSign } from "./utils.js";
+import { TokenFormatter } from "./character.js";
+import { hiraToKata, removeUnnaturalKanaPattern } from "./kanaToSyllable.js";
+
+//kuromojiのtokenizer, English(), Character(),KanaToSyllable()を内部で使用
+//function TextAnalyzer(tokenizer, englishdictionary, romantree, kanji_dict){
+function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getYomi){
+	//const k2p = KanaConverter.getKana2Phonon();
+	//const english = English(englishdictionary, romantree);
+	const tf = TokenFormatter();
+	const kanji = character.kanji;
+	console.log("kanji",kanji);
+	//console.log("token formatter",tf);
+	//const kanji = Kanji(kanji_dict)
+	//const character = Character(kanji);
+	//const k2s = KanaToSyllable();
+	const k2s = kanaToSyllable;
+	
+	function tokenizeTogether(texts){
+		const AP = english.apostrophe;
+		texts = texts.map(v=>AP.toString(v));
+		let tokens_list = tokenizeSentenses(texts);
+		return formatTokensList(tokens_list);
+	}
+
+	//トークン列への後処理(英語・漢字の読み補完、記号処理、文節付与)。
+	//外部トークナイザ(読み推定API等)の結果にも同じ処理を通せるよう分離(#25)
+	function formatTokensList(tokens_list){
+		const AP = english.apostrophe;
+		tokens_list = tokens_list.map(tokens=>{
+			tokens = tokens.map(token=>{
+				if(english.isFullmatch(token.surface_form)){
+					//console.log("english fullmatched");
+					token.surface_form = AP.toSign(token.surface_form);
+					//if(token.pronunciation === "*"){
+						token.pronunciation = english.toKana(token.surface_form);					
+					//}
+				}
+				return token;
+			});
+
+			//console.log("tokens",tokens);
+			tokens = tokens.map(token=>{
+				if(token.pronunciation === "*" && kanji.isFullmatch(token.surface_form)){
+					const p = kanji.toKana(token.surface_form);
+					if(p) token.pronunciation = p;
+					//console.log("kanji",p);
+				}
+				return token;
+			});
+
+			//pronunciationが*で、surfaceが平仮名、カタカナ、記号のみのとき、カタカナを読みとする
+			tokens = tokens.map(token=>{
+				if(token.pronunciation !== "*") return token;
+				let s = token.surface_form;
+				s = removeSign(s); //記号削除
+				s = hiraToKata(s); //平仮名をカタカナに変換
+				if(/^[\u{3000}-\u{301C}\u{30A1}-\u{30F6}\u{30FB}-\u{30FE}]+$/u.test(s)){//sが全部カタカナであれば
+					token.pronunciation = s;	
+				}
+				return token;
+			});
+
+			tokens = tf.format(tokens);
+			tokens = tokens.map(token=>{
+				if(token.pronunciation === "*")token.pos = "記号";
+				return token;
+			});
+			return tokens;
+		});
+		return tokens_list;
+	}
+	function getYomiFromTokens(tokens){
+		//let tokens = tokenize(strVal);
+		let yomi = tokens.map(v=>{
+			if(v.pronunciation)return v.pronunciation;
+			else return "";
+		}).join("");
+		//if(strVal=="タンノ"){
+		//	console.log("getYomi",tokens,yomi);
+		//}
+		return removeSign(yomi);
+	}
+	
+	//ひらがなをカタカナに変換
+	function hiraToKata (str) {
+	    return str.replace(/[\u3041-\u3096]/g, function(match) {
+	        var chr = match.charCodeAt(0) + 0x60;
+	        return String.fromCharCode(chr);
+	    });
+	}
+
+	function formatKana(text){
+		//console.log(text);
+		text = text.replace(/[a-zA-Z']+/g,function(match){
+			return english.toKana(text);
+		});
+		//text = english.toKana(text);
+		text = hiraToKata(text);
+		text = removeSign(text);
+		text = removeUnnaturalKanaPattern(text);
+		return text
+	}
+	
+	function concatMora(tokens){
+		
+		//２つめsurfaceをcharを消去する
+		tokens = tokens.map((token,i)=>{
+			//console.log(token);
+			if(i === 0)return token;
+			else if(token.char_index === tokens[i-1].char_index){
+				token.surface_form = "";
+				//console.log(token);
+				return token;
+			}else{
+				return token;
+			}
+		});
+		//console.log(1,tokens);
+		let mora = [];
+		let last_mora = -1;
+		//console.log("token",tokens);
+		for(let i=0;i<tokens.length;i++){
+			let token = tokens[i];
+			
+			if(token.mora !== last_mora){
+				last_mora = token.mora;
+				mora.push(token);
+			}else{
+				mora[mora.length-1].surface_form += token.surface_form;
+				mora[mora.length-1].pronunciation += token.pronunciation;
+			}
+		}
+		return mora;
+	}
+	
+	function getYomiAndPhraseBreak(tokens){
+		//let tokens = tokenize(strVal);
+		//console.log("getYomiAndPhraseBreak",tokens);
+		tokens = character.tokenize(tokens);
+		tokens = tokens.map(token=>{
+			let obj = {}
+			for(let v of ["surface_form","token_index","phrase","pronunciation","subword","char_index"]){
+				obj[v]=token[v];
+			}
+			return obj;
+		});
+		
+		let subword_kana = (function(){
+			let kana = []
+			let last_subword = -1;
+			for(let token of tokens){
+				if(token.subword !== last_subword){
+					kana.push(token.pronunciation);
+					last_subword = token.subword;
+				}else{
+					kana[kana.length-1] += token.pronunciation;
+				}
+			}
+			return kana;
+		})();
+		let mora = subword_kana.map(v=>{
+			return k2s.split(v);
+		}).flat();
+		console.log("mora",tokens,subword_kana,mora);
+		let mora_index = mora.map((v,i)=>{
+			let tmp = Array(v.length);
+			tmp.fill(i);
+			return tmp;
+		}).flat();
+		for(let i=0;i<mora_index.length;i++){
+			tokens[i]["mora"] = mora_index[i];
+		}
+		//console.log("before",tokens);
+		//moraの単位でtokenをまとめる
+		tokens = concatMora(tokens);
+		return tokens;
+	}
+
+	return {
+		tokenizeTogether: tokenizeTogether,
+		formatTokensList: formatTokensList,
+		getYomiFromTokens: getYomiFromTokens,
+		getYomiAndPhraseBreak: getYomiAndPhraseBreak,
+		yomiToSyllable: function(yomi){
+			//const yomi = getYomi(text);
+			const sep = k2s.split(yomi);
+			return sep;
+		},
+		syllableToVariation: k2s.getVariation,
+		yomiToVariation: function(yomi){
+			//const yomi = getYomi(text);
+			const sep = k2s.split(yomi);
+			const ptn = k2s.getVariation(sep);
+			return ptn;
+		},
+		formatKana: formatKana,
+		getYomi: getYomi
+	}
+}
+//const ENGLISHDICT = loadJsonFileSync("data/english-kana.json");
+//const ROMANTREE = loadJsonFileSync("data/tree_roma2kana.json");
+//const KANJI_DICT = loadJsonFileSync("data/kanjiyomi.json");
+
+//const textAnalyzer = TextAnalyzer(KuromojiTokenizer,ENGLISHDICT, ROMANTREE,KANJI_DICT);
+
+
+export { TextAnalyzer };

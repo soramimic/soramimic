@@ -1,0 +1,36 @@
+name: golden-test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # release.yaml がリリース前の dev を再検証するために呼ぶ
+  workflow_call:
+    inputs:
+      ref:
+        description: チェックアウトするref(未指定ならイベント既定)
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: frontend依存のインストール(kuromoji)
+        run: npm ci
+        working-directory: frontend
+      - name: アルゴリズム出力のゴールデンテスト
+        run: node tests/golden/run.cjs
+      - name: 編集ツール向けAPI(候補取得・固定つき再生成)のテスト
+        run: node tests/editor-api.mjs
+      - name: XF MIDI取り込みのテスト
+        run: node tests/xfmidi.mjs
+      - name: 元歌詞アライメントのテスト
+        run: node tests/xfalign.mjs

@@ -1,0 +1,44 @@
+name: frontend-smoke
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'data/**'
+      - 'conf/**'
+      - 'words**'
+      - '.github/workflows/frontend-smoke.yaml'
+  # release.yaml がリリース前の dev を再検証するために呼ぶ
+  workflow_call:
+    inputs:
+      ref:
+        description: チェックアウトするref(未指定ならイベント既定)
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: UIスモークテスト(ビルド+実ブラウザで変換導線を確認)
+        run: npm run test:smoke
+      - name: 編集ツールE2E(読み修正・差し替え・再生成・undo・コピー)
+        run: node tests/editor-smoke.mjs
+      - name: 編集ツールタッチE2E(タップ伸縮・ドラッグ選択・長押し詳細)
+        run: node tests/editor-touch.mjs

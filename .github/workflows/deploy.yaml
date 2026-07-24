@@ -1,0 +1,75 @@
+# frontend をビルドして Cloudflare Pages(soramimic.pages.dev)にデプロイする。
+# 生成画面と編集ツール(editor.html)は同じ dist に含まれるので両方が反映される。
+#
+# 起動経路:
+# - 通常は automerge がマージ成功後に workflow_call で呼ぶ(再利用可能ワークフロー)。
+#   GITHUB_TOKEN によるマージpushは push トリガーを起動しないため、call で確実に回す
+# - 直接 main に push したとき(手動運用)は push トリガーでも起動する
+#
+# 必要な GitHub Secrets(Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  … Account / Cloudflare Pages / Edit 権限のトークン
+#   CLOUDFLARE_ACCOUNT_ID … ダッシュボードURLのアカウントID
+# 未設定の間はデプロイをスキップして成功終了する(main のステータスを赤にしない)。
+name: deploy
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'data/**'
+      - 'conf/**'
+      - 'words**'
+      - '.github/workflows/deploy.yaml'
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Secretの有無を確認(未設定ならスキップ)
+        id: guard
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN が未設定のためデプロイをスキップします"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          ref: main # 常に main の最新(マージ後の状態)をデプロイする
+          submodules: true
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 依存インストール
+        if: steps.guard.outputs.run == 'true'
+        working-directory: frontend
+        run: npm ci
+      - name: ビルド(prebuildでkuromoji辞書もpublicへ)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: frontend
+        run: npm run build
+      - name: Cloudflare Pages へデプロイ
+        if: steps.guard.outputs.run == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          # 本番ブランチ(main)を指定すると soramimic.pages.dev が更新される
+          # (Cloudflare Pages側の Production branch も main にしておくこと)
+          command: pages deploy dist --project-name soramimic --branch main

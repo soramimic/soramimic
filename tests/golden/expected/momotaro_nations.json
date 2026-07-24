@@ -1,0 +1,437 @@
+{
+ "phrases": [
+  "桃太郎さん 桃太郎さん お腰につけた 黍団子 一つわたしに 下さいな",
+  "やりましょう やりましょう これから鬼の 征伐に ついて行くなら やりましょう"
+ ],
+ "results": [
+  [
+   {
+    "id": "109",
+    "kana": "コモロ",
+    "original": "コモロ",
+    "original_surface": "桃太",
+    "originalkana": "モモタ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "コ",
+     "モ",
+     "ロ"
+    ],
+    "score": 107.18794045245144,
+    "sim": 87.18794045245144,
+    "surface": "コモロ",
+    "vcost": 0
+   },
+   {
+    "id": "62",
+    "kana": "ポーランド",
+    "original": "ポーランド",
+    "original_surface": "郎さん 桃",
+    "originalkana": "ローサンモ",
+    "period": [
+     3,
+     6
+    ],
+    "pronunciation": [
+     "ポー",
+     "ラ",
+     "ン",
+     "ド"
+    ],
+    "score": 63.22400611386175,
+    "sim": 43.22400611386175,
+    "surface": "ポーランド",
+    "vcost": 0
+   },
+   {
+    "id": "143",
+    "kana": "モナコ",
+    "original": "モナコ",
+    "original_surface": "太郎",
+    "originalkana": "モタロー",
+    "period": [
+     6,
+     9
+    ],
+    "pronunciation": [
+     "モ",
+     "ナ",
+     "コ"
+    ],
+    "score": 45.269455372903984,
+    "sim": 45.269455372903984,
+    "surface": "モナコ",
+    "vcost": 0
+   },
+   {
+    "id": "106",
+    "kana": "チャド",
+    "original": "チャド",
+    "original_surface": "さん お",
+    "originalkana": "サンオ",
+    "period": [
+     9,
+     11
+    ],
+    "pronunciation": [
+     "チャ",
+     "ド"
+    ],
+    "score": 64.34126070856912,
+    "sim": 44.34126070856912,
+    "surface": "チャド",
+    "vcost": 0
+   },
+   {
+    "id": "121",
+    "kana": "ドミニカ",
+    "original": "ドミニカ",
+    "original_surface": "腰につ",
+    "originalkana": "コシニツ",
+    "period": [
+     11,
+     15
+    ],
+    "pronunciation": [
+     "ド",
+     "ミ",
+     "ニ",
+     "カ"
+    ],
+    "score": 123.85651970679845,
+    "sim": 103.85651970679845,
+    "surface": "ドミニカ",
+    "vcost": 0
+   },
+   {
+    "id": "17",
+    "kana": "ベナン",
+    "original": "ベナン",
+    "original_surface": "けた ",
+    "originalkana": "ケタ",
+    "period": [
+     15,
+     17
+    ],
+    "pronunciation": [
+     "ベ",
+     "ナ"
+    ],
+    "score": 45.27406041673991,
+    "sim": 45.27406041673991,
+    "surface": "ベナン",
+    "vcost": 1
+   },
+   {
+    "id": "107",
+    "kana": "チリ",
+    "original": "チリ",
+    "original_surface": "黍",
+    "originalkana": "キビ",
+    "period": [
+     17,
+     19
+    ],
+    "pronunciation": [
+     "チ",
+     "リ"
+    ],
+    "score": 28.674675920996464,
+    "sim": 28.674675920996464,
+    "surface": "チリ",
+    "vcost": 0
+   },
+   {
+    "id": "4",
+    "kana": "アンゴラ",
+    "original": "アンゴラ",
+    "original_surface": "団子 一",
+    "originalkana": "ダンゴヒ",
+    "period": [
+     19,
+     22
+    ],
+    "pronunciation": [
+     "ア",
+     "ン",
+     "ゴ",
+     "ラ"
+    ],
+    "score": 110.28550528483386,
+    "sim": 90.28550528483386,
+    "surface": "アンゴラ",
+    "vcost": 0
+   },
+   {
+    "id": "20",
+    "kana": "ボツワナ",
+    "original": "ボツワナ",
+    "original_surface": "つわた",
+    "originalkana": "トツワタ",
+    "period": [
+     22,
+     26
+    ],
+    "pronunciation": [
+     "ボ",
+     "ツ",
+     "ワ",
+     "ナ"
+    ],
+    "score": 49.03345963569227,
+    "sim": 29.033459635692267,
+    "surface": "ボツワナ",
+    "vcost": 0
+   },
+   {
+    "id": "107",
+    "kana": "チリ",
+    "original": "チリ",
+    "original_surface": "しに ",
+    "originalkana": "シニ",
+    "period": [
+     26,
+     28
+    ],
+    "pronunciation": [
+     "チ",
+     "リ"
+    ],
+    "score": 28.192873796095224,
+    "sim": 28.192873796095224,
+    "surface": "チリ",
+    "vcost": 0
+   },
+   {
+    "id": "187",
+    "kana": "ウクライナ",
+    "original": "ウクライナ",
+    "original_surface": "下さいな",
+    "originalkana": "クダサイナ",
+    "period": [
+     28,
+     33
+    ],
+    "pronunciation": [
+     "ウ",
+     "ク",
+     "ラ",
+     "イ",
+     "ナ"
+    ],
+    "score": 102.06122891899344,
+    "sim": 102.06122891899344,
+    "surface": "ウクライナ",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "28",
+    "kana": "ガンビア",
+    "original": "ガンビア",
+    "original_surface": "やりま",
+    "originalkana": "ヤリマ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "ガ",
+     "ビ",
+     "ア"
+    ],
+    "score": 79.3464992071911,
+    "sim": 59.346499207191094,
+    "surface": "ガンビア",
+    "vcost": 1
+   },
+   {
+    "id": "111",
+    "kana": "コスタリカ",
+    "original": "コスタリカ",
+    "original_surface": "しょう やりま",
+    "originalkana": "ショウヤリマ",
+    "period": [
+     3,
+     8
+    ],
+    "pronunciation": [
+     "コ",
+     "ス",
+     "タ",
+     "リ",
+     "カ"
+    ],
+    "score": 77.59367565978012,
+    "sim": 57.59367565978012,
+    "surface": "コスタリカ",
+    "vcost": 0
+   },
+   {
+    "id": "93",
+    "kana": "モルドバ",
+    "original": "モルドバ",
+    "original_surface": "しょう これ",
+    "originalkana": "ショウコレ",
+    "period": [
+     8,
+     12
+    ],
+    "pronunciation": [
+     "モ",
+     "ル",
+     "ド",
+     "バ"
+    ],
+    "score": 137.98703242899336,
+    "sim": 117.98703242899336,
+    "surface": "モルドバ",
+    "vcost": 0
+   },
+   {
+    "id": "181",
+    "kana": "パラオ",
+    "original": "パラオ",
+    "original_surface": "から鬼",
+    "originalkana": "カラオ",
+    "period": [
+     12,
+     15
+    ],
+    "pronunciation": [
+     "パ",
+     "ラ",
+     "オ"
+    ],
+    "score": 34.29642181802211,
+    "sim": 14.296421818022113,
+    "surface": "パラオ",
+    "vcost": 0
+   },
+   {
+    "id": "50",
+    "kana": "ニホン",
+    "original": "日本",
+    "original_surface": "の ",
+    "originalkana": "ニノ",
+    "period": [
+     15,
+     17
+    ],
+    "pronunciation": [
+     "ニ",
+     "ホ"
+    ],
+    "score": 30.48582391049643,
+    "sim": 30.48582391049643,
+    "surface": "ニホン",
+    "vcost": 1
+   },
+   {
+    "id": "14",
+    "kana": "ベラルーシ",
+    "original": "ベラルーシ",
+    "original_surface": "征伐に ",
+    "originalkana": "セイバツニ",
+    "period": [
+     17,
+     21
+    ],
+    "pronunciation": [
+     "ベ",
+     "ラ",
+     "ルー",
+     "シ"
+    ],
+    "score": 89.91834075225158,
+    "sim": 89.91834075225158,
+    "surface": "ベラルーシ",
+    "vcost": 0
+   },
+   {
+    "id": "89",
+    "kana": "ブルネイ",
+    "original": "ブルネイ",
+    "original_surface": "ついて行",
+    "originalkana": "ツイテイ",
+    "period": [
+     21,
+     25
+    ],
+    "pronunciation": [
+     "ブ",
+     "ル",
+     "ネ",
+     "イ"
+    ],
+    "score": 122.27327022385757,
+    "sim": 102.27327022385757,
+    "surface": "ブルネイ",
+    "vcost": 0
+   },
+   {
+    "id": "186",
+    "kana": "ウガンダ",
+    "original": "ウガンダ",
+    "original_surface": "くなら ",
+    "originalkana": "クナラ",
+    "period": [
+     25,
+     28
+    ],
+    "pronunciation": [
+     "ウ",
+     "ガ",
+     "ダ"
+    ],
+    "score": 58.88575656450048,
+    "sim": 58.88575656450048,
+    "surface": "ウガンダ",
+    "vcost": 1
+   },
+   {
+    "id": "136",
+    "kana": "マリ",
+    "original": "マリ",
+    "original_surface": "やり",
+    "originalkana": "ヤリ",
+    "period": [
+     28,
+     30
+    ],
+    "pronunciation": [
+     "マ",
+     "リ"
+    ],
+    "score": 34.40398580324172,
+    "sim": 14.403985803241715,
+    "surface": "マリ",
+    "vcost": 0
+   },
+   {
+    "id": "91",
+    "kana": "ラオス",
+    "original": "ラオス",
+    "original_surface": "ましょう",
+    "originalkana": "マショウ",
+    "period": [
+     30,
+     33
+    ],
+    "pronunciation": [
+     "ラ",
+     "オ",
+     "ス"
+    ],
+    "score": 42.69490048265841,
+    "sim": 42.69490048265841,
+    "surface": "ラオス",
+    "vcost": 0
+   }
+  ]
+ ]
+}

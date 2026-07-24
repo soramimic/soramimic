@@ -1,0 +1,421 @@
+:root {
+	--accent: #2563eb;
+	--accent-dark: #1d4ed8;
+	--bg: #f8fafc;
+	--panel: #ffffff;
+	--text: #1e293b;
+	--muted: #64748b;
+	--border: #e2e8f0;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans",
+		"Noto Sans JP", sans-serif;
+	background: var(--bg);
+	color: var(--text);
+	line-height: 1.6;
+}
+
+.site-header {
+	display: flex;
+	align-items: center;
+	gap: 1.5rem;
+	padding: 0.6rem 1.2rem;
+	background: var(--panel);
+	border-bottom: 1px solid var(--border);
+}
+
+.brand {
+	font-size: 1.25rem;
+	font-weight: 700;
+	color: var(--accent);
+	text-decoration: none;
+}
+
+/* ナビはボタンではなくタブとして見せる(下線でアクティブ表示) */
+.tabs {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.tabs a {
+	padding: 0.35rem 0.6rem;
+	border-bottom: 2px solid transparent;
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.tabs a:hover {
+	color: var(--text);
+}
+
+.tabs a.active {
+	color: var(--accent);
+	border-bottom-color: var(--accent);
+	font-weight: 600;
+}
+
+main {
+	max-width: 1100px;
+	margin: 0 auto;
+	padding: 1.2rem;
+}
+
+.columns {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 2rem;
+}
+
+@media (max-width: 768px) {
+	.columns {
+		grid-template-columns: 1fr;
+	}
+}
+
+.field {
+	margin-bottom: 1rem;
+}
+
+/* サンプル歌詞チップとMIDI取り込みを1行に並べる(狭い幅では折り返す) */
+.input-source-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.sample-label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.input-source-row .btn {
+	white-space: nowrap;
+}
+
+.midi-status {
+	font-size: 0.85rem;
+	color: var(--muted);
+	margin: -0.6rem 0 1rem;
+}
+
+.field-label {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--muted);
+	margin: 0 0 0.4rem;
+}
+
+.wordlist-facets:not(:empty) {
+	margin-top: 0.5rem;
+}
+
+.facet-group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem 0.8rem;
+}
+
+.facet-group + .facet-group {
+	margin-top: 0.3rem;
+}
+
+.facet-label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.facet-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	font-size: 0.85rem;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.settings h2,
+#tab-about h2 {
+	font-size: 1.1rem;
+	margin: 0 0 0.8rem;
+}
+
+.input {
+	width: 100%;
+	padding: 0.5rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font: inherit;
+	background: var(--panel);
+	color: inherit;
+}
+
+textarea.input {
+	resize: vertical;
+}
+
+.input:focus {
+	outline: 2px solid var(--accent);
+	outline-offset: -1px;
+}
+
+.btn {
+	padding: 0.45rem 1rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--panel);
+	color: var(--text);
+	font: inherit;
+	cursor: pointer;
+}
+
+.btn:hover {
+	border-color: var(--accent);
+}
+
+.btn.active,
+.btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+	background: var(--accent-dark);
+}
+
+.btn:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+/* 単語リスト選択: チップ型(折り返しあり) */
+.btn-group-wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+/* カテゴリプルダウン: チップ(自前描画)の上に透明なselectを重ねる。
+   表示はチップ側が担い、selectはネイティブピッカーを開く役だけ */
+.wordlist-select-wrap {
+	position: relative;
+	display: inline-grid;
+	grid-template-columns: auto auto;
+	align-items: center;
+	column-gap: 0.35rem;
+}
+
+.wordlist-select-wrap::after {
+	content: "▾";
+	opacity: 0.6;
+	grid-column: 2;
+}
+
+/* 2行表示のときは▾を2行ぶんの縦中央に置く */
+.wordlist-select-wrap:has(.wordlist-select-caption:not([hidden]))::after {
+	grid-row: 1 / span 2;
+}
+
+/* 選択中はグループ名を左上に小さく載せる2行表示 */
+.wordlist-select-caption {
+	justify-self: start;
+	font-size: 0.68em;
+	line-height: 1;
+	opacity: 0.65;
+}
+
+/* テキスト類は1列目に積む(2列目は▾専用) */
+.wordlist-select-wrap > span {
+	grid-column: 1;
+}
+
+/* 2行になっても他のボタンと同じ高さに収まるよう行間・余白を詰める */
+.wordlist-select-wrap:has(.wordlist-select-caption:not([hidden])) {
+	padding-top: 0.15rem;
+	padding-bottom: 0.15rem;
+}
+
+.wordlist-select-wrap:has(.wordlist-select-caption:not([hidden])) > span {
+	line-height: 1.2;
+}
+
+.wordlist-select-wrap select {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.wordlist-select-wrap:focus-within {
+	outline: 2px solid var(--accent);
+	outline-offset: -1px;
+}
+
+.wordlist-select-wrap.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+/* 設定トグル(単語重複・パラメータ): 小ぶりなセグメンテッドコントロール */
+.btn-group {
+	display: inline-flex;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.btn-group .btn {
+	border: none;
+	border-radius: 0;
+	padding: 0.3rem 0.9rem;
+	font-size: 0.9rem;
+	background: transparent;
+}
+
+.btn-group .btn + .btn {
+	border-left: 1px solid var(--border);
+}
+
+.btn-group .btn.active {
+	background: var(--accent);
+	color: #fff;
+}
+
+.convert-row {
+	display: flex;
+	align-items: center;
+	gap: 0.8rem;
+}
+
+/* 変換ボタン: 主要アクションとして大きく目立たせる */
+#btn-convert {
+	min-width: 11rem;
+	padding: 0.65rem 1.5rem;
+	font-size: 1.05rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	border-radius: 10px;
+	box-shadow: 0 2px 8px rgb(37 99 235 / 30%);
+}
+
+.progress {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--muted);
+}
+
+/* display指定がUAの [hidden] を上書きしないように(常時ぐるぐる表示バグの修正) */
+.progress[hidden] {
+	display: none;
+}
+
+.spinner {
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid var(--border);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.param-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.8rem;
+}
+
+.param-item .field-label {
+	margin-bottom: 0.3rem;
+}
+
+/* パラメータの詳細設定(プリセットの下の折りたたみ) */
+.param-details {
+	margin-top: 0.6rem;
+}
+
+.param-details summary {
+	cursor: pointer;
+	font-size: 0.82rem;
+	color: var(--muted);
+	user-select: none;
+}
+
+.param-details[open] summary {
+	margin-bottom: 0.6rem;
+}
+
+/* 音の合わせ方スライダー(2カラムのグリッドを横断) */
+.param-item-wide {
+	grid-column: 1 / -1;
+}
+
+.slider-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.slider-row input[type="range"] {
+	flex: 1;
+	accent-color: var(--accent);
+	min-width: 0;
+}
+
+.slider-end {
+	font-size: 0.74rem;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+dialog {
+	width: min(90vw, 640px);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 1.2rem;
+}
+
+dialog::backdrop {
+	background: rgb(0 0 0 / 40%);
+}
+
+dialog h2 {
+	margin-top: 0;
+	font-size: 1.1rem;
+}
+
+.dialog-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.6rem;
+	margin-top: 0.8rem;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0f172a;
+		--panel: #1e293b;
+		--text: #e2e8f0;
+		--muted: #94a3b8;
+		--border: #334155;
+	}
+}

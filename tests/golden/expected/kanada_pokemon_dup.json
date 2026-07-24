@@ -1,0 +1,72 @@
+{
+ "phrases": [
+  "カナダ カナダ カナダ カナダ"
+ ],
+ "results": [
+  [
+   {
+    "id": "103",
+    "kana": "カラカラ",
+    "original": "カラカラ",
+    "original_surface": "カナダ カ",
+    "originalkana": "カナダカ",
+    "period": [
+     0,
+     4
+    ],
+    "pronunciation": [
+     "カ",
+     "ラ",
+     "カ",
+     "ラ"
+    ],
+    "score": 63.012772013809936,
+    "sim": 43.012772013809936,
+    "surface": "カラカラ",
+    "vcost": 0
+   },
+   {
+    "id": "103",
+    "kana": "カラカラ",
+    "original": "カラカラ",
+    "original_surface": "ナダ カナ",
+    "originalkana": "ナダカナ",
+    "period": [
+     4,
+     8
+    ],
+    "pronunciation": [
+     "カ",
+     "ラ",
+     "カ",
+     "ラ"
+    ],
+    "score": 62.896639276493445,
+    "sim": 42.896639276493445,
+    "surface": "カラカラ",
+    "vcost": 0
+   },
+   {
+    "id": "104",
+    "kana": "ガラガラ",
+    "original": "ガラガラ",
+    "original_surface": "ダ カナダ",
+    "originalkana": "ダカナダ",
+    "period": [
+     8,
+     12
+    ],
+    "pronunciation": [
+     "ガ",
+     "ラ",
+     "ガ",
+     "ラ"
+    ],
+    "score": 56.97183617927364,
+    "sim": 56.97183617927364,
+    "surface": "ガラガラ",
+    "vcost": 0
+   }
+  ]
+ ]
+}

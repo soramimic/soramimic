@@ -1,0 +1,129 @@
+# frontend をビルドして Cloudflare Pages のプレビュー環境へデプロイする。
+# 本番(main → soramimic.pages.dev)とは別に、プレビューURLで動作確認するための
+# 「devクッション」。dev ブランチは固定URL https://preview.soramimic.pages.dev に出る。
+#
+# 起動経路:
+# - automerge が dev へのマージ成功後に workflow_call で呼ぶ(alias=preview 固定)。
+#   GITHUB_TOKEN によるマージpushは push トリガーを起動しないため、call で確実に回す
+# - dev へ直接 push したとき(手動運用。これも alias=preview になる)
+# - main 宛ての Pull Request(緊急修正など)ごとのブランチ別プレビュー
+# - 手動(workflow_dispatch)
+#
+# 必要な GitHub Secrets は deploy.yaml と同じ(CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)。
+# 未設定の間はスキップして成功終了する。
+name: preview
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [dev]
+  workflow_call:
+    inputs:
+      ref:
+        description: チェックアウトするref(未指定ならイベント既定)
+        type: string
+        required: false
+        default: ''
+      alias:
+        description: Cloudflare Pages のブランチ別名(未指定ならブランチ名から生成)
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch: {}
+
+concurrency:
+  group: preview-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # プレビューURLをPRにコメントする
+    steps:
+      - name: Secretの有無を確認(未設定ならスキップ)
+        id: guard
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN が未設定のためプレビューをスキップします"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          # workflow_call で ref が渡されたらそれを使う(automerge からは dev)。
+          # 未指定(空)ならイベント既定(PRはマージコミット、pushはそのブランチ)
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 依存インストール
+        if: steps.guard.outputs.run == 'true'
+        working-directory: frontend
+        run: npm ci
+      - name: ビルド(prebuildでkuromoji辞書もpublicへ)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: frontend
+        run: npm run build
+      - name: プレビュー用のブランチ別名を決める
+        if: steps.guard.outputs.run == 'true'
+        id: alias
+        run: |
+          ALIAS="${{ inputs.alias }}"
+          if [ -z "$ALIAS" ]; then
+            RAW="${{ github.head_ref || github.ref_name }}"
+            if [ "$RAW" = "dev" ]; then
+              # dev は固定URL https://preview.soramimic.pages.dev に出す
+              ALIAS=preview
+            else
+              # Cloudflare のブランチ別名に使える文字へ整形(英数とハイフン、先頭28字)
+              ALIAS=$(printf '%s' "$RAW" | tr '/_' '--' | tr -cd 'a-zA-Z0-9-' | cut -c1-28)
+            fi
+          fi
+          echo "alias=$ALIAS" >> "$GITHUB_OUTPUT"
+      - name: Cloudflare Pages へプレビューデプロイ
+        if: steps.guard.outputs.run == 'true'
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          # main 以外の --branch を指定するとプレビューデプロイになる
+          command: pages deploy dist --project-name soramimic --branch ${{ steps.alias.outputs.alias }}
+      - name: 表示用のプレビューURLを決める
+        if: steps.guard.outputs.run == 'true'
+        id: url
+        run: |
+          # 固定エイリアス(preview)のときは安定URLを案内する
+          if [ "${{ steps.alias.outputs.alias }}" = "preview" ]; then
+            echo "url=https://preview.soramimic.pages.dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=${{ steps.deploy.outputs.deployment-url }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: プレビューURLをまとめに出力
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          echo "### プレビュー: ${{ steps.url.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: プレビューURLをPRにコメント
+        if: steps.guard.outputs.run == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = "${{ steps.url.outputs.url }}";
+            if (!url) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🔎 プレビューをデプロイしました: ${url}`,
+            });

@@ -1,0 +1,19 @@
+Soramimic
+Copyright 2020-2026 shimajiroxyz
+
+本プロダクトは以下のサードパーティソフトウェア・データを利用している。
+
+- kuromoji.js (https://github.com/takuyaa/kuromoji.js) — Apache License 2.0
+  同梱辞書は mecab-ipadic-2.7.0-20070801(奈良先端科学技術大学院大学)に由来する。
+  ビルド時に node_modules/kuromoji から辞書とともに LICENSE-2.0.txt / NOTICE.md が
+  frontend/public/kuromoji/ へコピーされ、サイトの配信物に含まれる。mecab-ipadic の
+  著作権表示および利用条件の全文はその NOTICE.md を参照。
+
+- CMUdict (The CMU Pronouncing Dictionary) — data/english-kana.json の生成元。
+  ライセンス全文は data/english-kana.LICENSE を参照。カナ変換には e2k (Unlicense) を使用。
+
+- kanasim (https://github.com/jiroshimaya/kanasim) — Apache License 2.0
+  data/source/kanasim/ のかな類似度データの取り込み元。詳細は data/source/kanasim/README.md。
+
+- 単語リスト (wordlists submodule, https://github.com/soramimic/soramimic-wordlists)
+  出典・ライセンス(Wikidata: CC0、Wikipedia: CC BY-SA 4.0 ほか)は同リポジトリの README を参照。

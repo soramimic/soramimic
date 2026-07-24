@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soramimic 編集ツール</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="site-header">
+        <a class="brand" href="./">Soramimic</a>
+        <span class="editor-title">編集ツール</span>
+      </header>
+
+      <main>
+        <p id="editor-empty" class="editor-empty" hidden>
+          編集する変換結果がありません。<a href="./">生成画面</a>で変換したあと、「編集ツールで開く」から開いてください。
+          書き出したファイル(JSON)があれば
+          <button id="btn-import-empty" class="btn">ファイルを読み込む</button>
+          から再開できます。
+        </p>
+        <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
+        <p class="editor-hint">
+          単語チップをタップすると候補から差し替えられます。元歌詞のカナはドラッグで範囲選択、選択の端タップで縮小、隣のタップで拡張できます。
+          🔒で単語を固定し、「固定以外を再生成」でそれ以外を作り直せます(差し替えた単語は自動で固定されます)。替え歌単語や候補は長押し(PCはホバー)で詳細(フルネーム・ID等)が見られます。
+          元歌詞の読みの間違いは、範囲選択してパネルの「元歌詞の読みを修正」から直せます。
+        </p>
+        <div id="editor-toolbar" class="editor-toolbar" hidden>
+          <div class="toolbar-group">
+            <button id="btn-regenerate" class="btn btn-primary">固定以外を再生成</button>
+            <span id="regen-progress" class="editor-status" hidden></span>
+          </div>
+          <div class="toolbar-group">
+            <button id="btn-undo" class="btn btn-ghost" disabled title="直前の編集を取り消す">↩ 戻る</button>
+            <button id="btn-redo" class="btn btn-ghost" disabled title="取り消した編集をやり直す">↪ 進む</button>
+          </div>
+          <span class="toolbar-spacer"></span>
+          <div class="toolbar-group">
+            <label class="copy-label" for="copy-format">コピー形式</label>
+            <select id="copy-format" class="input">
+              <option value="1">替え歌/元歌詞</option>
+              <option value="2">替え歌読み/元歌詞読み</option>
+              <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
+            </select>
+            <button id="btn-copy" class="btn">コピー</button>
+          </div>
+          <div class="toolbar-group">
+            <button id="btn-import" class="btn btn-ghost">読み込み</button>
+            <button id="btn-export" class="btn btn-ghost">書き出し</button>
+          </div>
+        </div>
+        <input id="import-file" type="file" accept=".json,application/json" hidden />
+        <section id="editor-lines" class="editor-lines"></section>
+        <section id="editor-panel" class="editor-panel"></section>
+      </main>
+    </div>
+    <script type="module" src="/src/editor.js"></script>
+  </body>
+</html>

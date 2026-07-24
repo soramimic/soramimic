@@ -1,0 +1,312 @@
+{
+ "wordlist": [
+  {
+   "text": "野球選手",
+   "value": "BASEBALL",
+   "active": true,
+   "filepath": "wordlists/baseball.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "type",
+     "label": "種類",
+     "values": [
+      { "v": "family", "label": "名字", "default": true },
+      { "v": "full", "label": "フルネーム", "default": true },
+      { "v": "given", "label": "名前" },
+      { "v": "registered", "label": "登録名", "default": true },
+      { "v": "nick", "label": "愛称" }
+     ]
+    }
+   ]
+  },
+  {
+   "text": "サッカー選手",
+   "value": "FOOTBALL",
+   "filepath": "wordlists/football.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "type",
+     "label": "種類",
+     "values": [
+      { "v": "family", "label": "名字", "default": true },
+      { "v": "full", "label": "フルネーム", "default": true },
+      { "v": "given", "label": "名前" },
+      { "v": "registered", "label": "登録名", "default": true }
+     ]
+    },
+    {
+     "column": "category",
+     "label": "役割",
+     "values": [
+      { "v": "player", "label": "選手", "default": true },
+      { "v": "manager", "label": "監督" },
+      { "v": "mascot", "label": "マスコット" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "STATION",
+   "text": "駅名",
+   "filepath": "wordlists/stations.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "status",
+     "label": "状態",
+     "values": [
+      { "v": "current", "label": "現存", "default": true },
+      { "v": "former", "label": "廃駅" },
+      { "v": "renamed", "label": "旧駅名" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "NATION",
+   "text": "国名",
+   "filepath": "wordlists/nations.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "status",
+     "label": "対象",
+     "values": [
+      { "v": "current", "label": "現在の国", "default": true },
+      { "v": "former", "label": "昔の国・旧称" }
+     ]
+    }
+   ]
+  },
+  {
+   "label": "生物",
+   "items": [
+    {
+     "value": "SEKITSUI",
+     "text": "動物",
+     "filepath": "wordlists/sekitsui.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "類",
+       "values": [
+        { "v": "哺乳類", "label": "哺乳類", "default": true },
+        { "v": "鳥類", "label": "鳥類", "default": true },
+        { "v": "爬虫類", "label": "爬虫類", "default": true },
+        { "v": "両生類", "label": "両生類", "default": true },
+        { "v": "魚類", "label": "魚類", "default": true },
+        { "v": "NA", "label": "不明", "default": true }
+       ]
+      },
+      {
+       "column": "extinct",
+       "label": "絶滅",
+       "values": [
+        { "v": "no", "label": "現生", "default": true },
+        { "v": "yes", "label": "絶滅種", "default": true }
+       ]
+      }
+     ]
+    },
+    {
+     "value": "PLANT",
+     "text": "植物",
+     "filepath": "wordlists/plant.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "分類",
+       "values": [
+        { "v": "双子葉", "label": "双子葉", "default": true },
+        { "v": "単子葉", "label": "単子葉", "default": true },
+        { "v": "裸子植物", "label": "裸子植物", "default": true },
+        { "v": "シダ植物", "label": "シダ植物", "default": true },
+        { "v": "コケ植物", "label": "コケ植物", "default": true },
+        { "v": "藻類", "label": "藻類", "default": true }
+       ]
+      },
+      {
+       "column": "extinct",
+       "label": "絶滅",
+       "values": [
+        { "v": "no", "label": "現生", "default": true },
+        { "v": "yes", "label": "絶滅種", "default": true }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "POKEMON",
+   "text": "ポケモン",
+   "filepath": "wordlists/pokemon.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "columns": ["type1", "type2"],
+     "label": "タイプ",
+     "values": [
+      { "v": "ノーマル" },
+      { "v": "ほのお" },
+      { "v": "みず" },
+      { "v": "でんき" },
+      { "v": "くさ" },
+      { "v": "こおり" },
+      { "v": "かくとう" },
+      { "v": "どく" },
+      { "v": "じめん" },
+      { "v": "ひこう" },
+      { "v": "エスパー" },
+      { "v": "むし" },
+      { "v": "いわ" },
+      { "v": "ゴースト" },
+      { "v": "ドラゴン" },
+      { "v": "あく" },
+      { "v": "はがね" },
+      { "v": "フェアリー" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "SCIENTIST",
+   "text": "科学者",
+   "filepath": "wordlists/scientist.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "field",
+     "label": "分野",
+     "values": [
+      { "v": "物理", "label": "物理", "where": "field~=物理" },
+      { "v": "化学", "label": "化学", "where": "field~=化学" },
+      { "v": "数学", "label": "数学", "where": "field~=数学" },
+      { "v": "天文学", "label": "天文学", "where": "field~=天文学" },
+      { "v": "生物学", "label": "生物学", "where": "field~=生物学" },
+      { "v": "計算機科学", "label": "計算機科学", "where": "field~=計算機科学" },
+      { "v": "地学", "label": "地学", "where": "field~=地学" }
+     ]
+    },
+    {
+     "column": "era",
+     "label": "時代",
+     "values": [
+      { "v": "古代", "label": "古代" },
+      { "v": "中世", "label": "中世" },
+      { "v": "近世", "label": "近世" },
+      { "v": "近代", "label": "近代" },
+      { "v": "現代", "label": "現代" }
+     ]
+    },
+    {
+     "column": "nobel",
+     "label": "ノーベル賞",
+     "values": [
+      { "v": "yes", "label": "受賞者" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "YOUTUBER",
+   "text": "YouTuber",
+   "filepath": "wordlists/youtuber.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "category",
+     "label": "種類",
+     "values": [
+      { "v": "youtuber", "label": "YouTuber", "default": true },
+      { "v": "vtuber", "label": "VTuber", "default": true }
+     ]
+    },
+    {
+     "column": "type",
+     "label": "名前の形",
+     "values": [
+      { "v": "family", "label": "名字", "default": true },
+      { "v": "given", "label": "名前", "default": true },
+      { "v": "full", "label": "フルネーム", "default": true }
+     ]
+    },
+    {
+     "column": "status",
+     "label": "活動状況",
+     "values": [
+      { "v": "current", "label": "活動中" },
+      { "v": "former", "label": "卒業・引退" }
+     ]
+    }
+   ]
+  },
+  {
+   "label": "架空",
+   "items": [
+    {
+     "value": "FICTIONAL_SCIENTIST",
+     "text": "科学者",
+     "filepath": "wordlists/fictional_scientist.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "type",
+       "label": "種類",
+       "values": [
+        { "v": "family", "label": "名字", "default": true },
+        { "v": "given", "label": "名前", "default": true },
+        { "v": "full", "label": "フルネーム", "default": true }
+       ]
+      }
+     ]
+    },
+    {
+     "value": "FICTIONAL_ANIME_CHARACTER",
+     "text": "ファンタジー",
+     "filepath": "wordlists/fictional_anime_character.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "type",
+       "label": "種類",
+       "values": [
+        { "v": "call", "label": "呼び名", "default": true },
+        { "v": "nick", "label": "愛称", "default": true },
+        { "v": "family", "label": "名字", "default": true },
+        { "v": "given", "label": "名前", "default": true },
+        { "v": "full", "label": "フルネーム", "default": true }
+       ]
+      }
+     ]
+    },
+    {
+     "value": "FICTIONAL_DAILY_ANIME_CHARACTER",
+     "text": "日常系",
+     "filepath": "wordlists/fictional_daily_anime_character.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "type",
+       "label": "種類",
+       "values": [
+        { "v": "call", "label": "呼び名", "default": true },
+        { "v": "nick", "label": "愛称", "default": true },
+        { "v": "family", "label": "名字", "default": true },
+        { "v": "given", "label": "名前", "default": true },
+        { "v": "full", "label": "フルネーム", "default": true }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "yomiApi": {
+  "url": "https://soramimi-yomi-781811236862.asia-northeast1.run.app"
+ }
+}

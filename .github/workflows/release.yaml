@@ -1,0 +1,98 @@
+# dev に溜まった変更を main へリリースし、本番(soramimic.com)へデプロイする。
+#
+# 運用(リリーストレイン方式):
+# - 開発PRは base=dev で automerge され、preview.soramimic.pages.dev で確認できる
+# - このワークフローが週次(+手動)で dev→main をマージ → 本番デプロイする
+# - 差分がなければ何もしないので、cron は空振りしても無害
+# - すぐ本番に出したいときは Actions の Run workflow から手動実行する
+#
+# 補足:
+# - マージ前に dev の状態で golden / smoke を再実行する(dev は個別PRごとに
+#   CI通過済みだが、積み重なった合成状態を最終確認するため)
+# - GITHUB_TOKEN による main への push は deploy の push トリガーを起動しないため、
+#   automerge.yaml / bump-wordlists.yaml と同様に workflow_call で deploy を回す
+# - リリース後は dev を main に揃える(fast-forward)。main に直接入った緊急修正や
+#   bump-wordlists のコミットもここで dev に取り込まれる
+# - dev→main のマージが競合したら失敗で止まる。手元で dev に main を取り込んで
+#   解消してから再実行する
+name: release
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 23 * * 0" # 毎週月曜 08:00 JST 頃(bump-wordlists の1時間後)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: dev と main の差分を確認
+        id: diff
+        run: |
+          if ! git fetch origin dev; then
+            echo "dev ブランチが存在しないためスキップします"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          count=$(git rev-list --count main..origin/dev)
+          echo "dev には main にないコミットが ${count} 件"
+          if [ "$count" -eq 0 ]; then
+            echo "リリースする変更なし"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # リリース対象(dev)の合成状態を最終検証する
+  golden:
+    needs: check
+    if: ${{ needs.check.outputs.changed == 'true' }}
+    uses: ./.github/workflows/golden-test.yaml
+    with:
+      ref: dev
+
+  smoke:
+    needs: check
+    if: ${{ needs.check.outputs.changed == 'true' }}
+    uses: ./.github/workflows/frontend-smoke.yaml
+    with:
+      ref: dev
+
+  merge:
+    needs: [golden, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: dev を main へマージして push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin dev
+          git merge --no-ff origin/dev -m "リリース: dev を main へマージ"
+          git push origin main
+      - name: dev を main に揃える(緊急修正などの取り込み)
+        run: |
+          # リリース直後は dev ⊆ main なので fast-forward で追従できる。
+          # このリリース中に dev へ新しいマージが入った場合は non-ff で失敗するが、
+          # その分は次回リリースで拾われるため無視してよい
+          git push origin main:dev || echo "dev が先行しているため同期をスキップ(次回リリースで拾う)"
+
+  deploy:
+    needs: merge
+    uses: ./.github/workflows/deploy.yaml
+    secrets: inherit

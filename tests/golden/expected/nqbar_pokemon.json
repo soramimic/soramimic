@@ -1,0 +1,71 @@
+{
+ "phrases": [
+  "ゴメンネ サンタサン ホッケー"
+ ],
+ "results": [
+  [
+   {
+    "id": "701",
+    "kana": "デデンネ",
+    "original": "デデンネ",
+    "original_surface": "ゴメンネ ",
+    "originalkana": "ゴメンネ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "デ",
+     "デ",
+     "ン",
+     "ネ"
+    ],
+    "score": 89.00375299746534,
+    "sim": 89.00375299746534,
+    "surface": "デデンネ",
+    "vcost": 0
+   },
+   {
+    "id": "144",
+    "kana": "サンダー",
+    "original": "サンダー",
+    "original_surface": "サンタ",
+    "originalkana": "サンタ",
+    "period": [
+     3,
+     5
+    ],
+    "pronunciation": [
+     "サ",
+     "ン",
+     "ダー"
+    ],
+    "score": 30.14365622879158,
+    "sim": 30.14365622879158,
+    "surface": "サンダー",
+    "vcost": 0
+   },
+   {
+    "id": "597",
+    "kana": "ナットレイ",
+    "original": "ナットレイ",
+    "original_surface": "サン ホッケー",
+    "originalkana": "サンホッケー",
+    "period": [
+     5,
+     8
+    ],
+    "pronunciation": [
+     "ナ",
+     "ッ",
+     "ト",
+     "レー"
+    ],
+    "score": 75.90518492203672,
+    "sim": 75.90518492203672,
+    "surface": "ナットレイ",
+    "vcost": 0
+   }
+  ]
+ ]
+}

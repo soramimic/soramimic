@@ -1,0 +1,423 @@
+/* 編集ツール(editor.html)専用スタイル。共通トークンは style.css の :root を使う */
+
+.editor-title {
+	color: var(--muted);
+	font-size: 0.95rem;
+}
+
+.editor-empty {
+	color: var(--muted);
+}
+
+.editor-line {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.7rem 0.9rem;
+	margin-bottom: 0.8rem;
+	overflow-x: auto;
+}
+
+.editor-line-blank {
+	background: none;
+	border: none;
+	padding: 0.2rem;
+	margin-bottom: 0.4rem;
+}
+
+.editor-line-caption {
+	color: var(--muted);
+	font-size: 0.8rem;
+	margin-bottom: 0.4rem;
+	white-space: nowrap;
+}
+
+.editor-grid {
+	display: grid;
+	gap: 4px 2px;
+	width: max-content;
+}
+
+.chip {
+	border-radius: 6px;
+	text-align: center;
+	white-space: nowrap;
+	user-select: none;
+}
+
+.chip-unit {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	color: var(--muted);
+	font-size: 0.85rem;
+	padding: 0.1rem 0.3rem;
+	/* ドラッグ範囲選択のため、チップ上ではブラウザのスクロール処理を止める */
+	touch-action: none;
+}
+
+/* 文節の始まりを左のアクセント線で示す */
+.chip-unit.phrase-start {
+	border-left: 3px solid var(--accent);
+}
+
+.chip-word {
+	background: #eff6ff;
+	border: 1px solid var(--accent);
+	padding: 0.15rem 0.4rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
+
+.chip-word-surface {
+	font-weight: 600;
+}
+
+.chip-word-kana {
+	color: var(--muted);
+	font-size: 0.75rem;
+}
+
+.editor-status,
+.editor-hint {
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin: 0 0 0.6rem;
+}
+
+.editor-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.8rem;
+}
+
+.editor-toolbar .input {
+	width: auto;
+}
+
+.toolbar-spacer {
+	flex: 1;
+}
+
+.chip-lock {
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-size: 0.7rem;
+	padding: 0;
+	line-height: 1;
+	opacity: 0.45;
+}
+
+.chip-word.locked {
+	border-color: #d97706;
+	background: #fef3c7;
+}
+
+.chip-word.locked .chip-lock {
+	opacity: 1;
+}
+
+.chip-unit,
+.chip-word {
+	cursor: pointer;
+}
+
+.chip-unit:hover {
+	border-color: var(--accent);
+}
+
+.chip-word:hover {
+	background: #dbeafe;
+}
+
+/* 固定チップは通常のホバー色で上書きせず、固定色系のまま少しだけ変える */
+.chip-word.locked:hover {
+	background: #fde68a;
+}
+
+.chip.selected {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+/* 読み修正フォームを開いている間、実際に読みが変わるトークン範囲のうち
+   選択外のユニットを破線で薄く示す(選択との違いを可視化する) */
+.chip-unit.reading-scope {
+	outline: 2px dashed var(--accent);
+	outline-offset: 1px;
+	opacity: 0.85;
+}
+
+/* 候補パネル: 画面下部のオーバーレイ(fixed)。レイアウトに参加しないので
+   出し入れしてもページの高さが変わらず、ドラッグ中の座標がずれない。
+   .open の付け外しで下からせり上がる/滑り降りる */
+.editor-panel {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 40;
+	max-width: 1100px;
+	margin: 0 auto;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px 8px 0 0;
+	padding: 0.7rem 0.9rem;
+	padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
+	box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+	max-height: 45vh;
+	overflow-y: auto;
+	transform: translateY(105%);
+	transition: transform 0.22s ease;
+}
+
+.editor-panel.open {
+	transform: translateY(0);
+}
+
+/* パネルの分だけ下に余白を確保し、最後の行もパネルの上まで
+   スクロールして見られるようにする */
+.editor-lines {
+	padding-bottom: 48vh;
+}
+
+.panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+}
+
+.panel-title {
+	font-weight: 600;
+}
+
+.panel-close {
+	padding: 0.1rem 0.5rem;
+}
+
+.panel-free {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 0.6rem;
+}
+
+.panel-free .input {
+	flex: 1;
+}
+
+.panel-note {
+	color: var(--muted);
+	margin: 0.3rem 0;
+}
+
+.panel-candidates {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.candidate {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	line-height: 1.3;
+	padding: 0.3rem 0.6rem;
+}
+
+.candidate-kana {
+	color: var(--muted);
+	font-size: 0.72rem;
+}
+
+/* ---- 以降: 候補グループ・使用中表示・詳細ポップオーバー・戻る/進む ---- */
+
+/* 🔒の当たり判定を見た目を変えずに広げる(スマホでの誤タップ・押しにくさ対策) */
+.chip-lock {
+	font-size: 0.8rem;
+	padding: 0.25rem 0.4rem;
+	margin: -0.25rem -0.4rem;
+}
+
+.copy-label {
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.panel-lock {
+	white-space: nowrap;
+	padding: 0.15rem 0.5rem;
+}
+
+/* 同名候補の件数バッジ */
+.candidate-count {
+	color: #b45309;
+	font-weight: 600;
+	font-size: 0.72rem;
+	margin-left: 0.3em;
+}
+
+/* 歌詞内で使用済みの候補は薄くする(選択は可能なまま) */
+.candidate.used,
+.group-entry.used {
+	opacity: 0.55;
+}
+
+.panel-more {
+	color: var(--accent);
+}
+
+.panel-back {
+	margin-bottom: 0.5rem;
+}
+
+/* 同名候補の個別選択リスト */
+.panel-group-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.group-entry {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.6rem;
+	text-align: left;
+	padding: 0.4rem 0.6rem;
+}
+
+.group-entry-sub {
+	color: var(--muted);
+	font-size: 0.72rem;
+	white-space: nowrap;
+}
+
+/* 長押しやスクロール中にOSのテキスト選択・コンテキストメニューが出ないようにする */
+.candidate,
+.group-entry {
+	user-select: none;
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+}
+
+/* 候補詳細のポップオーバー(長押しで表示) */
+.editor-popover {
+	position: fixed;
+	z-index: 50;
+	background: #111827;
+	color: #f9fafb;
+	white-space: pre-line;
+	font-size: 0.78rem;
+	line-height: 1.5;
+	padding: 0.45rem 0.65rem;
+	border-radius: 6px;
+	max-width: min(320px, 80vw);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+	pointer-events: none;
+}
+
+/* 元歌詞の読み修正 */
+.panel-yomi {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-bottom: 0.6rem;
+}
+
+.panel-yomi-toggle {
+	color: var(--muted);
+	font-size: 0.82rem;
+}
+
+.panel-yomi-label {
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+.panel-yomi .input {
+	flex: 1;
+	min-width: 8em;
+	width: auto;
+}
+
+.panel-yomi-note {
+	color: #b91c1c;
+	font-size: 0.78rem;
+}
+
+/* ---- ツールバーの整理 ----
+   主役(再生成)とコピーだけ枠つきで残し、頻度の低い操作はゴーストボタンで
+   控えめにする。ボタン内での文字の折り返しは禁止し、入りきらないときは
+   ツールバーごと行を折り返す */
+.editor-toolbar {
+	flex-wrap: wrap;
+	row-gap: 0.4rem;
+}
+
+.editor-toolbar .btn,
+.copy-label {
+	white-space: nowrap;
+}
+
+/* 控えめだが「押せる」と分かる、うっすら面のあるボタン。
+   ページ背景と同化しないよう半透明のグレーで塗る(ライト/ダーク両対応) */
+.btn-ghost {
+	border-color: transparent;
+	background: rgba(100, 116, 139, 0.14);
+	color: var(--muted);
+}
+
+.btn-ghost:hover:not(:disabled) {
+	border-color: transparent;
+	background: rgba(100, 116, 139, 0.24);
+	color: var(--text);
+}
+
+.btn-ghost:disabled {
+	border-color: transparent;
+	background: none;
+}
+
+/* 関連する操作のまとまり。折り返しはグループ単位でだけ起きる
+   (ラベルとセレクトの泣き別れや、区切りだけ行末に残るのを防ぐ) */
+.toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex-wrap: nowrap;
+}
+
+#copy-format {
+	max-width: 12em;
+}
+
+/* 表層↔モーラの手動割当エディタ */
+.panel-align {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 6px 0;
+}
+.panel-align-label { color: var(--muted, #888); font-size: 0.9em; }
+.panel-align-row { display: flex; align-items: stretch; gap: 4px; }
+.align-cell {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 4px 8px;
+	border: 1px solid var(--border, #ccc);
+	border-radius: 6px;
+	min-width: 2.2em;
+}
+.align-surface { font-weight: 600; }
+.align-yomi { font-size: 0.8em; color: var(--muted, #888); }
+.align-boundary { display: flex; flex-direction: column; justify-content: center; }
+.align-arrow { padding: 0 4px; line-height: 1.2; font-size: 0.8em; }
+.align-reset { font-size: 0.85em; }

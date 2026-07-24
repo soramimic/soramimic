@@ -1,0 +1,279 @@
+{
+ "phrases": [
+  "うさぎ追いしかの山",
+  "こぶな釣りしかの川",
+  "夢は今もめぐりて",
+  "わすれがたきふるさと"
+ ],
+ "results": [
+  [
+   {
+    "id": "447",
+    "kana": "ルカリオ",
+    "original": "ルカリオ",
+    "original_surface": "うさぎ追",
+    "originalkana": "ウサギオ",
+    "period": [
+     0,
+     4
+    ],
+    "pronunciation": [
+     "ル",
+     "カ",
+     "リ",
+     "オ"
+    ],
+    "score": 62.72314042098397,
+    "sim": 42.72314042098397,
+    "surface": "ルカリオ",
+    "vcost": 0
+   },
+   {
+    "id": "469",
+    "kana": "リーフィア",
+    "original": "リーフィア",
+    "original_surface": "いしか",
+    "originalkana": "イシカ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "リー",
+     "フィ",
+     "ア"
+    ],
+    "score": 79.0470844592094,
+    "sim": 59.047084459209394,
+    "surface": "リーフィア",
+    "vcost": 0
+   },
+   {
+    "id": "392",
+    "kana": "ポッチャマ",
+    "original": "ポッチャマ",
+    "original_surface": "の山",
+    "originalkana": "ノヤマ",
+    "period": [
+     7,
+     10
+    ],
+    "pronunciation": [
+     "ポ",
+     "チャ",
+     "マ"
+    ],
+    "score": 45.15137916349704,
+    "sim": 45.15137916349704,
+    "surface": "ポッチャマ",
+    "vcost": 1
+   }
+  ],
+  [
+   {
+    "id": "223",
+    "kana": "オクタン",
+    "original": "オクタン",
+    "original_surface": "こぶな",
+    "originalkana": "コブナ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "オ",
+     "ク",
+     "タ"
+    ],
+    "score": 59.39598945669706,
+    "sim": 59.39598945669706,
+    "surface": "オクタン",
+    "vcost": 1
+   },
+   {
+    "id": "297",
+    "kana": "ルリリ",
+    "original": "ルリリ",
+    "original_surface": "釣りし",
+    "originalkana": "ツリシ",
+    "period": [
+     3,
+     6
+    ],
+    "pronunciation": [
+     "ル",
+     "リ",
+     "リ"
+    ],
+    "score": 48.910547294721894,
+    "sim": 28.910547294721894,
+    "surface": "ルリリ",
+    "vcost": 0
+   },
+   {
+    "id": "273",
+    "kana": "コノハナ",
+    "original": "コノハナ",
+    "original_surface": "かの川",
+    "originalkana": "カノカワ",
+    "period": [
+     6,
+     10
+    ],
+    "pronunciation": [
+     "コ",
+     "ノ",
+     "ハ",
+     "ナ"
+    ],
+    "score": 86.93179567077206,
+    "sim": 86.93179567077206,
+    "surface": "コノハナ",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "703",
+    "kana": "ヌメラ",
+    "original": "ヌメラ",
+    "original_surface": "夢は",
+    "originalkana": "ユメハ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "ヌ",
+     "メ",
+     "ラ"
+    ],
+    "score": 28.64663400122417,
+    "sim": 28.64663400122417,
+    "surface": "ヌメラ",
+    "vcost": 0
+   },
+   {
+    "id": "172",
+    "kana": "ピー",
+    "original": "ピィ",
+    "original_surface": "今",
+    "originalkana": "イ",
+    "period": [
+     3,
+     4
+    ],
+    "pronunciation": [
+     "ピー"
+    ],
+    "score": 50.086960997079885,
+    "sim": 30.08696099707988,
+    "surface": "ピィ",
+    "vcost": 0
+   },
+   {
+    "id": "277",
+    "kana": "キャモメ",
+    "original": "キャモメ",
+    "original_surface": "もめ",
+    "originalkana": "マモメ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "キャ",
+     "モ",
+     "メ"
+    ],
+    "score": 34.76097544530829,
+    "sim": 14.760975445308292,
+    "surface": "キャモメ",
+    "vcost": 0
+   },
+   {
+    "id": "547",
+    "kana": "チュリネ",
+    "original": "チュリネ",
+    "original_surface": "ぐりて",
+    "originalkana": "グリテ",
+    "period": [
+     7,
+     10
+    ],
+    "pronunciation": [
+     "チュ",
+     "リ",
+     "ネ"
+    ],
+    "score": 29.45637802019752,
+    "sim": 29.45637802019752,
+    "surface": "チュリネ",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "849",
+    "kana": "ヤクデ",
+    "original": "ヤクデ",
+    "original_surface": "わすれ",
+    "originalkana": "ワスレ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "ヤ",
+     "ク",
+     "デ"
+    ],
+    "score": 63.14165656017518,
+    "sim": 43.14165656017518,
+    "surface": "ヤクデ",
+    "vcost": 0
+   },
+   {
+    "id": "489",
+    "kana": "マナフィ",
+    "original": "マナフィ",
+    "original_surface": "がたき",
+    "originalkana": "ガタキ",
+    "period": [
+     3,
+     6
+    ],
+    "pronunciation": [
+     "マ",
+     "ナ",
+     "フィ"
+    ],
+    "score": 43.579816032711825,
+    "sim": 43.579816032711825,
+    "surface": "マナフィ",
+    "vcost": 0
+   },
+   {
+    "id": "396",
+    "kana": "ムクバード",
+    "original": "ムクバード",
+    "original_surface": "ふるさと",
+    "originalkana": "フルサト",
+    "period": [
+     6,
+     10
+    ],
+    "pronunciation": [
+     "ム",
+     "ク",
+     "バー",
+     "ド"
+    ],
+    "score": 74.02465405547315,
+    "sim": 74.02465405547315,
+    "surface": "ムクバード",
+    "vcost": 0
+   }
+  ]
+ ]
+}

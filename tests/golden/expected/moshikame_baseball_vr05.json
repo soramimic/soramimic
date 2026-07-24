@@ -1,0 +1,405 @@
+{
+ "phrases": [
+  "もしもし かめよ かめさんよ",
+  "せかいのうちに おまえほど",
+  "あゆみの のろい ものはない",
+  "どうして そんなに のろいのか"
+ ],
+ "results": [
+  [
+   {
+    "id": "8197",
+    "kana": "ヨシモチ",
+    "original": "吉持亮汰",
+    "original_surface": "もしもし ",
+    "originalkana": "モシモシ",
+    "period": [
+     0,
+     4
+    ],
+    "pronunciation": [
+     "ヨ",
+     "シ",
+     "モ",
+     "チ"
+    ],
+    "score": 71.3888391495153,
+    "sim": 71.3888391495153,
+    "surface": "吉持",
+    "vcost": 0
+   },
+   {
+    "id": "2068",
+    "kana": "カメイ",
+    "original": "亀井進",
+    "original_surface": "かめ",
+    "originalkana": "カメ",
+    "period": [
+     4,
+     6
+    ],
+    "pronunciation": [
+     "カ",
+     "メー"
+    ],
+    "score": 30,
+    "sim": 10,
+    "surface": "亀井",
+    "vcost": 0
+   },
+   {
+    "id": "8060",
+    "kana": "ヨウ",
+    "original": "陽岱鋼(陽仲壽)",
+    "original_surface": "よ ",
+    "originalkana": "ヨ",
+    "period": [
+     6,
+     7
+    ],
+    "pronunciation": [
+     "ヨー"
+    ],
+    "score": 10,
+    "sim": 10,
+    "surface": "陽",
+    "vcost": 0
+   },
+   {
+    "id": "2068",
+    "kana": "カメイ",
+    "original": "亀井進",
+    "original_surface": "かめ",
+    "originalkana": "カメ",
+    "period": [
+     7,
+     9
+    ],
+    "pronunciation": [
+     "カ",
+     "メー"
+    ],
+    "score": 10,
+    "sim": 10,
+    "surface": "亀井",
+    "vcost": 0
+   },
+   {
+    "id": "3308",
+    "kana": "サノ",
+    "original": "佐野勝稔",
+    "original_surface": "さんよ",
+    "originalkana": "サンヨ",
+    "period": [
+     9,
+     11
+    ],
+    "pronunciation": [
+     "サ",
+     "ノ"
+    ],
+    "score": 45.715505739085195,
+    "sim": 45.715505739085195,
+    "surface": "佐野",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "3916",
+    "kana": "セイ",
+    "original": "瀬井清",
+    "original_surface": "せ",
+    "originalkana": "セ",
+    "period": [
+     0,
+     1
+    ],
+    "pronunciation": [
+     "セー"
+    ],
+    "score": 10,
+    "sim": 10,
+    "surface": "瀬井",
+    "vcost": 0
+   },
+   {
+    "id": "1740",
+    "kana": "カイノ",
+    "original": "甲斐野央",
+    "original_surface": "かいの",
+    "originalkana": "カイノ",
+    "period": [
+     1,
+     4
+    ],
+    "pronunciation": [
+     "カ",
+     "イ",
+     "ノ"
+    ],
+    "score": 0,
+    "sim": 0,
+    "surface": "甲斐野",
+    "vcost": 0
+   },
+   {
+    "id": "8580",
+    "kana": "ウチノ",
+    "original": "内野海斗",
+    "original_surface": "うちに ",
+    "originalkana": "ウチニ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "ウ",
+     "チ",
+     "ノ"
+    ],
+    "score": 37.756152756494394,
+    "sim": 37.756152756494394,
+    "surface": "内野",
+    "vcost": 0
+   },
+   {
+    "id": "2919",
+    "kana": "コマエ",
+    "original": "小前博文",
+    "original_surface": "おまえ",
+    "originalkana": "オマエ",
+    "period": [
+     7,
+     10
+    ],
+    "pronunciation": [
+     "コ",
+     "マ",
+     "エ"
+    ],
+    "score": 55.045659967900626,
+    "sim": 35.045659967900626,
+    "surface": "小前",
+    "vcost": 0
+   },
+   {
+    "id": "6744",
+    "kana": "ホンドウ",
+    "original": "本堂保次(本堂保弥)",
+    "original_surface": "ほど",
+    "originalkana": "ホド",
+    "period": [
+     10,
+     12
+    ],
+    "pronunciation": [
+     "ホ",
+     "ドー"
+    ],
+    "score": 20,
+    "sim": 20,
+    "surface": "本堂",
+    "vcost": 1
+   }
+  ],
+  [
+   {
+    "id": "7103",
+    "kana": "マユミ",
+    "original": "真弓明信",
+    "original_surface": "あゆみ",
+    "originalkana": "アユミ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "マ",
+     "ユ",
+     "ミ"
+    ],
+    "score": 56.295682873169895,
+    "sim": 36.295682873169895,
+    "surface": "真弓",
+    "vcost": 0
+   },
+   {
+    "id": "5626",
+    "kana": "ノモ",
+    "original": "野母得見",
+    "original_surface": "の の",
+    "originalkana": "ノノ",
+    "period": [
+     3,
+     5
+    ],
+    "pronunciation": [
+     "ノ",
+     "モ"
+    ],
+    "score": 55.297650714260826,
+    "sim": 35.297650714260826,
+    "surface": "野母",
+    "vcost": 0
+   },
+   {
+    "id": "8367",
+    "kana": "ロイ",
+    "original": "トニー・ロイ",
+    "original_surface": "ろい ",
+    "originalkana": "ロイ",
+    "period": [
+     5,
+     7
+    ],
+    "pronunciation": [
+     "ロ",
+     "イ"
+    ],
+    "score": 0,
+    "sim": 0,
+    "surface": "ロイ",
+    "vcost": 0
+   },
+   {
+    "id": "7095",
+    "kana": "マノ",
+    "original": "真野常照",
+    "original_surface": "もの",
+    "originalkana": "モノ",
+    "period": [
+     7,
+     9
+    ],
+    "pronunciation": [
+     "マ",
+     "ノ"
+    ],
+    "score": 56.71909682631069,
+    "sim": 36.71909682631069,
+    "surface": "真野",
+    "vcost": 0
+   },
+   {
+    "id": "5813",
+    "kana": "ハナイ",
+    "original": "花井悠",
+    "original_surface": "はない",
+    "originalkana": "ハナイ",
+    "period": [
+     9,
+     12
+    ],
+    "pronunciation": [
+     "ハ",
+     "ナ",
+     "イ"
+    ],
+    "score": 0,
+    "sim": 0,
+    "surface": "花井",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "1256",
+    "kana": "オオシタ",
+    "original": "大下誠一郎",
+    "original_surface": "どうして ",
+    "originalkana": "ドウシテ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "オー",
+     "シ",
+     "タ"
+    ],
+    "score": 73.38691361965539,
+    "sim": 73.38691361965539,
+    "surface": "大下",
+    "vcost": 0
+   },
+   {
+    "id": "4010",
+    "kana": "ソン",
+    "original": "宋相勲",
+    "original_surface": "そん",
+    "originalkana": "ソン",
+    "period": [
+     3,
+     4
+    ],
+    "pronunciation": [
+     "ソ",
+     "ン"
+    ],
+    "score": 20,
+    "sim": 0,
+    "surface": "宋",
+    "vcost": 0
+   },
+   {
+    "id": "4486",
+    "kana": "タニノ",
+    "original": "谷野彰",
+    "original_surface": "なに の",
+    "originalkana": "ナニノ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "タ",
+     "ニ",
+     "ノ"
+    ],
+    "score": 56.52545972341244,
+    "sim": 36.52545972341244,
+    "surface": "谷野",
+    "vcost": 0
+   },
+   {
+    "id": "8367",
+    "kana": "ロイ",
+    "original": "トニー・ロイ",
+    "original_surface": "ろい",
+    "originalkana": "ロイ",
+    "period": [
+     7,
+     9
+    ],
+    "pronunciation": [
+     "ロ",
+     "イ"
+    ],
+    "score": 0,
+    "sim": 0,
+    "surface": "ロイ",
+    "vcost": 0
+   },
+   {
+    "id": "5585",
+    "kana": "ノダ",
+    "original": "野田雲平",
+    "original_surface": "のか",
+    "originalkana": "ノカ",
+    "period": [
+     9,
+     11
+    ],
+    "pronunciation": [
+     "ノ",
+     "ダ"
+    ],
+    "score": 36.014750068684535,
+    "sim": 36.014750068684535,
+    "surface": "野田",
+    "vcost": 0
+   }
+  ]
+ ]
+}

@@ -1,0 +1,59 @@
+# wordlists submodule を最新の main に追従させ、pin が動いたらデプロイする。
+#
+# soramimic-wordlists 側の更新(年次バッチや手動PRのマージ)は、この本体リポジトリ
+# の submodule pin(wordlists/)を自動では上げないため、更新がデプロイに届かない。
+# このワークフローがその伝播を担う。
+#
+# - 週次 + 手動(workflow_dispatch)で実行する
+# - main はブランチ保護不可(Free private)なので github.token で main に直 push する
+# - 変更があったときだけ、既存の deploy.yaml を workflow_call で呼んで
+#   Cloudflare Pages(soramimic.pages.dev)へ反映する(automerge.yaml と同じ流儀)
+name: bump-wordlists
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 22 * * 0" # 毎週月曜 07:00 JST 頃
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-wordlists
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.b.outputs.bumped }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          submodules: true
+      - name: wordlists を最新の main に更新
+        id: b
+        run: |
+          git -C wordlists fetch --quiet origin main
+          git -C wordlists checkout --quiet FETCH_HEAD
+          if git diff --quiet -- wordlists; then
+            echo "wordlists は最新。変更なし"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          new=$(git -C wordlists rev-parse --short HEAD)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wordlists
+          git commit -m "wordlists submodule を ${new} に更新"
+          git push origin HEAD:main
+          echo "wordlists を ${new} に更新して push"
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+
+  # 更新があったときだけデプロイ(GITHUB_TOKEN の push は deploy の push トリガーを
+  # 起動しないため、automerge.yaml と同様に workflow_call で確実に回す)
+  deploy:
+    needs: bump
+    if: ${{ needs.bump.outputs.bumped == 'true' }}
+    uses: ./.github/workflows/deploy.yaml
+    secrets: inherit

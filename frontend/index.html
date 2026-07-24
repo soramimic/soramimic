@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soramimic</title>
+    <script>
+      // Google Analytics (GA4)。本番ドメインでのみ有効化する
+      // (ローカル開発・CI・プレビューの計測混入を防ぐ)
+      (function () {
+        if (location.hostname !== "soramimic.com") return;
+        var s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=G-HY0DQQKKW8";
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { dataLayer.push(arguments); };
+        gtag("js", new Date());
+        gtag("config", "G-HY0DQQKKW8");
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="site-header">
+        <a class="brand" href="#" data-tab-link="home">Soramimic</a>
+        <nav class="tabs">
+          <a href="#" data-tab-link="home" class="active">Home</a>
+          <a href="#" data-tab-link="about">About</a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="tabpage" id="tab-home">
+          <div class="columns">
+            <div class="col conversion">
+              <div class="field input-source-row">
+                <span class="sample-label">サンプル:</span>
+                <div id="sample-buttons" class="btn-group-wrap" title="クリックすると歌詞と単語リストをセットしてすぐに変換します">
+                  <button class="btn" data-path="sample_lyric/furusato.txt" data-wordlist="BASEBALL">ふるさと × 野球選手</button>
+                  <button class="btn" data-path="sample_lyric/momotaro.txt" data-wordlist="POKEMON">ももたろう × ポケモン</button>
+                  <button class="btn" data-path="sample_lyric/akatombo.txt" data-wordlist="STATION">赤とんぼ × 駅名</button>
+                </div>
+                <button id="btn-midi-import" class="btn" title="XF形式(カラオケ歌詞入り)のMIDIから歌詞の読みを取り込みます">MIDIから取り込み</button>
+                <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
+              </div>
+              <p id="midi-status" class="midi-status" hidden></p>
+              <div class="field">
+                <textarea id="input-text" class="input" maxlength="10000" rows="6"
+                  placeholder="変換したい文章(1万文字以内)"></textarea>
+              </div>
+              <div class="field convert-row">
+                <button id="btn-convert" class="btn btn-primary" disabled>読み込み中...</button>
+                <button id="btn-cancel" class="btn" hidden>中止</button>
+                <span id="progress" class="progress" hidden>
+                  <span id="progress-text">0/0</span><span class="spinner"></span>
+                </span>
+              </div>
+              <div class="field" id="output-field" hidden>
+                <h2 class="field-label">出力結果</h2>
+                <textarea id="output-text" class="input" rows="12" placeholder="出力結果"></textarea>
+                <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
+              </div>
+            </div>
+
+            <div class="col settings">
+              <h2>設定</h2>
+              <div class="field">
+                <h3 class="field-label">単語リスト</h3>
+                <div id="wordlist-buttons" class="btn-group-wrap"></div>
+                <div id="wordlist-facets" class="wordlist-facets"></div>
+              </div>
+              <div class="field">
+                <h3 class="field-label">出力形式</h3>
+                <select id="format-select" class="input">
+                  <option value="1">替え歌/元歌詞</option>
+                  <option value="2">替え歌読み/元歌詞読み</option>
+                  <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
+                </select>
+              </div>
+              <div class="field">
+                <h3 class="field-label">単語重複</h3>
+                <div id="duplicate-buttons" class="btn-group">
+                  <button class="btn" data-value="true">あり</button>
+                  <button class="btn active" data-value="false">なし</button>
+                </div>
+              </div>
+              <div class="field">
+                <h3 class="field-label">パラメータ</h3>
+                <div id="preset-buttons" class="btn-group-wrap"></div>
+                <details class="param-details">
+                  <summary>詳細設定</summary>
+                  <div id="param-area" class="param-grid"></div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tabpage" id="tab-about" hidden>
+          <h2>サイトについて</h2>
+          <p>本サイトは空耳作詞支援システム「Soramimic」のWebインターフェースを提供します</p>
+          <p>特定種類の単語(野球選手名、駅名など)で元歌の歌詞を再現するように作られた替え歌、通称「〇〇で歌ってみた」の歌詞を自動生成することができます</p>
+          <p>Soramimicは「空耳」と「mimic(模倣)」をかけ合わせた造語です。「ソラミミック」と発音します</p>
+          <p>本サイトはアクセス解析にGoogle Analyticsを使用しています</p>
+          <h2>開発者</h2>
+          <p><a target="_blank" href="https://jiroshimaya.github.io/MyPage/">Jiro Shimaya</a></p>
+          <h2>謝辞</h2>
+          <p>当サイトの開発・運営にご協力くださった皆さまに心より感謝申し上げます(以下、順不同)</p>
+          <p>サイト運営費、開発費をご寄付いただいた皆様:
+            篠永康平 様、増田一也 様、中崎宏祐 様、ちら@修羅ひよこ大学院生 様、
+            高橋仁 様、久保井亮一 様、藤原政彦 様、さいとてつや 様、横田将志 様、松田実 様、
+            細田一史 様、渡辺祐太 様
+          </p>
+          <p>単語リストを提供いただいた皆さま:野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、サッカー選手表-&gt;ヨロスーさま、駅名表-&gt;すきやきすきや様</p>
+          <h2>更新履歴</h2>
+          <div id="changelog">
+            <div>2026/07/20 v2を公開(サイトを全面リニューアル)</div>
+            <div>2024/12/25 野球選手表更新(20240811ver)</div>
+            <div>2024/05/09 ポケモン表の更新(第9世代を追加)</div>
+            <div>2022/05/11 野球選手表更新(2022年度選手を追加)</div>
+            <div>2021/06/02 初期読み込み速度の改善</div>
+            <div>2021/05/07 出力フォーマットを選ぶ機能の追加</div>
+            <div>2021/03/14 サイトデザインを更新</div>
+            <div>2021/03/12 サンプル歌詞の入力機能を追加</div>
+            <div>2020/05/21 ポケモン表の更新(第8世代を追加)</div>
+            <div>2020/04/09 サッカー選手の更新(監督名を追加)</div>
+            <div>2020/03/26 サッカー選手の追加、野球選手と物理学者リストの更新</div>
+            <div>2019/08/25 英単語の変換に対応</div>
+            <div>2019/08/19 Webサイト公開</div>
+          </div>
+        </section>
+      </main>
+
+      <dialog id="midi-lyrics-dialog">
+        <h2>入力欄のテキストを元歌詞として使いますか?</h2>
+        <p>
+          元歌詞として使うと、MIDIの歌唱行と対応づけて漢字かな交じりの行で取り込みます。
+          文節が正しく取れるため、変換の質が上がります。対応づかなかった行は読みカナになります。
+        </p>
+        <div class="dialog-buttons">
+          <button id="midi-lyrics-no" class="btn">読みカナで取り込む</button>
+          <button id="midi-lyrics-yes" class="btn btn-primary">元歌詞として使う</button>
+        </div>
+      </dialog>
+
+      <dialog id="original-dialog">
+        <h2>単語リストの登録</h2>
+        <textarea id="original-text" class="input" rows="16"
+          placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます"></textarea>
+        <div class="dialog-buttons">
+          <button id="original-cancel" class="btn">キャンセル</button>
+          <button id="original-register" class="btn btn-primary">登録</button>
+        </div>
+      </dialog>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

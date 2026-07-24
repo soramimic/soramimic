@@ -1,0 +1,320 @@
+{
+ "phrases": [
+  "もしもし かめよ かめさんよ",
+  "せかいのうちに おまえほど",
+  "あゆみの のろい ものはない",
+  "どうして そんなに のろいのか"
+ ],
+ "results": [
+  [
+   {
+    "id": "8197",
+    "kana": "ヨシモチ",
+    "original": "吉持亮汰",
+    "original_surface": "もしもし ",
+    "originalkana": "モシモシ",
+    "period": [
+     0,
+     4
+    ],
+    "pronunciation": [
+     "ヨ",
+     "シ",
+     "モ",
+     "チ"
+    ],
+    "score": 28.555535659806118,
+    "sim": 28.555535659806118,
+    "surface": "吉持",
+    "vcost": 0
+   },
+   {
+    "id": "1981",
+    "kana": "カネコ",
+    "original": "金子一輝",
+    "original_surface": "かめよ ",
+    "originalkana": "カメヨ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "カ",
+     "ネ",
+     "コ"
+    ],
+    "score": 28.68745117849386,
+    "sim": 28.68745117849386,
+    "surface": "金子",
+    "vcost": 0
+   },
+   {
+    "id": "1834",
+    "kana": "カセ",
+    "original": "嘉㔟敏弘",
+    "original_surface": "かめ",
+    "originalkana": "カメ",
+    "period": [
+     7,
+     9
+    ],
+    "pronunciation": [
+     "カ",
+     "セ"
+    ],
+    "score": 14.721624382186791,
+    "sim": 14.721624382186791,
+    "surface": "嘉㔟",
+    "vcost": 0
+   },
+   {
+    "id": "4568",
+    "kana": "タンノ",
+    "original": "丹野祐樹",
+    "original_surface": "さんよ",
+    "originalkana": "サンヨ",
+    "period": [
+     9,
+     11
+    ],
+    "pronunciation": [
+     "タ",
+     "ン",
+     "ノ"
+    ],
+    "score": 28.49423027598442,
+    "sim": 28.49423027598442,
+    "surface": "丹野",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "3916",
+    "kana": "セイ",
+    "original": "瀬井清",
+    "original_surface": "せ",
+    "originalkana": "セ",
+    "period": [
+     0,
+     1
+    ],
+    "pronunciation": [
+     "セー"
+    ],
+    "score": 16,
+    "sim": 16,
+    "surface": "瀬井",
+    "vcost": 0
+   },
+   {
+    "id": "1740",
+    "kana": "カイノ",
+    "original": "甲斐野央",
+    "original_surface": "かいの",
+    "originalkana": "カイノ",
+    "period": [
+     1,
+     4
+    ],
+    "pronunciation": [
+     "カ",
+     "イ",
+     "ノ"
+    ],
+    "score": 0,
+    "sim": 0,
+    "surface": "甲斐野",
+    "vcost": 0
+   },
+   {
+    "id": "6400",
+    "kana": "フシミ",
+    "original": "伏見五郎",
+    "original_surface": "うちに ",
+    "originalkana": "ウチニ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "フ",
+     "シ",
+     "ミ"
+    ],
+    "score": 42.43803898029273,
+    "sim": 42.43803898029273,
+    "surface": "伏見",
+    "vcost": 0
+   },
+   {
+    "id": "小原五郎_巨人_00000",
+    "kana": "オハラゴロウ",
+    "original": "小原五郎",
+    "original_surface": "おまえほど",
+    "originalkana": "オマエホド",
+    "period": [
+     7,
+     12
+    ],
+    "pronunciation": [
+     "オ",
+     "ハ",
+     "ラ",
+     "ゴ",
+     "ロー"
+    ],
+    "score": 132.37757800235585,
+    "sim": 132.37757800235585,
+    "surface": "小原五郎",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "7018",
+    "kana": "マツヒロ",
+    "original": "松広金一",
+    "original_surface": "あゆみの ",
+    "originalkana": "アユミノ",
+    "period": [
+     0,
+     4
+    ],
+    "pronunciation": [
+     "マ",
+     "ツ",
+     "ヒ",
+     "ロ"
+    ],
+    "score": 57.83766874595987,
+    "sim": 57.83766874595987,
+    "surface": "松広",
+    "vcost": 0
+   },
+   {
+    "id": "7640",
+    "kana": "モロキ",
+    "original": "衆樹資宏",
+    "original_surface": "のろい ",
+    "originalkana": "ノロイ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "モ",
+     "ロ",
+     "キ"
+    ],
+    "score": 28.137324272864575,
+    "sim": 28.137324272864575,
+    "surface": "衆樹",
+    "vcost": 0
+   },
+   {
+    "id": "7539",
+    "kana": "モトヤナギ",
+    "original": "本柳和也",
+    "original_surface": "ものはない",
+    "originalkana": "モノハナイ",
+    "period": [
+     7,
+     12
+    ],
+    "pronunciation": [
+     "モ",
+     "ト",
+     "ヤ",
+     "ナ",
+     "ギ"
+    ],
+    "score": 43.6916202330285,
+    "sim": 43.6916202330285,
+    "surface": "本柳",
+    "vcost": 0
+   }
+  ],
+  [
+   {
+    "id": "2771",
+    "kana": "コーディエ",
+    "original": "エリック・コーディエ",
+    "original_surface": "どうして ",
+    "originalkana": "ドウシテ",
+    "period": [
+     0,
+     3
+    ],
+    "pronunciation": [
+     "コー",
+     "ディ",
+     "エ"
+    ],
+    "score": 43.11259310333969,
+    "sim": 43.11259310333969,
+    "surface": "コーディエ",
+    "vcost": 0
+   },
+   {
+    "id": "8688",
+    "kana": "ソタニ",
+    "original": "曽谷龍平",
+    "original_surface": "そんなに ",
+    "originalkana": "ソンナニ",
+    "period": [
+     3,
+     6
+    ],
+    "pronunciation": [
+     "ソ",
+     "タ",
+     "ニ"
+    ],
+    "score": 30.610183889364972,
+    "sim": 30.610183889364972,
+    "surface": "曽谷",
+    "vcost": 0
+   },
+   {
+    "id": "7640",
+    "kana": "モロキ",
+    "original": "衆樹資宏",
+    "original_surface": "のろい",
+    "originalkana": "ノロイ",
+    "period": [
+     6,
+     9
+    ],
+    "pronunciation": [
+     "モ",
+     "ロ",
+     "キ"
+    ],
+    "score": 28.137324272864575,
+    "sim": 28.137324272864575,
+    "surface": "衆樹",
+    "vcost": 0
+   },
+   {
+    "id": "5585",
+    "kana": "ノダ",
+    "original": "野田雲平",
+    "original_surface": "のか",
+    "originalkana": "ノカ",
+    "period": [
+     9,
+     11
+    ],
+    "pronunciation": [
+     "ノ",
+     "ダ"
+    ],
+    "score": 14.40590002747381,
+    "sim": 14.40590002747381,
+    "surface": "野田",
+    "vcost": 0
+   }
+  ]
+ ]
+}
