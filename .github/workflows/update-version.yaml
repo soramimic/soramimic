@@ -1,5 +1,10 @@
 name: Update Version
 
+# リポジトリ設定でGITHUB_TOKENのデフォルト権限をread-onlyにしたため、
+# タグをpushするこのワークフローは明示的にwriteを宣言する
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
