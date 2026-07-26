@@ -401,11 +401,17 @@ function KanaToSyllable(){
 		//裸ン/ッ削除・ー削除=各1操作、複合音節は合計、無変換や表記ゆれ(母音連続→ー)=0。
 		//返り値は従来同様のユニット配列(文字列配列)だが、各配列に .vcost プロパティで
 		//操作回数の合計を持たせる。variation の各要素は {u:ユニット配列, c:操作数}。
+		//さらに .srcIndex プロパティで「各出力ユニットが入力syllablesの何番目に由来するか」を
+		//持たせる(ユニット位置別の重み付けスコアリング用。ン/ッ/ーの変種はユニット数が
+		//変わるため、位置の対応づけにはこの由来indexが要る)。
 		getVariation: function(syllables){
 			//console.log("syllable",syllables);
 			let result = [];
+			//result[k] が syllables の何番目に由来するか(null音節はスキップされ添字がずれる)
+			let resultSrc = [];
 			if(!syllables)return [];
-			for(let syllable of syllables){
+			for(let si=0; si<syllables.length; si++){
+				const syllable = syllables[si];
 				if(syllable === null) continue;
 				let variation = [];
 				if(/^[アイウエオ]$/.test(syllable)){//アイウエオは先に処理しておく
@@ -463,11 +469,23 @@ function KanaToSyllable(){
 					variation.push({u:[syllable],c:0});
 				}
 				result.push(variation);
+				resultSrc.push(si);
 			}
 			return product(...result)
 					.map(v => {
-						const arr = v.flatMap(o=>o.u).filter(v2=>v2!=="");
+						//v.flatMap(o=>o.u).filter(v2=>v2!=="") と同じ結果を作りつつ、
+						//残ったユニットごとの由来index(srcIndex)も同時に組み立てる
+						const arr = [];
+						const src = [];
+						for(let k=0;k<v.length;k++){
+							for(const u of v[k].u){
+								if(u === "") continue;
+								arr.push(u);
+								src.push(resultSrc[k]);
+							}
+						}
 						arr.vcost = v.reduce((s,o)=>s+o.c,0);//操作回数の合計
+						arr.srcIndex = src;//各出力ユニットの由来音節index
 						return arr;
 					})
 					.filter(v => v.length != 0);//長さ0の配列は要素に含めない
