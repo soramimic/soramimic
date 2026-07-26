@@ -268,6 +268,45 @@ function smallVowelToLarge(text){
 	});
 	return replaced_text;
 }
+//小書きカナ→大文字カナの対応(ひらがな・カタカナ両方)
+const SMALL_TO_LARGE_KANA = {
+	"ァ":"ア","ィ":"イ","ゥ":"ウ","ェ":"エ","ォ":"オ","ヮ":"ワ","ャ":"ヤ","ュ":"ユ","ョ":"ヨ",
+	"ぁ":"あ","ぃ":"い","ぅ":"う","ぇ":"え","ぉ":"お","ゎ":"わ","ゃ":"や","ゅ":"ゆ","ょ":"よ",
+};
+//直前のカナと組み合わせて1モーラを構成する小書きカナの並び(カタカナ正規化後で判定)。
+//KanaToSyllable().split が1ユニットとして切り出す組み合わせ(KanaPattern の multi)と
+//同じ集合にしておくこと。ここで残した並びが split で分かれると単独の小書きが残る
+const STICKY_SMALL_KANA_PATTERNS = [
+	/^[ウクスツヌフムユルグズヅブプヴ][ァィェォ]$/,//ファ・ウィ・フェ・フォ など
+	/^[テデ][ャィュョ]$/,                          //ティ・ディ・テュ など
+	/^[イキシチニヒミリギジヂビピ][ャュョ]$/,      //拗音(キャ・シュ・ニョ など)
+	/^[キシチニヒミリギジヂビピ]ェ$/,              //シェ・チェ・ジェ など
+	/^[トド]ゥ$/,                                  //トゥ・ドゥ
+];
+//直前のカナと組み合わせて1モーラにならない小書きカナを大文字に直す
+//「ハァ」「ウッセェ」「リィ」のような引き伸ばし表記や、単独で現れた小書きが対象。
+//置換は必ず1文字→1文字で文字列長を変えないので、読みと表層の位置対応
+//(char_index / mora)を使う呼び出し元を壊さない。促音ッ・長音ーには触らない
+function absorbSmallKana(text){
+	if(typeof text !== "string" || text.length === 0)return text;
+	const chars = [];
+	for(let i=0;i<text.length;i++){
+		const c = text[i];
+		const large = SMALL_TO_LARGE_KANA[c];
+		if(!large){
+			chars.push(c);
+			continue;
+		}
+		//直前の文字は正規化後のものを見る(「スゥィ」→「スウィ」のように、
+		//大文字化した結果くっつけられるようになる並びを拾うため)
+		const prev = (i > 0) ? hiraToKata(chars[i-1]) : "";
+		const pair = prev + hiraToKata(c);
+		const sticky = STICKY_SMALL_KANA_PATTERNS.some(re=>re.test(pair));
+		chars.push(sticky ? c : large);
+	}
+	return chars.join("");
+}
+
 //ーとッの不自然な並びを削除する
 function removeBarAndSokuonReputation(text){
 	text = text.replace(/ー+/g,"ー");//ーの連続を1文字にする
@@ -362,11 +401,17 @@ function KanaToSyllable(){
 		//裸ン/ッ削除・ー削除=各1操作、複合音節は合計、無変換や表記ゆれ(母音連続→ー)=0。
 		//返り値は従来同様のユニット配列(文字列配列)だが、各配列に .vcost プロパティで
 		//操作回数の合計を持たせる。variation の各要素は {u:ユニット配列, c:操作数}。
+		//さらに .srcIndex プロパティで「各出力ユニットが入力syllablesの何番目に由来するか」を
+		//持たせる(ユニット位置別の重み付けスコアリング用。ン/ッ/ーの変種はユニット数が
+		//変わるため、位置の対応づけにはこの由来indexが要る)。
 		getVariation: function(syllables){
 			//console.log("syllable",syllables);
 			let result = [];
+			//result[k] が syllables の何番目に由来するか(null音節はスキップされ添字がずれる)
+			let resultSrc = [];
 			if(!syllables)return [];
-			for(let syllable of syllables){
+			for(let si=0; si<syllables.length; si++){
+				const syllable = syllables[si];
 				if(syllable === null) continue;
 				let variation = [];
 				if(/^[アイウエオ]$/.test(syllable)){//アイウエオは先に処理しておく
@@ -424,11 +469,23 @@ function KanaToSyllable(){
 					variation.push({u:[syllable],c:0});
 				}
 				result.push(variation);
+				resultSrc.push(si);
 			}
 			return product(...result)
 					.map(v => {
-						const arr = v.flatMap(o=>o.u).filter(v2=>v2!=="");
+						//v.flatMap(o=>o.u).filter(v2=>v2!=="") と同じ結果を作りつつ、
+						//残ったユニットごとの由来index(srcIndex)も同時に組み立てる
+						const arr = [];
+						const src = [];
+						for(let k=0;k<v.length;k++){
+							for(const u of v[k].u){
+								if(u === "") continue;
+								arr.push(u);
+								src.push(resultSrc[k]);
+							}
+						}
 						arr.vcost = v.reduce((s,o)=>s+o.c,0);//操作回数の合計
+						arr.srcIndex = src;//各出力ユニットの由来音節index
 						return arr;
 					})
 					.filter(v => v.length != 0);//長さ0の配列は要素に含めない
@@ -710,7 +767,7 @@ export {
 	barToVowel, vowelToBar, charToConsonant, charToVowel,
 	isSameKana, isSameVowel, isSameConsonant, isSameBar, isSameSokuon, isSameHatsuon,
 	hiraToKata, KanaPattern, smallVowelToBar, smallVowelToLarge,
-	removeBarAndSokuonReputation, removeUnnaturalKanaPattern,
+	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana,
 	moraSplit, KanaToMora, KanaToSyllable, getKanaToVowelDictionary,
 	phononSplit, createKanaConverter,
 };

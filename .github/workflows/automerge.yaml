@@ -22,7 +22,9 @@ concurrency:
 
 jobs:
   automerge:
-    if: ${{ !github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'no-automerge') }}
+    # フォークからのPRは対象外(公開リポジトリでは外部PRを人間レビューなしで
+    # マージしない。そもそもフォークPRのGITHUB_TOKENはread-onlyでマージ不可)
+    if: ${{ !github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'no-automerge') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:

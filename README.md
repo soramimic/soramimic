@@ -35,6 +35,8 @@ npm run build  # ビルド
 node tests/golden/run.cjs                    # ゴールデンテスト(kuromoji・オフライン)
 node tests/editor-api.mjs                    # 編集ツールlib API(getCandidates/固定再生成)
 node tests/editdist.mjs                      # ン・ッ・ーの編集距離一貫性(49ペア。#105)
+node tests/small-kana.mjs                    # 小書きカナ(ハァ/ウッセェ)の吸収
+node tests/unit-weights.mjs                  # ユニット位置別の重み付きスコアリング
 cd frontend && npm run test:smoke            # UIスモークテスト(実ブラウザ)
 ```
 
@@ -57,12 +59,10 @@ cd frontend && npm run test:smoke            # UIスモークテスト(実ブラ
 - github actionsからtag更新(セマンティックバージョニング)
 - 更新履歴は [frontend/index.html](./frontend/index.html) の「更新履歴」セクション(サイトの「サイトについて」タブ)で管理する
 
-### 野球選手表の更新
-[soramimi-wordlists](https://github.com/soramimic/soramimi-wordlists) のREADMEを参照。更新後は本リポジトリでsubmoduleを進める:
-```sh
-git submodule update --remote wordlists
-git add wordlists && git commit
-```
+### 単語リストの更新
+[soramimic-wordlists](https://github.com/soramimic/soramimic-wordlists) 側で更新する(手順は同リポジトリのREADME参照)。
+本リポジトリのsubmodule pinは bump-wordlists ワークフロー(週次月曜朝+Actionsから手動実行可)が
+自動で追従させてデプロイするため、手動で進める必要は通常ない。
 
 ## ライセンス
 

@@ -1,7 +1,7 @@
 // js/TextAnalyzer.js から移植(ロジック無改変、ESモジュール化のみ)
 import { removeSign } from "./utils.js";
 import { TokenFormatter } from "./character.js";
-import { hiraToKata, removeUnnaturalKanaPattern } from "./kanaToSyllable.js";
+import { hiraToKata, removeUnnaturalKanaPattern, absorbSmallKana } from "./kanaToSyllable.js";
 
 //kuromojiのtokenizer, English(), Character(),KanaToSyllable()を内部で使用
 //function TextAnalyzer(tokenizer, englishdictionary, romantree, kanji_dict){
@@ -67,9 +67,30 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 				if(token.pronunciation === "*")token.pos = "記号";
 				return token;
 			});
+			tokens = absorbSmallKanaInTokens(tokens);
 			return tokens;
 		});
 		return tokens_list;
+	}
+
+	//読みに残った小書きカナ(「ハァ」「ウッセェ」など)を大文字に吸収する。
+	//単独の小書きはどの単語の発音にも現れない(単語リスト側はformatKanaで正規化済み)
+	//ため、放置すると行全体の候補が0件になる。
+	//トークンをまたぐ組み合わせ(「シ」+「ェ」)も拾えるよう行単位で連結して正規化する。
+	//absorbSmallKanaは1文字→1文字の置換で長さを変えないので、そのままトークン境界で
+	//切り戻せる(surfaceとの位置対応も崩さない)
+	function absorbSmallKanaInTokens(tokens){
+		const joined = tokens.map(t=>(typeof t.pronunciation === "string")?t.pronunciation:"").join("");
+		const absorbed = absorbSmallKana(joined);
+		if(absorbed === joined)return tokens;
+		let pos = 0;
+		for(const token of tokens){
+			if(typeof token.pronunciation !== "string")continue;
+			const len = token.pronunciation.length;
+			token.pronunciation = absorbed.slice(pos,pos+len);
+			pos += len;
+		}
+		return tokens;
 	}
 	function getYomiFromTokens(tokens){
 		//let tokens = tokenize(strVal);
