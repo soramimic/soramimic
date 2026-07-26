@@ -6,6 +6,7 @@ import "./style.css";
 import "./editor.css";
 import { initSoramimicApp, buildDatabase } from "./appCore.js";
 import { makeResultText } from "./convert.js";
+import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 
 export const EDITOR_STORAGE_KEY = "soramimic-editor";
 const GROUP_PAGE = 30; // 「もっと見る」1回で増える候補グループ数
@@ -543,7 +544,9 @@ function tokenSpanForSelection(line, start, end) {
 // 読みを修正し、ユニット列を作り直して後続単語のperiodをずらす。
 // 修正範囲に重なっていた単語は読みが変わるため外す(再選択・再生成で入れ直せる)
 function applyReadingFix(line, span, newYomiRaw) {
-	const kata = hiraToKata(newYomiRaw.trim());
+	// 手入力の読みも「ウッセェ」のような小書きカナを吸収してから使う
+	// (単独の小書きは単語リスト側に存在せず、候補0件の行になってしまうため)
+	const kata = absorbSmallKana(hiraToKata(newYomiRaw.trim()));
 	if (kata === "" || !/^[ァ-ヴー]+$/.test(kata)) return false;
 	// derive-before-commit: 正データ(tokensList)を書き換える前に、変更を反映した候補
 	// トークン列を別に作り、そこからユニット導出まで通してから確定する。途中で導出が

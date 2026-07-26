@@ -30,6 +30,8 @@ jobs:
         run: node tests/golden/run.cjs
       - name: 編集ツール向けAPI(候補取得・固定つき再生成)のテスト
         run: node tests/editor-api.mjs
+      - name: 小書きカナ吸収のテスト
+        run: node tests/small-kana.mjs
       - name: XF MIDI取り込みのテスト
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
