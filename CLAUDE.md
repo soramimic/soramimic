@@ -14,6 +14,7 @@
 ```sh
 node tests/golden/run.cjs                       # ゴールデン(kuromoji・オフライン)
 node tests/editor-api.mjs                       # 編集ツールAPI
+node tests/small-kana.mjs                       # 小書きカナの吸収
 cd frontend && npm run test:smoke               # 実ブラウザスモーク
 ```
 
