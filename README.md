@@ -36,6 +36,7 @@ node tests/golden/run.cjs                    # ゴールデンテスト(kuromoji
 node tests/editor-api.mjs                    # 編集ツールlib API(getCandidates/固定再生成)
 node tests/editdist.mjs                      # ン・ッ・ーの編集距離一貫性(49ペア。#105)
 node tests/small-kana.mjs                    # 小書きカナ(ハァ/ウッセェ)の吸収
+node tests/unit-weights.mjs                  # ユニット位置別の重み付きスコアリング
 cd frontend && npm run test:smoke            # UIスモークテスト(実ブラウザ)
 ```
 
