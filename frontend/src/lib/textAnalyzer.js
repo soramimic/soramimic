@@ -114,8 +114,11 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 
 	function formatKana(text){
 		//console.log(text);
+		//英字の並びはマッチした部分だけをカナ化して置換する。
+		//(以前はtext全体をtoKanaした結果で置換しており、英字がk箇所あると読みが
+		// 約k+1倍に膨張して後段のバリエーション展開が指数爆発していた)
 		text = text.replace(/[a-zA-Z']+/g,function(match){
-			return english.toKana(text);
+			return english.toKana(match);
 		});
 		//text = english.toKana(text);
 		text = hiraToKata(text);
