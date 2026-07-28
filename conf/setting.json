@@ -246,6 +246,29 @@
    ]
   },
   {
+   "value": "GIMUKYOIKU",
+   "text": "義務教育",
+   "filepath": "wordlists/gimukyoiku.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "subject",
+     "label": "教科",
+     "values": [
+      { "v": "国語", "label": "国語", "where": "subject~=国語" },
+      { "v": "社会", "label": "社会", "where": "subject~=社会" },
+      { "v": "数学", "label": "数学", "where": "subject~=数学" },
+      { "v": "理科", "label": "理科", "where": "subject~=理科" },
+      { "v": "英語", "label": "英語", "where": "subject~=英語" },
+      { "v": "音楽", "label": "音楽", "where": "subject~=音楽" },
+      { "v": "美術", "label": "美術", "where": "subject~=美術" },
+      { "v": "保健体育", "label": "保健体育", "where": "subject~=保健体育" },
+      { "v": "技術・家庭", "label": "技術・家庭", "where": "subject~=技術・家庭" }
+     ]
+    }
+   ]
+  },
+  {
    "label": "架空",
    "items": [
     {
