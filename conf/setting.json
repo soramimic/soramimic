@@ -138,6 +138,37 @@
        ]
       }
      ]
+    },
+    {
+     "value": "INSECT",
+     "text": "昆虫",
+     "filepath": "wordlists/insect.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "分類",
+       "values": [
+        { "v": "甲虫", "label": "甲虫", "default": true },
+        { "v": "チョウ", "label": "チョウ", "default": true },
+        { "v": "ハチ", "label": "ハチ", "default": true },
+        { "v": "ハエ", "label": "ハエ", "default": true },
+        { "v": "カメムシ", "label": "カメムシ", "default": true },
+        { "v": "バッタ", "label": "バッタ", "default": true },
+        { "v": "トンボ", "label": "トンボ", "default": true },
+        { "v": "その他", "label": "その他", "default": true },
+        { "v": "NA", "label": "不明", "default": true }
+       ]
+      },
+      {
+       "column": "extinct",
+       "label": "絶滅",
+       "values": [
+        { "v": "no", "label": "現生", "default": true },
+        { "v": "yes", "label": "絶滅種", "default": true }
+       ]
+      }
+     ]
     }
    ]
   },
