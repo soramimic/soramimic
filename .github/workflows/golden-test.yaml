@@ -34,6 +34,8 @@ jobs:
         run: node tests/small-kana.mjs
       - name: formatKanaの英字カナ化のテスト
         run: node tests/format-kana.mjs
+      - name: ルビ記法(｜表層《よみ》)のテスト
+        run: node tests/ruby.mjs
       - name: ユニット位置別の重み付きスコアリングのテスト
         run: node tests/unit-weights.mjs
       - name: XF MIDI取り込みのテスト

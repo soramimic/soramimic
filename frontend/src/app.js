@@ -306,12 +306,15 @@ export async function startApp() {
 	}
 
 	// 歌詞をトークナイズする(API優先・失敗時kuromoji)。
-	// 後処理(formatTokensList)はどちらの経路でも共通
+	// 後処理(formatTokensList)とルビ記法(｜表層《よみ》)の処理は
+	// どちらの経路でも共通。記法の区間はAPIに渡さず強制トークンにする
 	async function tokenizePhrases(phrases) {
 		if (yomiApiReady) {
 			try {
-				const raw = await yomiApi.tokenize(phrases);
-				return app.textAnalyzer.formatTokensList(raw);
+				const { chunks, plan } = app.textAnalyzer.splitByRuby(phrases);
+				const raw = await yomiApi.tokenize(chunks);
+				return app.textAnalyzer.formatTokensList(
+					app.textAnalyzer.mergeRubyTokens(raw, plan));
 			} catch (err) {
 				console.warn("yomi api失敗、kuromojiにフォールバック:", err);
 			}
