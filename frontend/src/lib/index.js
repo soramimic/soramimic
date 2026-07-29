@@ -7,6 +7,9 @@ import { KanaSimilarity } from "./kanaSimilarity.js";
 import { SoramimiMaker } from "./soramimic.js";
 import { WordList } from "./wordList.js";
 
+// ルビ記法パーサは他レイヤ(video等)からも使えるよう単体で公開する
+export { parseRuby, hasRuby } from "./ruby.js";
+
 export function createSoramimic({
 	kanjiDict,
 	englishDict,
