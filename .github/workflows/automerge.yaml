@@ -1,7 +1,9 @@
-# dev / main 向けPRの自動マージ。CI(golden / smoke など、このPRに付く全チェック)が
+# dev 向けPRの自動マージ。CI(golden / smoke など、このPRに付く全チェック)が
 # すべて成功したら、確認したコミットSHAを指定してマージする。
-# - 通常の開発PRは base=dev。マージ後は preview.soramimic.pages.dev を更新する
-# - main向けPR(緊急修正など)はマージ後に本番デプロイまで進むので注意
+# - 開発PRは base=dev。マージ後は preview.soramimic.pages.dev を更新する
+# - main 向けPRは自動マージの対象外(retarget-main-pr.yaml が dev へ自動で向け直す)。
+#   emergency ラベル付きの緊急修正だけが main 宛てのまま残り、人間が手動でマージする。
+#   人間による手動マージの push は deploy.yaml の push トリガーで本番デプロイされる
 # - 除外したいPRには `no-automerge` ラベルを付ける(ドラフトPRも対象外)
 # - 新しいpushが来ると古い待機はキャンセルされ、新SHAで待機し直す
 # - privateリポジトリ+FreeプランではGitHub標準のauto-merge機能が使えないための自作
@@ -9,7 +11,7 @@ name: automerge
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
-    branches: [main, dev]
+    branches: [dev]
 
 permissions:
   contents: write
@@ -72,15 +74,7 @@ jobs:
           exit 1
 
   # マージ成功時の後続処理(GITHUB_TOKEN によるマージpushは push トリガーを
-  # 起動しないため、workflow_call で確実に回す)。行き先はPRのbaseで分岐:
-  # - base=main → 本番(soramimic.pages.dev)へデプロイ
-  # - base=dev  → プレビュー(preview.soramimic.pages.dev)を更新
-  deploy:
-    needs: automerge
-    if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'main' }}
-    uses: ./.github/workflows/deploy.yaml
-    secrets: inherit
-
+  # 起動しないため、workflow_call で確実に回す)
   preview:
     needs: automerge
     if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'dev' }}

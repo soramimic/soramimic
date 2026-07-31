@@ -32,6 +32,12 @@ function TokenFormatter(){
 		  
 		  return tokens;
 	}
+	//ルビ記法(｜表層《よみ》)で読みを明示指定したトークン。
+	//読みは確定済みなので、推定系の上書きやトークン結合の対象から外す
+	//(記法を使わない従来の入力にはこのフラグが付かないため、挙動は変わらない)
+	function isRuby(token){
+		return !!(token && token.ruby);
+	}
 	function isSmallKanaStart(char){
 		return /^[ぁぃぅぇぉゃゅょゎっァィゥェォヮャュョッ]/.test(char);
 	}
@@ -45,6 +51,7 @@ function TokenFormatter(){
 	
 	function concatSmallKana(tokens){
 		for(let i=1;i<tokens.length;i++){
+			if(isRuby(tokens[i]) || isRuby(tokens[i-1]))continue;
 			if(isSmallKanaStart(tokens[i].surface_form) && isKanaEnd(tokens[i-1].surface_form)){
 				tokens[i-1].surface_form += tokens[i].surface_form;
 				tokens[i-1].pronunciation += tokens[i].pronunciation;
@@ -72,6 +79,7 @@ function TokenFormatter(){
 	
 	function setKanaPronunciation(tokens){
 		tokens = tokens.map(token=>{
+			if(isRuby(token))return token;
 			if(isKana(token.surface_form)){
 				 token.pronunciation = hiraToKata(token.surface_form);
 				 if(token.pos === "記号")token.pos="名詞";
@@ -86,18 +94,20 @@ function TokenFormatter(){
 	function concatSingleBar(tokens){
 		
 		  for(let i=1;i<tokens.length;i++){
+			  if(isRuby(tokens[i]) || isRuby(tokens[i-1]))continue;
 			  if(tokens[i]["surface_form"] === "ー"){
-				  tokens[i-1]["surface_form"] += "ー";  
+				  tokens[i-1]["surface_form"] += "ー";
 				  tokens[i-1]["pronunciation"] += "ー";
 			  }
 		  }
-		  tokens = tokens.filter(token=>token["surface_form"] !== "ー");
+		  tokens = tokens.filter(token=>isRuby(token) || token["surface_form"] !== "ー");
 		return tokens;
 	}
 	
 	function setNumberPronunciation(tokens){
 		let n2p = {"1":"イチ","2":"ニ","3":"サン","4":"ヨン","5":"ゴ","6":"ロク","7":"ナナ","8":"ハチ","9":"キュウ","0":"ゼロ"}
 		tokens = tokens.map(token=>{
+			if(isRuby(token))return token;
 			if(/^[0-9]$/.test(token.surface_form)){
 				let p = "";
 				for(let v of token.surface_form){

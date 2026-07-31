@@ -15,7 +15,9 @@
 node tests/golden/run.cjs                       # ゴールデン(kuromoji・オフライン)
 node tests/editor-api.mjs                       # 編集ツールAPI
 node tests/small-kana.mjs                       # 小書きカナの吸収
+node tests/format-kana.mjs                      # formatKanaの英字カナ化
 node tests/unit-weights.mjs                     # ユニット位置別の重み付きスコアリング
+node tests/ruby.mjs                             # ルビ記法(｜表層《よみ》)
 cd frontend && npm run test:smoke               # 実ブラウザスモーク
 ```
 

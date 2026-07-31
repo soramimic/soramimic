@@ -2,6 +2,29 @@
 import { removeSign } from "./utils.js";
 import { TokenFormatter } from "./character.js";
 import { hiraToKata, removeUnnaturalKanaPattern, absorbSmallKana } from "./kanaToSyllable.js";
+import { parseRuby } from "./ruby.js";
+
+//ルビ記法(｜表層《よみ》)の注釈区間に割り当てる強制トークン。
+//kuromoji(ipadic)形式に合わせた既定値を持ち、posは名詞にして
+//TokenFormatterの文節ヒューリスティックで文節カウントが進むようにする。
+//ruby:true は「読みが確定済み」の目印で、以降の推定・結合処理が読みを
+//上書き/破壊しないためのガードに使う
+function makeRubyToken(surface, reading){
+	return {
+		surface_form: surface,
+		basic_form: surface,
+		reading: reading,
+		pronunciation: reading,
+		pos: "名詞",
+		pos_detail_1: "一般",
+		pos_detail_2: "*",
+		pos_detail_3: "*",
+		conjugated_form: "*",
+		conjugated_type: "*",
+		word_position: 1,
+		ruby: true,
+	};
+}
 
 //kuromojiのtokenizer, English(), Character(),KanaToSyllable()を内部で使用
 //function TextAnalyzer(tokenizer, englishdictionary, romantree, kanji_dict){
@@ -20,8 +43,77 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 	function tokenizeTogether(texts){
 		const AP = english.apostrophe;
 		texts = texts.map(v=>AP.toString(v));
-		let tokens_list = tokenizeSentenses(texts);
+		const { chunks, plan } = splitByRuby(texts);
+		let tokens_list = mergeRubyTokens(tokenizeSentenses(chunks), plan);
 		return formatTokensList(tokens_list);
+	}
+
+	//ルビ記法の前処理: 記法を解決した素テキストを注釈境界で分割し、
+	//トークナイザに渡すチャンク列(chunks)と、結合手順(plan)を返す。
+	//記法を含まない行は行全体が1チャンクになるので、従来と完全に同じ入力が
+	//トークナイザに渡る(=出力も従来と一致する)。
+	//kuromoji経路(tokenizeTogether)と読み推定API経路(app.js)の両方から使えるよう、
+	//「分割」と「結合」を分けて公開している
+	function splitByRuby(texts){
+		const chunks = [];
+		const plan = texts.map(text=>{
+			const { plain, annotations } = parseRuby(text);
+			if(annotations.length === 0){
+				const items = [{ type:"chunk", index: chunks.length }];
+				chunks.push(plain);
+				return items;
+			}
+			//注釈オフセットはコードポイント単位なので、UTF-16のsliceは使わない
+			const chars = Array.from(plain);
+			const items = [];
+			const pushChunk = (start,end)=>{
+				const s = chars.slice(start,end).join("");
+				if(s === "")return;
+				items.push({ type:"chunk", index: chunks.length });
+				chunks.push(s);
+			};
+			let pos = 0;
+			for(const ann of annotations){
+				pushChunk(pos, ann.start);
+				items.push({
+					type:"ruby",
+					surface: chars.slice(ann.start, ann.end).join(""),
+					reading: ann.reading,
+				});
+				pos = ann.end;
+			}
+			pushChunk(pos, chars.length);
+			return items;
+		});
+		return { chunks, plan };
+	}
+
+	//splitByRubyのchunksをトークナイズした結果を、行ごとのトークン列に組み直す。
+	//注釈区間は強制トークン1個に置き換わる。
+	//word_positionはチャンク単位でしか正しくないため、記法を含む行だけ再計算する
+	//(記法を含まない行はトークナイザの出力をそのまま保つ=後方互換)
+	function mergeRubyTokens(chunkTokensList, plan){
+		return plan.map(items=>{
+			const tokens = [];
+			let hasRuby = false;
+			for(const item of items){
+				if(item.type === "ruby"){
+					hasRuby = true;
+					tokens.push(makeRubyToken(item.surface, item.reading));
+				}else{
+					const chunk = chunkTokensList[item.index];
+					if(chunk)for(const token of chunk)tokens.push(token);
+				}
+			}
+			if(hasRuby){
+				let pos = 1;
+				for(const token of tokens){
+					token.word_position = pos;
+					pos += Array.from(token.surface_form || "").length;
+				}
+			}
+			return tokens;
+		});
 	}
 
 	//トークン列への後処理(英語・漢字の読み補完、記号処理、文節付与)。
@@ -33,9 +125,12 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 				if(english.isFullmatch(token.surface_form)){
 					//console.log("english fullmatched");
 					token.surface_form = AP.toSign(token.surface_form);
+					//ルビ記法で読みを明示指定したトークンは英語読みで上書きしない
+					if(!token.ruby){
 					//if(token.pronunciation === "*"){
-						token.pronunciation = english.toKana(token.surface_form);					
+						token.pronunciation = english.toKana(token.surface_form);
 					//}
+					}
 				}
 				return token;
 			});
@@ -114,8 +209,11 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 
 	function formatKana(text){
 		//console.log(text);
+		//英字の並びはマッチした部分だけをカナ化して置換する。
+		//(以前はtext全体をtoKanaした結果で置換しており、英字がk箇所あると読みが
+		// 約k+1倍に膨張して後段のバリエーション展開が指数爆発していた)
 		text = text.replace(/[a-zA-Z']+/g,function(match){
-			return english.toKana(text);
+			return english.toKana(match);
 		});
 		//text = english.toKana(text);
 		text = hiraToKata(text);
@@ -201,6 +299,8 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 
 	return {
 		tokenizeTogether: tokenizeTogether,
+		splitByRuby: splitByRuby,
+		mergeRubyTokens: mergeRubyTokens,
 		formatTokensList: formatTokensList,
 		getYomiFromTokens: getYomiFromTokens,
 		getYomiAndPhraseBreak: getYomiAndPhraseBreak,

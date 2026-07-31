@@ -1,0 +1,40 @@
+# main 宛ての Pull Request を自動で dev へ向け直す。
+#
+# 運用(リリーストレイン方式)では開発PRの base は dev が正で、main が動くのは
+# release.yaml(週次+手動)の dev→main マージだけ。base=main のPRを放置すると
+# かつては automerge → 本番デプロイまで直行していたため(2026-07 の義務教育
+# リスト追加で実例あり)、うっかり main 宛てに作られたPRをここで dev へ付け替える。
+#
+# - 本当に main へ直接入れたい緊急修正は `emergency` ラベルを付けてから
+#   reopen する(このワークフローが素通しにする)。automerge の対象外なので
+#   人間が手動でマージし、そのマージ push を deploy.yaml が拾って本番へ出す
+# - dev→main の手動PR(リリース相当)は head=dev なので付け替えない
+# - フォークPRにも効かせるため pull_request_target を使う(PRのコードは
+#   checkout しないので安全)
+name: retarget-main-pr
+on:
+  pull_request_target:
+    types: [opened, reopened]
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: retarget-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  retarget:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'emergency') && github.event.pull_request.head.ref != 'dev' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: base を dev に付け替えて通知
+        run: |
+          gh pr edit "$PR" --repo "$REPO" --base dev
+          gh pr comment "$PR" --repo "$REPO" --body "🔀 base を \`main\` から \`dev\` に変更しました。開発PRは dev に取り込まれ、preview.soramimic.pages.dev で確認後、週次の release (dev→main) で本番に出ます。本当に main へ直接入れたい緊急修正の場合は \`emergency\` ラベルを付けて reopen してください。"
