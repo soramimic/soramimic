@@ -42,3 +42,5 @@ jobs:
         run: node tests/editor-smoke.mjs
       - name: 編集ツールタッチE2E(タップ伸縮・ドラッグ選択・長押し詳細)
         run: node tests/editor-touch.mjs
+      - name: 編集ツール単語リストE2E(リスト切替・自作リスト・csvText契約)
+        run: node tests/editor-wordlist.mjs
