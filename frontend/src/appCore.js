@@ -79,6 +79,13 @@ export async function initSoramimicApp({ vowelRatio = 0.8 } = {}) {
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
 export async function buildDatabase(app, entry, where) {
 	if (entry.value === "ORIGINAL") {
+		// entry.csvText は自作リストの正規化済み tidy CSV(plainToCsv の出力)。
+		// 編集ツールの書き出しJSONはこれを同梱するので、別環境・別ブラウザで
+		// 読み込んでも localStorage に依存せず同じDB(=同じid)が組み直せる。
+		// parseTidy(csv, "") は parsePlain(text) と同一の経路(#37)
+		if (typeof entry.csvText === "string" && entry.csvText !== "") {
+			return app.wordList.parseTidy(entry.csvText, "");
+		}
 		const text = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
 		return app.wordList.parsePlain(text);
 	}

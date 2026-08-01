@@ -363,7 +363,11 @@ function WordList(textAnalyzer){
 		//setList: setList,
 		parseTidy: loadDatabaseCsvText,
 		parsePlain: loadDatabaseText,
-		
+		// plain形式 → tidy CSV の正規化。parsePlain が内部で通しているのと同じ関数を
+		// そのまま公開しただけ(ロジック無改変)。自作リストのCSVを書き出しJSONへ
+		// 同梱するのに使う(parseTidy(csv,"") は parsePlain(text) と同じDBになる)
+		plainToCsv: plainToCsv,
+
 		//setWordListFile: setWordListFile,
 		//get: get,
 		//exists: exists
