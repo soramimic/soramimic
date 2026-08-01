@@ -18,6 +18,7 @@ node tests/small-kana.mjs                       # 小書きカナの吸収
 node tests/format-kana.mjs                      # formatKanaの英字カナ化
 node tests/unit-weights.mjs                     # ユニット位置別の重み付きスコアリング
 node tests/ruby.mjs                             # ルビ記法(｜表層《よみ》)
+node tests/wordlist-csv.mjs                     # 自作リストの正規化CSV(csvText契約)
 cd frontend && npm run test:smoke               # 実ブラウザスモーク
 ```
 

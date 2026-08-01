@@ -60,14 +60,23 @@
       </main>
 
       <!-- 変換のしかた(ツールバーの⚙から開く)。生成画面のダイアログと同じ流儀で、
-           Esc・×・外側クリックのどれでも閉じられる。将来ここに単語リスト選択も
-           入るため、中身は .field 単位のセクションを並べるだけの構造にしてある -->
+           Esc・×・外側クリックのどれでも閉じられる。中身は .field 単位の
+           セクションを並べるだけの構造 -->
       <dialog id="editor-settings" class="editor-settings">
         <div class="dialog-header">
           <h2>変換のしかた</h2>
           <button id="btn-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
         <div class="editor-settings-body">
+          <!-- 単語リスト。conf/setting.json から組み立てるので、取れない環境
+               (スタンドアロン配置)ではセクションごと出さない -->
+          <div class="field" id="editor-wordlist-field" hidden>
+            <h3 class="field-label">単語リスト</h3>
+            <select id="editor-wordlist" class="input" aria-label="単語リスト"></select>
+            <textarea id="editor-original-text" class="input editor-original-text" rows="10" hidden
+              aria-label="自作リスト"
+              placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます"></textarea>
+          </div>
           <div class="field">
             <h3 class="field-label">パラメータ</h3>
             <div id="editor-preset-buttons" class="btn-group-wrap"></div>
