@@ -44,3 +44,5 @@ jobs:
         run: node tests/editor-touch.mjs
       - name: 編集ツール単語リストE2E(リスト切替・自作リスト・csvText契約)
         run: node tests/editor-wordlist.mjs
+      - name: 編集ツールfiller E2E(未変換チップの表示・候補からの差し替え)
+        run: node tests/editor-filler.mjs
