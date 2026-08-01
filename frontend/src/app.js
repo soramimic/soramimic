@@ -3,6 +3,10 @@ import { fetchText, fetchJson } from "./api.js";
 import { loadEngine, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { createYomiApi } from "./yomiApi.js";
+import {
+	setupButtonGroup, createParamControls,
+	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
+} from "./convertControls.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
 
@@ -13,55 +17,6 @@ function track(name, params) {
 
 function $id(id) {
 	return document.getElementById(id);
-}
-
-// 単一選択のボタングループ
-function setupButtonGroup(container, onChange) {
-	container.addEventListener("click", (e) => {
-		const btn = e.target.closest("button");
-		if (!btn) return;
-		for (const b of container.querySelectorAll("button")) {
-			b.classList.toggle("active", b === btn);
-		}
-		if (onChange) onChange(btn);
-	});
-}
-
-function activeValue(container) {
-	const btn = container.querySelector("button.active");
-	return btn ? btn.dataset.value : null;
-}
-
-// 両端ラベル付きスライダーの1項目を作る(「音の合わせ方」「文節の区切り」「単語の長さ」で共通)。
-// val() は生のスライダー値(数値)を返す。ペナルティへの写像は呼び出し側で行う。
-function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel }) {
-	const item = document.createElement("div");
-	item.className = "param-item param-item-wide";
-	const title = document.createElement("h4");
-	title.className = "field-label";
-	title.textContent = label;
-	const row = document.createElement("div");
-	row.className = "slider-row";
-	const left = document.createElement("span");
-	left.className = "slider-end";
-	left.textContent = leftText;
-	const right = document.createElement("span");
-	right.className = "slider-end";
-	right.textContent = rightText;
-	const slider = document.createElement("input");
-	slider.type = "range";
-	slider.min = String(min);
-	slider.max = String(max);
-	slider.step = String(step);
-	slider.value = String(defaultValue);
-	slider.setAttribute("aria-label", ariaLabel || label);
-	row.append(left, slider, right);
-	item.append(title, row);
-	return {
-		element: item,
-		val: () => Number(slider.value),
-		set: (value) => { slider.value = String(value); },
-	};
 }
 
 function setupTabs() {
@@ -179,103 +134,22 @@ export async function startApp() {
 	});
 
 	// ---- 単語重複・パラメータ ----
-	setupButtonGroup(duplicateButtons, saveMainState);
-	const paramArea = $id("param-area");
-	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
-	// - 「音の合わせ方」= vowelRatio(r)。行列がコア音素タイブレーク方式になったので、
-	//   rは純粋な母音/子音の重み。既定 r=0.8 で「母音ロック・子音タイブレーク」
-	//   (旧既定相当だが子音一致率はむしろ良い)、左に振ると子音ロックへ滑らかに移る。
-	//   SAME_VOWEL/CONSONANT_REWARD の掛け算ハックは撤廃(#102 実測)。
-	// - 文節・単語長は3択トグルからスライダーへ。内部ペナルティは線形。
-	//   文節 0(無視)〜8(がっちり守る)、内部値は×20(=0〜160)。MIDスイープ実測
-	//   (furusato/umi/placeholder)で MID=160 が3入力とも文節内切断ゼロの飽和点で、
-	//   応答は単調・線形写像が最適(母音の犠牲は最大-7pt)。旧×5(上限40)では
-	//   編集距離換算2.5操作分で不足し「文節重視でも文節が無視される」ため再較正した
-	//   (1ステップ=編集距離1.25操作分)。「がっちり守る」でも候補枯渇時は切れる
-	//   (絶対切断ではない含意)。既定1(=20)。
-	//   単語長 0(細かめ)〜6(長め)、内部値は×10(=0〜60)。既定2(=20)。
-	// 既定値(r=0.8・文節1・単語長2)は本番「バランス」プリセットと同一。
-	const iptSound = createSliderItem({
-		label: "音の合わせ方", leftText: "子音重視", rightText: "母音重視",
-		min: 0.1, max: 0.9, step: 0.1, defaultValue: 0.8,
-		ariaLabel: "音の合わせ方(子音重視〜母音重視)",
+	// スライダー・プリセット・単語重複のUIは編集ツールと共有する(convertControls.js)。
+	// ここで足すのは生成画面固有の副作用(GA計測・状態保存)だけ
+	const paramControls = createParamControls({
+		paramArea: $id("param-area"),
+		presetArea: $id("preset-buttons"),
+		duplicateArea: duplicateButtons,
+		onChange: (kind, preset) => {
+			if (kind === "preset") track("param_preset", { preset: preset.name });
+			saveMainState();
+		},
 	});
-	const iptPhrasebreak = createSliderItem({
-		label: "文節の区切り", leftText: "無視", rightText: "がっちり守る",
-		min: 0, max: 8, step: 1, defaultValue: 1,
-		ariaLabel: "文節の区切り(無視〜がっちり守る)",
-	});
-	const iptWordnum = createSliderItem({
-		label: "単語の長さ", leftText: "細かめ", rightText: "長め",
-		min: 0, max: 6, step: 1, defaultValue: 2,
-		ariaLabel: "単語の長さ(細かめ〜長め)",
-	});
-	for (const p of [iptSound, iptPhrasebreak, iptWordnum]) {
-		paramArea.appendChild(p.element);
-	}
-
-	// プリセット: ワンタップで詳細設定(スライダー)へ値を流し込む。
-	// 全プリセット r=0.8(母音ロック)固定で、文節・単語長の強さだけ変える(#102):
-	//   バランス   MID20(文節1)/WNP20(音そっくりと文節重視の中間、既定)
-	//   音そっくり MID0/WNP0(音韻マックス)
-	//   文節重視   MID160(文節8=スライダー最大・実測の飽和点)/WNP20
-	//   長い単語   MID20(文節1)/WNP60(スライダー最大)
-	const PRESETS = [
-		{ name: "バランス", sound: 0.8, phrase: 1, wordnum: 2 },
-		{ name: "音そっくり", sound: 0.8, phrase: 0, wordnum: 0 },
-		{ name: "文節重視", sound: 0.8, phrase: 8, wordnum: 2 },
-		{ name: "長い単語", sound: 0.8, phrase: 1, wordnum: 6 },
-	];
-	const presetButtons = $id("preset-buttons");
-	for (const preset of PRESETS) {
-		const btn = document.createElement("button");
-		btn.className = "btn" + (preset.name === "バランス" ? " active" : "");
-		btn.textContent = preset.name;
-		btn.__preset = preset;
-		presetButtons.appendChild(btn);
-	}
-	function applyPreset(p) {
-		iptSound.set(p.sound);
-		iptPhrasebreak.set(p.phrase);
-		iptWordnum.set(p.wordnum);
-	}
-	applyPreset(PRESETS[0]); // 既定はバランス(詳細設定の初期値もここから決まる)
-	setupButtonGroup(presetButtons, (btn) => {
-		applyPreset(btn.__preset);
-		track("param_preset", { preset: btn.__preset.name });
-		saveMainState();
-	});
-	// 詳細設定を手で触ったらプリセットの選択表示を外す(値はカスタム扱い)
-	function clearPresetSelection() {
-		for (const b of presetButtons.querySelectorAll("button")) {
-			b.classList.remove("active");
-		}
-	}
-	paramArea.addEventListener("click", (e) => {
-		if (e.target.closest("button")) { clearPresetSelection(); saveMainState(); }
-	});
-	paramArea.addEventListener("input", () => { clearPresetSelection(); saveMainState(); });
 
 	function getParam() {
-		return {
-			// SAME_VOWEL/CONSONANT_REWARD は撤廃(#102)。母音ロックは類似度行列自体が
-			// monophoneタイブレーク方式になったことで表現され、掛け算ハックは不要。
-			// 未指定なのでlib既定(=1、無効化)のまま。母音/子音の重みは VOWEL_RATIO で調整する。
-			VOWEL_RATIO: iptSound.val(),
-			// ン/ッ/ーの1変換操作コスト。母音準一致セル(名目20)相当を実効値として
-			// vowelRatio(=r)に連動させる(実効=20×r。行列は母音側が2r倍される)。#105
-			VARIATION_COST: 20 * Number(iptSound.val()),
-			// 文節つまみは「境界一致への報酬」ではなく「文節内で切ることへの
-			// ペナルティ」に写像する(#98)。報酬方式は30で飽和し、文節内分割を
-			// 抑止できなかったため置き換え。係数は×20(UI0〜8→内部0〜160)。
-			// MIDスイープ実測でMID=160が3入力とも文節内切断ゼロの飽和点・線形応答
-			// (1ステップ=編集距離1.25操作分)。旧×5(上限40)では文節重視でも切断が残った
-			SAME_PHRASE_BREAK_REWARD: 0,
-			MID_PHRASE_BREAK_PENALTY: iptPhrasebreak.val() * 20,
-			WORD_NUMBER_PENALTY: iptWordnum.val() * 10,
-			DUPLICATE: activeValue(duplicateButtons) === "true",
+		return Object.assign(paramControls.getParam(), {
 			OUTPUT_FORMAT: formatSelect.value,
-		};
+		});
 	}
 
 	// ---- データ読み込みとアルゴリズム初期化 ----
@@ -418,60 +292,10 @@ export async function startApp() {
 		text: "自作の単語リストを使用",
 	});
 
-	// facet の1つの選択肢を where 断片に変換する。設定で述語を定義できる:
-	// - item.where があればそれをそのまま使う(任意の述語。SQL 的な自由度)
-	// - facet.columns(配列)があれば全列の or に展開する
-	//   (例: {columns:["type1","type2"]} で炎チェック→ type1=ほのお or type2=ほのお)
-	// - どちらも無ければ facet.column=値(従来互換)
-	function facetClause(f, item) {
-		if (item.where) return item.where;
-		const cols = f.columns || [f.column];
-		return "(" + cols.map((c) => `${c}=${item.v}`).join(" or ") + ")";
-	}
-
-	// 選択中リストの facets(絞り込みチェックボックス)を描画する
-	function renderFacets(entry) {
-		wordlistFacets.innerHTML = "";
-		const facets = (entry && entry.facets) || [];
-		for (const f of facets) {
-			const group = document.createElement("div");
-			group.className = "facet-group";
-			const label = document.createElement("span");
-			label.className = "facet-label";
-			label.textContent = f.label || f.column || "";
-			group.appendChild(label);
-			for (const item of f.values) {
-				const lbl = document.createElement("label");
-				lbl.className = "facet-check";
-				const cb = document.createElement("input");
-				cb.type = "checkbox";
-				cb.value = item.v;
-				cb.checked = item.default === true;
-				// 各選択肢が担う where 断片を要素に持たせる(単一列に限らない)
-				cb.__where = facetClause(f, item);
-				lbl.append(cb, document.createTextNode(item.label || item.v));
-				group.appendChild(lbl);
-			}
-			wordlistFacets.appendChild(group);
-		}
-	}
-
-	// 現在のチェック状態を where 文字列にコンパイルする。
-	// 同一 facet 内は or、facet をまたぐと and。未チェックの facet は制約なし。
-	// 各選択肢の断片は facetClause() が決める(column= / columns の or / 任意の where)。
-	// facets 未定義のエントリは従来どおり entry.where を返す。
-	function compileWhere(entry) {
-		const facets = (entry && entry.facets) || [];
-		if (facets.length === 0) return entry ? entry.where : undefined;
-		const clauses = [];
-		for (const group of wordlistFacets.querySelectorAll(".facet-group")) {
-			const frags = [...group.querySelectorAll("input:checked")]
-				.map((cb) => cb.__where);
-			if (frags.length === 0) continue; // 制約なし
-			clauses.push("(" + frags.join(" or ") + ")");
-		}
-		return clauses.join(" and ");
-	}
+	// ファセット絞り込み(描画・whereのコンパイル)も編集ツールと共有する。
+	// 共有関数はコンテナ引数を取るので、生成画面のコンテナを束ねただけのラッパにする
+	const renderFacets = (entry) => renderFacetsIn(wordlistFacets, entry);
+	const compileWhere = (entry) => compileWhereIn(wordlistFacets, entry);
 
 	setupButtonGroup(wordlistButtons, (btn) => {
 		setWordlistControl(btn); // プルダウン側の選択も解除する
@@ -533,17 +357,17 @@ export async function startApp() {
 
 	function saveMainState() {
 		try {
-			// activeなプリセット名(手で詳細設定を触った=カスタムのときはnull)
-			const activePreset = presetButtons.querySelector("button.active");
+			const values = paramControls.getValues();
 			sessionStorage.setItem(MAIN_STORAGE_KEY, JSON.stringify({
 				text: inputText.value,
 				format: formatSelect.value,
 				wordlistValue: selectedWordlist ? selectedWordlist.value : null,
-				preset: activePreset ? activePreset.textContent : null,
-				sound: iptSound.val(),
-				phrase: iptPhrasebreak.val(),
-				wordnum: iptWordnum.val(),
-				duplicate: activeValue(duplicateButtons),
+				// activeなプリセット名(手で詳細設定を触った=カスタムのときはnull)
+				preset: paramControls.activePresetName(),
+				sound: values.sound,
+				phrase: values.phrase,
+				wordnum: values.wordnum,
+				duplicate: String(values.duplicate),
 				pastResult,
 				lastConversion,
 			}));
@@ -648,21 +472,17 @@ export async function startApp() {
 	// 前回の変換結果の復元(単語リストの選択状態も戻す)
 	if (savedMain) {
 		// 詳細設定・単語重複・プリセットの選択状態を復元する。
-		// 既定のバランスは applyPreset(PRESETS[0]) で適用済みなので、
-		// 保存値があるときだけ上書きする(旧セッションで欠けていれば既定のまま)
-		if (typeof savedMain.sound === "number") iptSound.set(savedMain.sound);
-		if (typeof savedMain.phrase === "number") iptPhrasebreak.set(savedMain.phrase);
-		if (typeof savedMain.wordnum === "number") iptWordnum.set(savedMain.wordnum);
-		if (savedMain.duplicate) {
-			for (const b of duplicateButtons.querySelectorAll("button")) {
-				b.classList.toggle("active", b.dataset.value === savedMain.duplicate);
-			}
-		}
+		// 既定(バランス)はUI構築時に適用済みなので、保存値があるときだけ
+		// 上書きする(旧セッションで欠けていれば既定のまま)
+		paramControls.setValues({
+			sound: savedMain.sound,
+			phrase: savedMain.phrase,
+			wordnum: savedMain.wordnum,
+			duplicate: savedMain.duplicate || undefined,
+		});
 		if ("preset" in savedMain) {
 			// 保存名に一致するプリセットをactive、null(カスタム)なら全部外す
-			for (const b of presetButtons.querySelectorAll("button")) {
-				b.classList.toggle("active", b.textContent === savedMain.preset);
-			}
+			paramControls.setPreset(savedMain.preset);
 		}
 		if (savedMain.wordlistValue) {
 			const found = wordlistByValue.get(savedMain.wordlistValue);

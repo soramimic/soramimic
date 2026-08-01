@@ -183,6 +183,18 @@ try {
 	assert(candSurface.startsWith(lockedSurface),
 		`タップ差し替えが反映されない: 候補=${candSurface} チップ=${lockedSurface}`);
 
+	// ---- 変換設定パネルがタッチで開けて操作できること ----
+	// 折りたたみの開閉・プリセット・スライダーは指でも押せる大きさで並んでいる必要がある
+	const summary = await editor.locator("#editor-settings > summary").boundingBox();
+	await editor.touchscreen.tap(summary.x + 20, summary.y + summary.height / 2);
+	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+	const preset = await editor.locator("#editor-preset-buttons button:has-text('長い単語')").boundingBox();
+	assert(preset.height >= 28, "プリセットボタンがタッチには小さい: " + preset.height);
+	await editor.touchscreen.tap(preset.x + preset.width / 2, preset.y + preset.height / 2);
+	const wordnum = await editor.$$eval("#editor-param-area input[type=range]",
+		(els) => Number(els[2].value));
+	assert(wordnum === 6, "タッチでプリセットが適用されない: " + wordnum);
+
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));
 	}
