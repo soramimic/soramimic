@@ -955,7 +955,12 @@ function buildPanel() {
 	// 候補の取得と同姓同名(表記+読みが同じでidが違う)のグループ化。
 	// 単語重複なしの判定はid単位なので、同名でも別idはそれぞれ選べるようにする
 	const target = unitsOf(line).slice(start, end).map((u) => u.pronunciation);
-	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH);
+	// 位置別の重み(親アプリから渡る weightsList。ノート長重視など)があれば、
+	// 選択範囲に対応する区間を切り出して候補計算にも効かせる
+	const rangeWeights = data.weightsList && Array.isArray(data.weightsList[line])
+		? data.weightsList[line].slice(start, end)
+		: null;
+	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
 	const used = usedIdSet(line, start, end);
 	const groups = [];
 	const byKey = new Map();
@@ -1107,7 +1112,7 @@ function regenerate() {
 			btn.disabled = false;
 			progress.hidden = true;
 		},
-		locksPerLine);
+		locksPerLine, data.weightsList || null);
 }
 
 // ---- 変換設定パネル(パラメータ・絞り込み) ----
@@ -1191,7 +1196,7 @@ async function reconvertAll() {
 			progress.hidden = true;
 			setReconverting(false);
 		},
-		locksPerLine);
+		locksPerLine, data.weightsList || null);
 }
 
 // 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる
@@ -1291,6 +1296,7 @@ function exportData() {
 		wordlist: data.wordlist,
 		where: data.where,
 		unitsList: data.unitsList,
+		weightsList: data.weightsList || null,
 	};
 	const blob = new Blob([JSON.stringify(payload, null, 1)], {
 		type: "application/json",
@@ -1374,6 +1380,10 @@ async function start() {
 			data.param.VARIATION_COST = 20 * Number(data.param.VOWEL_RATIO);
 		}
 	}
+
+	// 親アプリ(soramimic-video等)から渡る行ごとの位置別重み(任意フィールド)。
+	// 配列でなければ「重みなし」として扱う(長さの検証はエンジン側がやる)
+	if (!Array.isArray(data.weightsList)) delete data.weightsList;
 
 	if (!Array.isArray(data.history)) data.history = [];
 	if (!Array.isArray(data.future)) data.future = [];
