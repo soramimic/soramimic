@@ -111,6 +111,23 @@
 	opacity: 0.45;
 }
 
+/* filler(置ける単語が無く、元歌詞のまま残った区間)。替え歌単語と一目で
+   区別できるよう、破線のグレーで控えめに出す。文字は元歌詞のかなそのもの */
+.chip-word.filler {
+	background: var(--bg);
+	border: 1px dashed var(--border);
+	color: var(--muted);
+}
+
+.chip-word.filler .chip-word-surface {
+	font-weight: 400;
+}
+
+.chip-word.filler:hover {
+	background: var(--bg);
+	border-color: var(--accent);
+}
+
 .chip-word.locked {
 	border-color: #d97706;
 	background: #fef3c7;

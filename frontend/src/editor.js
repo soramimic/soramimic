@@ -213,6 +213,9 @@ function renderLine(line) {
 	for (const word of words) {
 		const chip = document.createElement("span");
 		chip.className = "chip chip-word";
+		// filler(未変換=元歌詞のまま)は破線グレーの控えめな見た目にする。
+		// タップすれば通常の単語と同じように候補パネルが開き、差し替えられる
+		if (word.filler) chip.classList.add("filler");
 		if (word.locked) chip.classList.add("locked");
 		if (selection && selection.line === line &&
 			selection.start === word.period[0] && selection.end === word.period[1]) {
@@ -226,6 +229,16 @@ function renderLine(line) {
 		const kana = document.createElement("span");
 		kana.className = "chip-word-kana";
 		kana.textContent = word.kana;
+		if (word.filler) {
+			// 未変換なので表記と読みが同じ。二重に出さず、🔒(固定)も出さない
+			// (元歌詞のままの区間を固定しても意味がないため)
+			chip.append(surface);
+			chip.title = wordDetail(word);
+			attachLongPress(chip, () => wordDetail(word));
+			chip.addEventListener("click", () => onWordClick(line, word));
+			grid.appendChild(chip);
+			continue;
+		}
 		const lock = document.createElement("button");
 		lock.className = "chip-lock";
 		lock.textContent = word.locked ? "🔒" : "🔓";
@@ -516,6 +529,14 @@ function candidateDetail(cand, isUsed) {
 // 元表記→替え歌の対応に加えて、フルネーム(original)・読み・スコア・idを出す
 function wordDetail(word) {
 	const lines = [];
+	// filler は「置ける単語が無かったので元歌詞のまま」の区間。スコアやIDは持たない
+	if (word.filler) {
+		return [
+			`${word.original_surface}(${word.originalkana})→ 未変換(元の歌詞のまま)`,
+			"この区間に置ける単語がありませんでした",
+			"タップすると候補から選べます",
+		].join("\n");
+	}
 	lines.push(`${word.original_surface}(${word.originalkana})→ ${word.surface}`);
 	if (word.original && word.original !== word.surface) lines.push("単語: " + word.original);
 	lines.push("読み: " + word.kana);
@@ -637,6 +658,7 @@ function usedIdSet(excludeLine, start, end) {
 	const used = new Set();
 	data.results.forEach((words, li) => {
 		for (const w of words || []) {
+			if (w.filler) continue; // fillerは実単語ではないので使用済みに数えない
 			if (li === excludeLine && !(w.period[1] <= start || end <= w.period[0])) continue;
 			used.add(w.id);
 		}
@@ -1100,8 +1122,10 @@ function regenerate() {
 	const dirty = new Set(data.dirtyLines);
 	const minDirty = dirty.size > 0 ? Math.min(...dirty) : Infinity;
 	const atRisk = (i) => (data.param.DUPLICATE ? dirty.has(i) : i >= minDirty);
+	// filler(未変換の区間)は固定扱いにしない。単語が増えていれば埋まるように、
+	// 再生成のたびに埋め直しを試みる
 	const locksPerLine = data.results.map((words, i) =>
-		(words || []).filter((w) => (atRisk(i) ? w.locked : true)));
+		(words || []).filter((w) => !w.filler && (atRisk(i) ? w.locked : true)));
 	btn.disabled = true;
 	progress.hidden = false;
 	progress.textContent = `再生成中... 0/${data.results.length}`;
@@ -1321,9 +1345,10 @@ async function reconvertAll() {
 	}
 	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す。
 	// ただしリストごと変わったときは持ち越さない(idが別リストのものになるため)
+	// filler(未変換の区間)は持ち越さず、新しい設定で埋め直しを試みる
 	const locksPerLine = listChanged
 		? data.results.map(() => [])
-		: data.results.map((words) => (words || []).filter((w) => w.locked));
+		: data.results.map((words) => (words || []).filter((w) => w.locked && !w.filler));
 	app.soramimiMaker.generateFromTokens(
 		data.tokensList, db, data.param,
 		(result, i) => {
@@ -1406,10 +1431,14 @@ async function writeClipboard(text) {
 async function copyResult() {
 	const btn = $id("btn-copy");
 	let text = makeResultText(data.results, $id("copy-format").value);
-	// 末尾に使用単語の元表記(フルネーム等)を登場順で付ける
+	// 末尾に使用単語の元表記(フルネーム等)を登場順で付ける。
+	// filler(未変換=元歌詞のまま)は使った単語ではないので載せない
 	const originals = [];
 	for (const words of data.results) {
-		for (const w of words || []) originals.push(w.original || w.surface);
+		for (const w of words || []) {
+			if (w.filler) continue;
+			originals.push(w.original || w.surface);
+		}
 	}
 	if (originals.length > 0) {
 		text += "\n使用単語一覧：\n" + originals.join("\n");
