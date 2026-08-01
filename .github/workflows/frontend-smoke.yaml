@@ -46,3 +46,5 @@ jobs:
         run: node tests/editor-wordlist.mjs
       - name: 編集ツールfiller E2E(未変換チップの表示・候補からの差し替え)
         run: node tests/editor-filler.mjs
+      - name: 編集ツール設定モーダルE2E(パラメータ・単語重複・ファセット絞り込み)
+        run: node tests/editor-settings.mjs
