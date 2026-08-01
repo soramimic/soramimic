@@ -183,17 +183,39 @@ try {
 	assert(candSurface.startsWith(lockedSurface),
 		`タップ差し替えが反映されない: 候補=${candSurface} チップ=${lockedSurface}`);
 
-	// ---- 変換設定パネルがタッチで開けて操作できること ----
-	// 折りたたみの開閉・プリセット・スライダーは指でも押せる大きさで並んでいる必要がある
-	const summary = await editor.locator("#editor-settings > summary").boundingBox();
-	await editor.touchscreen.tap(summary.x + 20, summary.y + summary.height / 2);
+	// ---- 「変換のしかた」モーダルがタッチで開けて操作できること ----
+	// ツールバーの⚙・中のプリセット・×は、指でも押せる大きさで並んでいる必要がある
+	const gearEl = editor.locator("#btn-settings");
+	await gearEl.scrollIntoViewIfNeeded();
+	const gear = await gearEl.boundingBox();
+	assert(gear.width >= 28 && gear.height >= 28,
+		`⚙がタッチには小さい: ${gear.width}x${gear.height}`);
+	await editor.touchscreen.tap(gear.x + gear.width / 2, gear.y + gear.height / 2);
+	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
 	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+
+	// 狭い画面ではほぼ全画面(横幅いっぱい)になっていること
+	const dlg = await editor.locator("#editor-settings").boundingBox();
+	assert(dlg.width >= 390 * 0.95,
+		"狭い画面でモーダルが全画面になっていない(幅): " + dlg.width);
+	assert(dlg.height >= 844 * 0.9,
+		"狭い画面でモーダルが全画面になっていない(高さ): " + dlg.height);
+
 	const preset = await editor.locator("#editor-preset-buttons button:has-text('長い単語')").boundingBox();
 	assert(preset.height >= 28, "プリセットボタンがタッチには小さい: " + preset.height);
 	await editor.touchscreen.tap(preset.x + preset.width / 2, preset.y + preset.height / 2);
 	const wordnum = await editor.$$eval("#editor-param-area input[type=range]",
 		(els) => Number(els[2].value));
 	assert(wordnum === 6, "タッチでプリセットが適用されない: " + wordnum);
+
+	// ×のタップで閉じられること(Esc の使えないスマホでの主な閉じ方)
+	const close = await editor.locator("#btn-settings-close").boundingBox();
+	assert(close.width >= 20 && close.height >= 20,
+		`×がタッチには小さい: ${close.width}x${close.height}`);
+	await editor.touchscreen.tap(close.x + close.width / 2, close.y + close.height / 2);
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));
