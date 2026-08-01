@@ -12,7 +12,11 @@
   [soramimic-video](https://github.com/soramimic/soramimic-video) の xfparse.py と同じ解析のJS移植。
   テストは `node ../tests/xfmidi.mjs`)
 - `public/` — data/wordlist/歌詞/設定へのシンボリックリンク(実体はリポジトリルート)
+- `src/convertControls.js` — 変換設定UI(パラメータのスライダー/プリセット・単語重複・
+  ファセット絞り込み)の共有部品。生成画面と編集ツールの両方から使う(コンテナ要素を引数で受ける)
 - `tests/smoke.mjs` — 実ブラウザのスモークテスト(#5)。`npm run test:smoke`
+- `tests/editor-smoke.mjs` / `tests/editor-settings.mjs` — 編集ツールのE2E。`npm run test:editor`
+  (タッチ操作は `tests/editor-touch.mjs`・`npm run test:touch`)
 
 ```sh
 npm install
