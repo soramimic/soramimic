@@ -308,6 +308,20 @@ try {
 	assert(importedLeak.length === 0,
 		"csvText以外から候補が出ている: " + importedLeak.join(","));
 
+	// ---- 読みを書いていない漢字の語は、推定した読みをcsvTextに焼き込む ----
+	// (再変換・書き出し・埋め込み先の行解決がどれも同じ読みを見るようにするため)
+	await openSettings(editor);
+	await editor.waitForSelector("#editor-wordlist-field:not([hidden])", { timeout: 30000 });
+	await editor.selectOption("#editor-wordlist", "ORIGINAL");
+	await editor.waitForSelector("#editor-original-text:not([hidden])", { timeout: 10000 });
+	await editor.fill("#editor-original-text", ORIGINAL_PLAIN + "\n林檎");
+	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	const guessedCsv = (await readData(editor)).wordlist.csvText;
+	const kanjiRow = guessedCsv.split("\n").find((r) => r.split(",")[2] === "林檎");
+	assert(kanjiRow && /^[ァ-ヶー]+$/.test(kanjiRow.split(",")[3]),
+		"漢字1列の語の読みがカナになっていない: " + kanjiRow);
+
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));
 	}

@@ -5,6 +5,7 @@
 import "./style.css";
 import "./editor.css";
 import { initSoramimicApp, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
+import { originalTextToCsv } from "./wordlistInput.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
@@ -1208,7 +1209,7 @@ function pickedWordlistEntry() {
 	return {
 		value: "ORIGINAL",
 		text: picked.text,
-		csvText: app.wordList.plainToCsv($id("editor-original-text").value),
+		csvText: originalTextToCsv($id("editor-original-text").value, app),
 	};
 }
 
@@ -1581,8 +1582,8 @@ async function start() {
 		if (data.wordlist && data.wordlist.value === "ORIGINAL"
 			&& typeof data.wordlist.csvText !== "string") {
 			data.wordlist = Object.assign({}, data.wordlist, {
-				csvText: app.wordList.plainToCsv(
-					localStorage.getItem(ORIGINAL_STORAGE_KEY) || ""),
+				csvText: originalTextToCsv(
+					localStorage.getItem(ORIGINAL_STORAGE_KEY) || "", app),
 			});
 			saveData();
 		}

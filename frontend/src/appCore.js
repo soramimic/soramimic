@@ -5,6 +5,7 @@ import kuromoji from "kuromoji/build/kuromoji.js";
 import { createSoramimic } from "./lib/index.js";
 import { KuromojiTokenizer } from "./lib/kuromojiTokenizer.js";
 import { fetchText, fetchJson } from "./api.js";
+import { originalTextToCsv } from "./wordlistInput.js";
 
 export const ORIGINAL_STORAGE_KEY = "originalWordlist";
 
@@ -86,8 +87,10 @@ export async function buildDatabase(app, entry, where) {
 		if (typeof entry.csvText === "string" && entry.csvText !== "") {
 			return app.wordList.parseTidy(entry.csvText, "");
 		}
+		// 登録テキストは plain(かんたん形式)でもヘッダ付き tidy CSV でもよい。
+		// どちらも originalTextToCsv が正規化CSVにする(読みの推定込み)
 		const text = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-		return app.wordList.parsePlain(text);
+		return app.wordList.parseTidy(originalTextToCsv(text, app), "");
 	}
 	const text = await fetchText(entry.filepath);
 	return entry.dbtype === "tidy"
