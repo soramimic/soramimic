@@ -7,6 +7,10 @@ import "./editor.css";
 import { initSoramimicApp, buildDatabase } from "./appCore.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
+import {
+	createParamControls, valuesFromParam,
+	hasFacets, renderFacets, compileWhere, restoreFacets,
+} from "./convertControls.js";
 
 export const EDITOR_STORAGE_KEY = "soramimic-editor";
 const GROUP_PAGE = 30; // 「もっと見る」1回で増える候補グループ数
@@ -20,6 +24,12 @@ let data = null;
 let app = null;
 let mecab = null;
 let db = null;
+let appFor = null; // 「音の合わせ方」別のエンジンを取り直すためのファクトリ
+let currentVowelRatio = null; // いまの app を作った VOWEL_RATIO
+let dbWhere = undefined; // いまの db を作った where(ファセット絞り込み)
+let paramControls = null; // 変換設定パネルのパラメータUI(生成画面と共有)
+let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
+let reconverting = false; // 再変換中(多重実行を防ぐ)
 
 // 選択中の範囲: {line, start, end}(endは排他)。単語チップ選択もperiodをこの形にする
 let selection = null;
@@ -60,6 +70,10 @@ function snapshotState() {
 		results: data.results,
 		tokensList: data.tokensList,
 		unitsList: data.unitsList,
+		// 変換設定も一緒に積むので、「この設定で再変換」も戻る1回で取り消せる。
+		// where は undefined(=エントリ既定)と区別するため null にして持つ
+		param: data.param,
+		where: data.where === undefined ? null : data.where,
 	}));
 }
 
@@ -67,6 +81,9 @@ function restoreState(s) {
 	data.results = s.results;
 	data.tokensList = s.tokensList;
 	data.unitsList = s.unitsList;
+	// 旧セッションの履歴には設定が入っていないので、あるときだけ戻す
+	if (s.param) data.param = s.param;
+	if ("where" in s) data.where = s.where === null ? undefined : s.where;
 }
 
 // 編集操作(差し替え・固定切替・再生成・読み修正)の直前に呼び、現在の状態を積む
@@ -98,6 +115,9 @@ function afterHistoryJump() {
 	setSelection(null);
 	renderAll();
 	updateHistoryButtons();
+	// パラメータ・絞り込みも戻るので、パネル表示と候補計算の土台を合わせ直す
+	syncSettingsUi();
+	if (appFor) syncEngine().then(() => renderPanel()).catch((err) => console.error(err));
 }
 
 // 編集した行を記録する。「固定以外を再生成」は編集の影響がありうる行だけを
@@ -1057,6 +1077,7 @@ function renderGroupPicker(panel, group, used) {
 
 // 🔒固定した単語(と差し替え済み単語)を残し、それ以外を作り直す
 function regenerate() {
+	if (reconverting) return;
 	const btn = $id("btn-regenerate");
 	const progress = $id("regen-progress");
 	// 編集の影響がありうる行だけ再計算する。単語重複なしでは使用済み単語が
@@ -1087,6 +1108,118 @@ function regenerate() {
 			progress.hidden = true;
 		},
 		locksPerLine);
+}
+
+// ---- 変換設定パネル(パラメータ・絞り込み) ----
+// 生成画面へ戻らなくても変換のしかたを変えられるようにする(#17の続き)。
+// パラメータUIは生成画面と同じ共有部品(convertControls.js)で、初期値は
+// 引き継いだ data.param から逆算する
+
+// 候補計算に使うエンジンとDBを、現在の data.param / data.where に合わせる。
+// 「音の合わせ方」は類似度行列そのものが変わるためエンジンを取り直し、
+// 絞り込み(where)が変わったら単語リストDBを作り直す
+async function syncEngine() {
+	if (!appFor) return;
+	const ratio = data.param && data.param.VOWEL_RATIO;
+	if (ratio !== currentVowelRatio) {
+		app = appFor(ratio);
+		currentVowelRatio = ratio;
+	}
+	if (data.where !== dbWhere) {
+		db = await buildDatabase(app, data.wordlist, data.where);
+		dbWhere = data.where;
+	}
+}
+
+// パネルの表示を現在の data.param / data.where に合わせ直す(戻る/進むのあと)
+function syncSettingsUi() {
+	if (!paramControls) return;
+	paramControls.setValues(valuesFromParam(data.param));
+	paramControls.syncPreset();
+	if (facetsEnabled) {
+		renderFacets($id("editor-facets"), data.wordlist);
+		restoreFacets($id("editor-facets"), data.where);
+	}
+}
+
+function setReconverting(busy) {
+	reconverting = busy;
+	$id("btn-reconvert").disabled = busy || !db;
+	$id("btn-regenerate").disabled = busy || !db;
+	for (const cb of $id("editor-facets").querySelectorAll("input")) {
+		cb.disabled = busy;
+	}
+}
+
+// パネルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
+// 差し替えた単語は残る(未固定の手編集は作り直される)。直前の状態は
+// 結果・パラメータ・絞り込みをまとめて履歴に積むので、「↩ 戻る」1回で戻せる
+async function reconvertAll() {
+	if (!app || !db || !paramControls || reconverting) return;
+	const progress = $id("reconvert-progress");
+	setReconverting(true);
+	progress.hidden = false;
+	progress.textContent = `再変換中... 0/${data.results.length}`;
+	setSelection(null);
+	pushHistory();
+	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
+	data.param = Object.assign({}, data.param, paramControls.getParam());
+	if (facetsEnabled) data.where = compileWhere($id("editor-facets"), data.wordlist);
+	try {
+		await syncEngine();
+	} catch (err) {
+		console.error(err);
+		restoreState(data.history.pop()); // 設定ごと巻き戻す
+		updateHistoryButtons();
+		syncSettingsUi();
+		progress.textContent = "単語リストの再構築に失敗しました: " + err.message;
+		setReconverting(false);
+		return;
+	}
+	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す
+	const locksPerLine = data.results.map((words) => (words || []).filter((w) => w.locked));
+	app.soramimiMaker.generateFromTokens(
+		data.tokensList, db, data.param,
+		(result, i) => {
+			progress.textContent = `再変換中... ${i + 1}/${data.results.length}`;
+		},
+		(results) => {
+			data.results = results;
+			data.dirtyLines = []; // 全行を作り直したので編集済みの行はない
+			saveData();
+			renderAll();
+			progress.hidden = true;
+			setReconverting(false);
+		},
+		locksPerLine);
+}
+
+// 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる
+let facetTimer = null;
+function onFacetChange() {
+	clearTimeout(facetTimer);
+	facetTimer = setTimeout(reconvertAll, 400);
+}
+
+function setupSettingsPanel() {
+	const panel = $id("editor-settings");
+	if (!panel) return;
+	panel.hidden = false;
+	paramControls = createParamControls({
+		paramArea: $id("editor-param-area"),
+		presetArea: $id("editor-preset-buttons"),
+		duplicateArea: $id("editor-duplicate-buttons"),
+		values: valuesFromParam(data.param),
+	});
+	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)
+	facetsEnabled = hasFacets(data.wordlist);
+	if (facetsEnabled) {
+		$id("editor-facet-field").hidden = false;
+		renderFacets($id("editor-facets"), data.wordlist);
+		restoreFacets($id("editor-facets"), data.where);
+		$id("editor-facets").addEventListener("change", onFacetChange);
+	}
+	$id("btn-reconvert").addEventListener("click", reconvertAll);
 }
 
 // Clipboard APIはHTTPS(または localhost)でしか使えないため、
@@ -1263,6 +1396,7 @@ async function start() {
 	$id("btn-undo").addEventListener("click", undo);
 	$id("btn-redo").addEventListener("click", redo);
 	updateHistoryButtons();
+	setupSettingsPanel();
 
 	const status = $id("editor-status");
 	status.hidden = false;
@@ -1272,12 +1406,16 @@ async function start() {
 			vowelRatio: data.param && data.param.VOWEL_RATIO,
 		});
 		app = core.app;
+		appFor = core.appFor;
+		currentVowelRatio = data.param && data.param.VOWEL_RATIO;
 		mecab = core.mecab;
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる
 		db = await buildDatabase(app, data.wordlist, data.where);
+		dbWhere = data.where;
 		status.hidden = true;
 		$id("btn-regenerate").disabled = false;
+		$id("btn-reconvert").disabled = false;
 		renderPanel(); // 読み込み中表示のパネルが開いていたら差し替える
 	} catch (err) {
 		console.error(err);

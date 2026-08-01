@@ -49,6 +49,28 @@
             <button id="btn-export" class="btn btn-ghost">書き出し</button>
           </div>
         </div>
+        <details id="editor-settings" class="editor-settings" hidden>
+          <summary>変換のしかた</summary>
+          <div class="editor-settings-body">
+            <div class="field">
+              <h3 class="field-label">パラメータ</h3>
+              <div id="editor-preset-buttons" class="btn-group-wrap"></div>
+              <div id="editor-param-area" class="param-grid"></div>
+            </div>
+            <div class="field">
+              <h3 class="field-label">単語重複</h3>
+              <div id="editor-duplicate-buttons" class="btn-group"></div>
+            </div>
+            <div class="field" id="editor-facet-field" hidden>
+              <h3 class="field-label">単語リストの絞り込み</h3>
+              <div id="editor-facets" class="wordlist-facets"></div>
+            </div>
+            <div class="editor-settings-actions">
+              <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
+              <span id="reconvert-progress" class="editor-status" hidden></span>
+            </div>
+          </div>
+        </details>
         <input id="import-file" type="file" accept=".json,application/json" hidden />
         <section id="editor-lines" class="editor-lines"></section>
         <section id="editor-panel" class="editor-panel"></section>
