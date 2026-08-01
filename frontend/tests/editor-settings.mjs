@@ -1,4 +1,4 @@
-// 編集ツールの「変換のしかた」パネルのE2E: 生成画面へ戻らずに
+// 編集ツールの「変換のしかた」モーダル(ツールバーの⚙から開く)のE2E: 生成画面へ戻らずに
 // 変換パラメータ・単語重複・ファセット絞り込みを変えて再変換できること、
 // 再変換が「戻る」1回で取り消せること、位置別重み(weightsList)が
 // エンジンまで届くことを確認する。
@@ -51,13 +51,24 @@ const candidateSurfaces = (page) =>
 	page.$$eval(".panel-candidates .candidate .candidate-surface",
 		(els) => els.map((e) => e.textContent.replace(/×\d+$/, "")));
 
-// 再変換(手動・ファセット由来とも)が終わるまで待つ
+// 再変換(手動・ファセット由来とも)が終わるまで待つ。
+// 進捗はモーダルの外(ツールバー)に出るので、モーダルの開閉によらず見える
 function waitIdle(page) {
 	return page.waitForFunction(() => {
 		const btn = document.getElementById("btn-reconvert");
 		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
+
+// ⚙でモーダルを開く(既に開いていれば何もしない)
+async function openSettings(page) {
+	const open = await page.$eval("#editor-settings", (d) => d.open);
+	if (!open) await page.click("#btn-settings");
+	await page.waitForFunction(() => document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
+}
+
+const settingsOpen = (page) => page.$eval("#editor-settings", (d) => d.open);
 
 const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
 	stdio: "ignore",
@@ -118,9 +129,23 @@ try {
 		{ timeout: 120000 },
 	);
 
-	// ---- 初期値: 引き継いだ data.param から逆算されていること ----
-	await editor.click("#editor-settings > summary");
+	// ---- ⚙でモーダルが開く ----
+	assert(!(await settingsOpen(editor)), "初期状態でモーダルが開いている");
+	await openSettings(editor);
 	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+
+	// Escで閉じ、⚙で開き直せる(生成画面のダイアログと同じ操作)
+	await editor.keyboard.press("Escape");
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
+	await openSettings(editor);
+	// ×でも閉じられる
+	await editor.click("#btn-settings-close");
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
+	await openSettings(editor);
+
+	// ---- 初期値: 引き継いだ data.param から逆算されていること ----
 	const initialValues = await sliderValues(editor);
 	const initialData = await readData(editor);
 	assert(initialValues[0] === initialData.param.VOWEL_RATIO,
@@ -137,6 +162,11 @@ try {
 	await editor.click("#editor-preset-buttons button:has-text('長い単語')");
 	assert((await sliderValues(editor))[2] === 6, "プリセットでスライダーが動いていない");
 	await editor.click("#btn-reconvert");
+	// 押したらモーダルは閉じ、進捗はツールバー側(モーダルの外)で見える
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
+	assert(await editor.isVisible("#reconvert-progress"),
+		"再変換の進捗がツールバーに出ていない");
 	await waitIdle(editor);
 	const afterParam = await readData(editor);
 	assert(afterParam.param.WORD_NUMBER_PENALTY === 60,
@@ -153,6 +183,9 @@ try {
 		() => !document.getElementById("btn-redo").disabled, { timeout: 10000 });
 	assert(await wordsOf(editor) === wordsBefore, "戻るで再変換前の結果に戻らない");
 	const undone = await readData(editor);
+	// 閉じている間の syncSettingsUi が、開き直したときに反映されていること
+	assert(!(await settingsOpen(editor)), "再変換でモーダルが閉じたままになっていない");
+	await openSettings(editor);
 	assert(undone.param.WORD_NUMBER_PENALTY === initialData.param.WORD_NUMBER_PENALTY,
 		"戻るでパラメータが元に戻らない: " + JSON.stringify(undone.param));
 	assert((await sliderValues(editor))[2] === initialValues[2],
@@ -165,16 +198,23 @@ try {
 	await waitIdle(editor);
 	assert((await readData(editor)).param.DUPLICATE === true,
 		"単語重複ありが再変換のパラメータに反映されていない");
+	await openSettings(editor);
 	await editor.click("#editor-duplicate-buttons button[data-value='false']");
 
 	// ---- ファセット絞り込み: 候補が絞られる ----
+	// モーダルを閉じないと本文のチップは押せない(モーダルダイアログのため)
+	await editor.click("#btn-settings-close");
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
 	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	const candBefore = await candidateSurfaces(editor);
 	assert(candBefore.some((s) => !registeredSurfaces.has(s)),
 		"絞り込み前から登録名だけの候補になっている(前提が崩れている)");
 
-	// 「名字」「フルネーム」を外して「登録名」だけにする(変更即再変換)
+	// 「名字」「フルネーム」を外して「登録名」だけにする(変更即再変換)。
+	// 絞り込みはモーダルを開いたまま走らせてよい(進捗はツールバー側に出る)
+	await openSettings(editor);
 	await editor.uncheck("#editor-facets input[value='family']");
 	await editor.uncheck("#editor-facets input[value='full']");
 	await editor.waitForFunction((k) => {
@@ -182,6 +222,9 @@ try {
 		return d && d.where === "((type=registered))";
 	}, EDITOR_KEY, { timeout: 180000 });
 	await waitIdle(editor);
+	// 選択即再変換ではモーダルは開いたまま(設定を続けて変えられる)
+	assert(await settingsOpen(editor), "絞り込みの再変換でモーダルが閉じてしまった");
+	await editor.click("#btn-settings-close");
 
 	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
@@ -194,12 +237,14 @@ try {
 	await editor.click(".panel-candidates .candidate");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
+	await openSettings(editor);
 	await editor.check("#editor-facets input[value='family']");
 	await editor.waitForFunction((k) => {
 		const d = JSON.parse(sessionStorage.getItem(k));
 		return d && d.where !== "((type=registered))";
 	}, EDITOR_KEY, { timeout: 180000 });
 	await waitIdle(editor);
+	await editor.click("#btn-settings-close");
 	const lockedAfter = await editor.$$eval(".chip-word.locked .chip-word-surface",
 		(els) => els.map((e) => e.textContent));
 	assert(lockedAfter.includes(lockedSurface),
@@ -219,7 +264,7 @@ try {
 	await editor.reload();
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
-	await editor.click("#editor-settings > summary");
+	await openSettings(editor);
 	warnings.length = 0;
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
