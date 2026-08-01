@@ -246,9 +246,12 @@ function WordList(textAnalyzer){
 			if(v.length === 1){
 				csvlines.push([String(i),v[0],v[0],v[0]]);
 			}else{
+				//「見出し語,読み1,読み2…」: 1列目は original 兼 surface(表示に使う表記)、
+				//2列目以降は読み(マッチングにだけ使う)。読みが複数あるときは
+				//同じid・同じsurfaceの行が読みの数だけ並ぶ(tidy CSVと同じ構造)
 				for(let j=1;j<v.length;j++){
 					if(v[j]){
-						csvlines.push([String(i),v[0],v[j],v[j]]);
+						csvlines.push([String(i),v[0],v[0],v[j]]);
 					}
 				}
 			}
