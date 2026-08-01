@@ -478,6 +478,11 @@
 	margin-bottom: 0;
 }
 
+/* 自作リストの編集欄。選択が「自作リスト」のときだけ select の下に現れる */
+.editor-original-text {
+	margin-top: 0.5rem;
+}
+
 /* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
 .editor-settings-actions {
 	border-top: 1px solid var(--border);

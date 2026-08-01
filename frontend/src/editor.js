@@ -4,7 +4,8 @@
 // 以降: タップ・ドラッグ選択、候補グループ化・使用中表示・長押し詳細、戻る/進む
 import "./style.css";
 import "./editor.css";
-import { initSoramimicApp, buildDatabase } from "./appCore.js";
+import { initSoramimicApp, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
+import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 import {
@@ -27,8 +28,10 @@ let db = null;
 let appFor = null; // 「音の合わせ方」別のエンジンを取り直すためのファクトリ
 let currentVowelRatio = null; // いまの app を作った VOWEL_RATIO
 let dbWhere = undefined; // いまの db を作った where(ファセット絞り込み)
+let dbWordlistKey = null; // いまの db を作った単語リスト(wordlistKey)
 let paramControls = null; // 変換設定パネルのパラメータUI(生成画面と共有)
 let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
+let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
 let reconverting = false; // 再変換中(多重実行を防ぐ)
 
 // 選択中の範囲: {line, start, end}(endは排他)。単語チップ選択もperiodをこの形にする
@@ -71,8 +74,11 @@ function snapshotState() {
 		tokensList: data.tokensList,
 		unitsList: data.unitsList,
 		// 変換設定も一緒に積むので、「この設定で再変換」も戻る1回で取り消せる。
+		// 単語リストも含めるので、リスト切替(=固定の全解除+全行作り直し)も
+		// 戻る1回で完全に元へ戻る。
 		// where は undefined(=エントリ既定)と区別するため null にして持つ
 		param: data.param,
+		wordlist: data.wordlist,
 		where: data.where === undefined ? null : data.where,
 	}));
 }
@@ -83,6 +89,7 @@ function restoreState(s) {
 	data.unitsList = s.unitsList;
 	// 旧セッションの履歴には設定が入っていないので、あるときだけ戻す
 	if (s.param) data.param = s.param;
+	if (s.wordlist) data.wordlist = s.wordlist;
 	if ("where" in s) data.where = s.where === null ? undefined : s.where;
 }
 
@@ -1120,9 +1127,17 @@ function regenerate() {
 // ツールバーの⚙から開くモーダル(dialog)で、パラメータUIは生成画面と同じ
 // 共有部品(convertControls.js)。初期値は引き継いだ data.param から逆算する
 
-// 候補計算に使うエンジンとDBを、現在の data.param / data.where に合わせる。
+// 単語リストエントリの同一性キー。自作リストは中身(正規化CSV)まで含めて
+// 比較する(テキストを書き換えたら別のリスト扱いにするため)
+function wordlistKey(entry) {
+	if (!entry) return "";
+	if (entry.value === "ORIGINAL") return "ORIGINAL\t" + (entry.csvText || "");
+	return [entry.value, entry.filepath, entry.dbtype].join("\t");
+}
+
+// 候補計算に使うエンジンとDBを、現在の data.param / data.wordlist / data.where に合わせる。
 // 「音の合わせ方」は類似度行列そのものが変わるためエンジンを取り直し、
-// 絞り込み(where)が変わったら単語リストDBを作り直す
+// 単語リストか絞り込み(where)が変わったら単語リストDBを作り直す
 async function syncEngine() {
 	if (!appFor) return;
 	const ratio = data.param && data.param.VOWEL_RATIO;
@@ -1130,22 +1145,129 @@ async function syncEngine() {
 		app = appFor(ratio);
 		currentVowelRatio = ratio;
 	}
-	if (data.where !== dbWhere) {
+	const key = wordlistKey(data.wordlist);
+	if (data.where !== dbWhere || key !== dbWordlistKey) {
 		db = await buildDatabase(app, data.wordlist, data.where);
 		dbWhere = data.where;
+		dbWordlistKey = key;
 	}
 }
 
-// 表示を現在の data.param / data.where に合わせ直す(戻る/進むのあと)。
+// 表示を現在の data.param / data.wordlist / data.where に合わせ直す(戻る/進むのあと)。
 // モーダルが閉じていてもDOMは生きているので、次に開いたときに正しい表示になる
 function syncSettingsUi() {
 	if (!paramControls) return;
 	paramControls.setValues(valuesFromParam(data.param));
 	paramControls.syncPreset();
+	syncWordlistUi();
+}
+
+// 単語リスト選択・自作リストの編集欄・ファセットを data.wordlist / data.where に
+// 合わせ直す。単語リストの選択UIは conf が取れた環境にしか無いので、
+// 無ければファセットだけ面倒を見る
+function syncWordlistUi() {
+	const entry = data.wordlist || {};
+	const sel = $id("editor-wordlist");
+	if (wordlistCatalog && sel) {
+		if (entry.value) sel.value = entry.value;
+		$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+	}
+	facetsEnabled = hasFacets(entry);
+	$id("editor-facet-field").hidden = !facetsEnabled;
 	if (facetsEnabled) {
-		renderFacets($id("editor-facets"), data.wordlist);
+		renderFacets($id("editor-facets"), entry);
+		restoreFacets($id("editor-facets"), data.where);
+	} else {
+		$id("editor-facets").innerHTML = "";
+	}
+}
+
+// 単語リストの選択が変わったとき。適用はしない(「この設定で再変換」に集約)。
+// ファセットだけは新しいリストのもので組み直す(チェックは既定に戻る)
+function onWordlistChange() {
+	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
+	if (!entry) return;
+	$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+	facetsEnabled = hasFacets(entry);
+	$id("editor-facet-field").hidden = !facetsEnabled;
+	renderFacets($id("editor-facets"), entry);
+	// いま適用中のリストへ選び直しただけなら、現在の絞り込みを保つ
+	// (選び直しで絞り込みが黙って既定に戻るのを避ける)
+	if (facetsEnabled && entry.value === (data.wordlist && data.wordlist.value)) {
 		restoreFacets($id("editor-facets"), data.where);
 	}
+}
+
+// いま選択されている単語リストのエントリ。自作リストのときは編集欄の内容を
+// 正規化CSVにして持たせる(csvText契約: 書き出しJSONを自己完結させる)
+function pickedWordlistEntry() {
+	const sel = $id("editor-wordlist");
+	const picked = wordlistCatalog && sel && wordlistCatalog.get(sel.value);
+	if (!picked) return data.wordlist;
+	if (picked.value !== "ORIGINAL") return Object.assign({}, picked);
+	return {
+		value: "ORIGINAL",
+		text: picked.text,
+		csvText: app.wordList.plainToCsv($id("editor-original-text").value),
+	};
+}
+
+// conf/setting.json から単語リストの選択肢を組み立てる(生成画面と同じ情報源)。
+// 取得できない環境(スタンドアロン配置・テスト)ではセクションを出さないだけで、
+// 引き継いだリストでの編集は従来どおり動く
+async function setupWordlistPicker() {
+	const sel = $id("editor-wordlist");
+	if (!sel) return;
+	let config;
+	try {
+		config = await fetchJson("conf/setting.json");
+	} catch (err) {
+		console.warn("単語リスト一覧を取得できませんでした(選択UIを出しません):", err);
+		return;
+	}
+	const items = (config && Array.isArray(config.wordlist)) ? config.wordlist : [];
+	const catalog = new Map();
+	const addOption = (parent, entry) => {
+		const opt = document.createElement("option");
+		opt.value = entry.value;
+		opt.textContent = entry.text || entry.value;
+		parent.appendChild(opt);
+		catalog.set(entry.value, entry);
+	};
+	// 引き継いだリストがカタログに無い(親アプリ独自のエントリ等)ときは先頭に足し、
+	// 選択表示と実際に使っているリストが食い違わないようにする
+	const current = data.wordlist || {};
+	const known = items.flatMap((it) => (it.items ? it.items : [it]));
+	if (current.value && current.value !== "ORIGINAL"
+		&& !known.some((e) => e.value === current.value)) {
+		addOption(sel, current);
+	}
+	for (const item of items) {
+		if (!item.items) {
+			addOption(sel, item);
+			continue;
+		}
+		const group = document.createElement("optgroup");
+		group.label = item.label;
+		for (const entry of item.items) addOption(group, entry);
+		sel.appendChild(group);
+	}
+	addOption(sel, { value: "ORIGINAL", text: "自作リスト" });
+	wordlistCatalog = catalog;
+
+	const ta = $id("editor-original-text");
+	// 自作リストの内容は生成画面と共有する(localStorage)
+	ta.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
+	ta.addEventListener("input", () => {
+		try {
+			localStorage.setItem(ORIGINAL_STORAGE_KEY, ta.value);
+		} catch (err) {
+			console.warn("自作リストの保存に失敗:", err);
+		}
+	});
+	sel.addEventListener("change", onWordlistChange);
+	syncWordlistUi();
+	$id("editor-wordlist-field").hidden = false;
 }
 
 function setReconverting(busy) {
@@ -1153,7 +1275,7 @@ function setReconverting(busy) {
 	$id("btn-regenerate").disabled = busy || !db;
 	// 再変換中に⚙からモーダルを開いても設定をいじれないようにする。
 	// 閉じる操作だけは残したいので×は対象外
-	for (const el of $id("editor-settings").querySelectorAll("button, input, select")) {
+	for (const el of $id("editor-settings").querySelectorAll("button, input, select, textarea")) {
 		if (el.id === "btn-settings-close") continue;
 		el.disabled = busy;
 	}
@@ -1162,10 +1284,16 @@ function setReconverting(busy) {
 
 // モーダルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
 // 差し替えた単語は残る(未固定の手編集は作り直される)。直前の状態は
-// 結果・パラメータ・絞り込みをまとめて履歴に積むので、「↩ 戻る」1回で戻せる
+// 結果・パラメータ・単語リスト・絞り込みをまとめて履歴に積むので、
+// 「↩ 戻る」1回で戻せる。
+// 単語リストの切替もここで適用する(select単体では再変換しない)。リストが
+// 変わったときだけは固定を全解除して全行を作り直す: 別リストの単語を持ち越すと
+// idが衝突して単語重複なしの判定が壊れるため
 async function reconvertAll() {
 	if (!app || !db || !paramControls || reconverting) return;
 	const progress = $id("reconvert-progress");
+	const nextEntry = pickedWordlistEntry();
+	const listChanged = wordlistKey(nextEntry) !== wordlistKey(data.wordlist);
 	setReconverting(true);
 	progress.hidden = false;
 	progress.textContent = `再変換中... 0/${data.results.length}`;
@@ -1173,7 +1301,12 @@ async function reconvertAll() {
 	pushHistory();
 	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
 	data.param = Object.assign({}, data.param, paramControls.getParam());
+	if (listChanged) {
+		data.wordlist = nextEntry;
+		facetsEnabled = hasFacets(nextEntry);
+	}
 	if (facetsEnabled) data.where = compileWhere($id("editor-facets"), data.wordlist);
+	else if (listChanged) data.where = undefined; // 新しいリストのエントリ既定に戻す
 	try {
 		await syncEngine();
 	} catch (err) {
@@ -1185,8 +1318,11 @@ async function reconvertAll() {
 		setReconverting(false);
 		return;
 	}
-	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す
-	const locksPerLine = data.results.map((words) => (words || []).filter((w) => w.locked));
+	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す。
+	// ただしリストごと変わったときは持ち越さない(idが別リストのものになるため)
+	const locksPerLine = listChanged
+		? data.results.map(() => [])
+		: data.results.map((words) => (words || []).filter((w) => w.locked));
 	app.soramimiMaker.generateFromTokens(
 		data.tokensList, db, data.param,
 		(result, i) => {
@@ -1203,9 +1339,12 @@ async function reconvertAll() {
 		locksPerLine, data.weightsList || null);
 }
 
-// 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる
+// 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる。
+// 単語リストの切替が保留されていれば、それも一緒に適用される(絞り込みだけを
+// 古いリストに対して当てても意味のある結果にならないため)
 let facetTimer = null;
 function onFacetChange() {
+	if (!facetsEnabled) return;
 	clearTimeout(facetTimer);
 	facetTimer = setTimeout(reconvertAll, 400);
 }
@@ -1219,14 +1358,12 @@ function setupSettingsPanel() {
 		duplicateArea: $id("editor-duplicate-buttons"),
 		values: valuesFromParam(data.param),
 	});
-	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)
-	facetsEnabled = hasFacets(data.wordlist);
-	if (facetsEnabled) {
-		$id("editor-facet-field").hidden = false;
-		renderFacets($id("editor-facets"), data.wordlist);
-		restoreFacets($id("editor-facets"), data.where);
-		$id("editor-facets").addEventListener("change", onFacetChange);
-	}
+	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)。
+	// リスト切替で出たり消えたりするので、リスナはコンテナに固定で付けておく
+	syncWordlistUi();
+	$id("editor-facets").addEventListener("change", onFacetChange);
+	// 単語リストの選択肢は conf の取得を待つので、あとから足す
+	setupWordlistPicker().catch((err) => console.error(err));
 	// 再変換の進捗はツールバー側(#reconvert-progress)に出るので、押したら閉じる。
 	// モーダルに隠れて進捗が見えない状態を作らないため
 	$id("btn-reconvert").addEventListener("click", () => {
@@ -1438,10 +1575,22 @@ async function start() {
 		appFor = core.appFor;
 		currentVowelRatio = data.param && data.param.VOWEL_RATIO;
 		mecab = core.mecab;
+		// 自作リストで来た(生成画面から/旧データ)場合は、DB構築に使う正規化CSVを
+		// エントリに焼き付けてから組む。以後は localStorage を書き換えても
+		// この編集セッションのDBはぶれず、書き出しJSONも自己完結する(csvText契約)
+		if (data.wordlist && data.wordlist.value === "ORIGINAL"
+			&& typeof data.wordlist.csvText !== "string") {
+			data.wordlist = Object.assign({}, data.wordlist, {
+				csvText: app.wordList.plainToCsv(
+					localStorage.getItem(ORIGINAL_STORAGE_KEY) || ""),
+			});
+			saveData();
+		}
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる
 		db = await buildDatabase(app, data.wordlist, data.where);
 		dbWhere = data.where;
+		dbWordlistKey = wordlistKey(data.wordlist);
 		status.hidden = true;
 		$id("btn-regenerate").disabled = false;
 		$id("btn-reconvert").disabled = false;
