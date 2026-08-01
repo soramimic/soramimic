@@ -31,6 +31,11 @@
             <span id="regen-progress" class="editor-status" hidden></span>
           </div>
           <div class="toolbar-group">
+            <button id="btn-settings" class="btn btn-ghost btn-icon" type="button"
+              aria-label="変換のしかた" title="変換のしかた" aria-haspopup="dialog">⚙</button>
+            <span id="reconvert-progress" class="editor-status" hidden></span>
+          </div>
+          <div class="toolbar-group">
             <button id="btn-undo" class="btn btn-ghost" disabled title="直前の編集を取り消す">↩ 戻る</button>
             <button id="btn-redo" class="btn btn-ghost" disabled title="取り消した編集をやり直す">↪ 進む</button>
           </div>
@@ -49,32 +54,38 @@
             <button id="btn-export" class="btn btn-ghost">書き出し</button>
           </div>
         </div>
-        <details id="editor-settings" class="editor-settings" hidden>
-          <summary>変換のしかた</summary>
-          <div class="editor-settings-body">
-            <div class="field">
-              <h3 class="field-label">パラメータ</h3>
-              <div id="editor-preset-buttons" class="btn-group-wrap"></div>
-              <div id="editor-param-area" class="param-grid"></div>
-            </div>
-            <div class="field">
-              <h3 class="field-label">単語重複</h3>
-              <div id="editor-duplicate-buttons" class="btn-group"></div>
-            </div>
-            <div class="field" id="editor-facet-field" hidden>
-              <h3 class="field-label">単語リストの絞り込み</h3>
-              <div id="editor-facets" class="wordlist-facets"></div>
-            </div>
-            <div class="editor-settings-actions">
-              <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
-              <span id="reconvert-progress" class="editor-status" hidden></span>
-            </div>
-          </div>
-        </details>
         <input id="import-file" type="file" accept=".json,application/json" hidden />
         <section id="editor-lines" class="editor-lines"></section>
         <section id="editor-panel" class="editor-panel"></section>
       </main>
+
+      <!-- 変換のしかた(ツールバーの⚙から開く)。生成画面のダイアログと同じ流儀で、
+           Esc・×・外側クリックのどれでも閉じられる。将来ここに単語リスト選択も
+           入るため、中身は .field 単位のセクションを並べるだけの構造にしてある -->
+      <dialog id="editor-settings" class="editor-settings">
+        <div class="dialog-header">
+          <h2>変換のしかた</h2>
+          <button id="btn-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="editor-settings-body">
+          <div class="field">
+            <h3 class="field-label">パラメータ</h3>
+            <div id="editor-preset-buttons" class="btn-group-wrap"></div>
+            <div id="editor-param-area" class="param-grid"></div>
+          </div>
+          <div class="field">
+            <h3 class="field-label">単語重複</h3>
+            <div id="editor-duplicate-buttons" class="btn-group"></div>
+          </div>
+          <div class="field" id="editor-facet-field" hidden>
+            <h3 class="field-label">単語リストの絞り込み</h3>
+            <div id="editor-facets" class="wordlist-facets"></div>
+          </div>
+        </div>
+        <div class="dialog-buttons editor-settings-actions">
+          <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
+        </div>
+      </dialog>
     </div>
     <script type="module" src="/src/editor.js"></script>
   </body>

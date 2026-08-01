@@ -1115,10 +1115,10 @@ function regenerate() {
 		locksPerLine, data.weightsList || null);
 }
 
-// ---- 変換設定パネル(パラメータ・絞り込み) ----
+// ---- 「変換のしかた」モーダル(パラメータ・絞り込み) ----
 // 生成画面へ戻らなくても変換のしかたを変えられるようにする(#17の続き)。
-// パラメータUIは生成画面と同じ共有部品(convertControls.js)で、初期値は
-// 引き継いだ data.param から逆算する
+// ツールバーの⚙から開くモーダル(dialog)で、パラメータUIは生成画面と同じ
+// 共有部品(convertControls.js)。初期値は引き継いだ data.param から逆算する
 
 // 候補計算に使うエンジンとDBを、現在の data.param / data.where に合わせる。
 // 「音の合わせ方」は類似度行列そのものが変わるためエンジンを取り直し、
@@ -1136,7 +1136,8 @@ async function syncEngine() {
 	}
 }
 
-// パネルの表示を現在の data.param / data.where に合わせ直す(戻る/進むのあと)
+// 表示を現在の data.param / data.where に合わせ直す(戻る/進むのあと)。
+// モーダルが閉じていてもDOMは生きているので、次に開いたときに正しい表示になる
 function syncSettingsUi() {
 	if (!paramControls) return;
 	paramControls.setValues(valuesFromParam(data.param));
@@ -1149,14 +1150,17 @@ function syncSettingsUi() {
 
 function setReconverting(busy) {
 	reconverting = busy;
-	$id("btn-reconvert").disabled = busy || !db;
 	$id("btn-regenerate").disabled = busy || !db;
-	for (const cb of $id("editor-facets").querySelectorAll("input")) {
-		cb.disabled = busy;
+	// 再変換中に⚙からモーダルを開いても設定をいじれないようにする。
+	// 閉じる操作だけは残したいので×は対象外
+	for (const el of $id("editor-settings").querySelectorAll("button, input, select")) {
+		if (el.id === "btn-settings-close") continue;
+		el.disabled = busy;
 	}
+	$id("btn-reconvert").disabled = busy || !db;
 }
 
-// パネルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
+// モーダルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
 // 差し替えた単語は残る(未固定の手編集は作り直される)。直前の状態は
 // 結果・パラメータ・絞り込みをまとめて履歴に積むので、「↩ 戻る」1回で戻せる
 async function reconvertAll() {
@@ -1207,9 +1211,8 @@ function onFacetChange() {
 }
 
 function setupSettingsPanel() {
-	const panel = $id("editor-settings");
-	if (!panel) return;
-	panel.hidden = false;
+	const dialog = $id("editor-settings");
+	if (!dialog) return;
 	paramControls = createParamControls({
 		paramArea: $id("editor-param-area"),
 		presetArea: $id("editor-preset-buttons"),
@@ -1224,7 +1227,23 @@ function setupSettingsPanel() {
 		restoreFacets($id("editor-facets"), data.where);
 		$id("editor-facets").addEventListener("change", onFacetChange);
 	}
-	$id("btn-reconvert").addEventListener("click", reconvertAll);
+	// 再変換の進捗はツールバー側(#reconvert-progress)に出るので、押したら閉じる。
+	// モーダルに隠れて進捗が見えない状態を作らないため
+	$id("btn-reconvert").addEventListener("click", () => {
+		dialog.close();
+		reconvertAll();
+	});
+	$id("btn-settings").addEventListener("click", () => dialog.showModal());
+	$id("btn-settings-close").addEventListener("click", () => dialog.close());
+	// バックドロップ(ダイアログの外側)のクリックで閉じる。ダイアログ自身の
+	// 余白を押したときも target は dialog になるため、座標で内外を判定する
+	dialog.addEventListener("click", (e) => {
+		if (e.target !== dialog) return;
+		const r = dialog.getBoundingClientRect();
+		const outside = e.clientX < r.left || e.clientX > r.right
+			|| e.clientY < r.top || e.clientY > r.bottom;
+		if (outside) dialog.close();
+	});
 }
 
 // Clipboard APIはHTTPS(または localhost)でしか使えないため、

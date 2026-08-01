@@ -365,6 +365,11 @@
 	white-space: nowrap;
 }
 
+/* 進捗表示(再生成・再変換)はツールバーの行の中で縦位置を揃える */
+.editor-toolbar .editor-status {
+	margin: 0;
+}
+
 /* 控えめだが「押せる」と分かる、うっすら面のあるボタン。
    ページ背景と同化しないよう半透明のグレーで塗る(ライト/ダーク両対応) */
 .btn-ghost {
@@ -422,49 +427,76 @@
 .align-arrow { padding: 0 4px; line-height: 1.2; font-size: 0.8em; }
 .align-reset { font-size: 0.85em; }
 
-/* ---- 変換設定パネル(「変換のしかた」) ----
-   生成画面と同じパラメータUI・絞り込みを折りたたみで置く。中身のスライダーや
-   チェックボックスの見た目は style.css の共通スタイルをそのまま使う */
-.editor-settings {
-	background: var(--panel);
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	padding: 0.4rem 0.8rem;
-	margin-bottom: 0.8rem;
+/* ---- 変換のしかたモーダル ----
+   生成画面のダイアログ(style.css の dialog)の見た目を踏襲し、ツールバーの⚙から
+   開く。中身のスライダーやチェックボックスは style.css の共通スタイルをそのまま使う */
+
+/* ツールバーの⚙。文字ボタンと高さを揃えつつ、正方形に近い当たり判定にする */
+.btn-icon {
+	padding: 0.45rem 0.7rem;
+	font-size: 1.05rem;
+	line-height: 1.15;
 }
 
-.editor-settings > summary {
-	cursor: pointer;
-	user-select: none;
-	font-size: 0.9rem;
-	font-weight: 600;
+/* 見出しと×を1行に。ヘッダと操作行は固定で、中身だけスクロールさせる */
+.editor-settings[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.dialog-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.dialog-close {
+	border: none;
+	background: none;
 	color: var(--muted);
-	/* タッチでも押しやすい当たり判定にする */
-	padding: 0.35rem 0;
+	font: inherit;
+	font-size: 1.3rem;
+	line-height: 1;
+	padding: 0.2rem 0.4rem;
+	cursor: pointer;
 }
 
-.editor-settings[open] > summary {
-	margin-bottom: 0.6rem;
+.dialog-close:hover {
+	color: var(--text);
+}
+
+.editor-settings-body {
+	overflow-y: auto;
+	flex: 1;
+	min-height: 0;
 }
 
 /* 最後の項目の余白が二重にならないようにする(.field の margin-bottom) */
 .editor-settings-body > .field:last-of-type {
-	margin-bottom: 0.4rem;
+	margin-bottom: 0;
 }
 
+/* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
 .editor-settings-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.6rem;
-	flex-wrap: wrap;
+	border-top: 1px solid var(--border);
+	padding-top: 0.8rem;
 }
 
-.editor-settings-actions .editor-status {
-	margin: 0;
-}
-
-/* 狭い画面ではスライダーの2カラムをやめる(タッチで掴める幅を確保する) */
+/* 狭い画面ではほぼ全画面にし、スライダーの2カラムもやめる
+   (タッチで掴める幅を確保する) */
 @media (max-width: 640px) {
+	.editor-settings[open] {
+		width: 100vw;
+		max-width: 100vw;
+		height: 100dvh;
+		max-height: 100dvh;
+		margin: 0;
+		border: none;
+		border-radius: 0;
+	}
+
 	.editor-settings .param-grid {
 		grid-template-columns: 1fr;
 	}
