@@ -121,6 +121,12 @@ export async function startApp() {
 				if (aligned.matchedCount < lines.length) {
 					notes.push("対応づかなかった行は読みカナのまま");
 				}
+				// 元歌詞の1行をそのまま採れなかった行は区切りが推定なので、
+				// 「n/m行」だけ見て全行そのまま入ったと誤解しないよう明示する
+				const guessed = aligned.matchedCount - aligned.snappedCount;
+				if (guessed > 0) {
+					notes.push(`${guessed}行は元歌詞の行の途中で区切りました`);
+				}
 			}
 			inputText.value = (filled || lines.map((l) => l.kana)).join("\n");
 			saveMainState();
