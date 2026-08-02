@@ -545,6 +545,15 @@
 	font-weight: 600;
 }
 
+/* 曲select・「自分のMIDIを使う」・依頼中の表示。曲セクションの中で縦に積む */
+.setup-song-actions {
+	margin-top: 0.5rem;
+}
+
+.setup-song-status {
+	margin: 0.5rem 0 0;
+}
+
 .setup-actions {
 	display: flex;
 	align-items: center;

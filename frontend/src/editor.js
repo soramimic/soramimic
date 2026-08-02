@@ -22,6 +22,8 @@ const GROUP_MAX = 100; // 候補グループの最大表示数
 const RAW_FETCH = 300; // グループ化(同姓同名まとめ)前に取得する候補数
 const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
+const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
+const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
 
 let data = null;
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
@@ -38,6 +40,9 @@ let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来�
 let reconverting = false; // 再変換中(多重実行を防ぐ)
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
 let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
+let songRequest = null; // ホストに出した曲の依頼 {type, id, nonce}(応答待ち中だけ非null)
+let songRequestTimer = null; // 応答ポーリングのタイマー
+let songRequestDeadline = 0; // 応答待ちの期限(epoch ms)
 
 // 選択中の範囲: {line, start, end}(endは排他)。単語チップ選択もperiodをこの形にする
 let selection = null;
@@ -1430,6 +1435,23 @@ function setupSettingsPanel() {
 // セットアップ画面と⚙モーダルは同時に出ないので、#editor-settings-body を
 // DOMごと付け替えれば paramControls も含めてまるごと共有できる
 
+// 旧セッション/旧エクスポートの param には母音・子音の掛け算ハック
+// (SAME_VOWEL_REWARD:0.2 / SAME_CONSONANT_REWARD:0.9)が残っていることがある。
+// 現行の monophoneタイブレーク行列(#102)ではこのハックはスコアを汚すため除去する
+// (未指定=lib既定1で無効化)。VOWEL_RATIO 未指定は現行既定 0.8 とみなす。
+function normalizeParam() {
+	if (data.param && typeof data.param === "object") {
+		delete data.param.SAME_VOWEL_REWARD;
+		delete data.param.SAME_CONSONANT_REWARD;
+		if (data.param.VOWEL_RATIO == null) data.param.VOWEL_RATIO = 0.8;
+		// ン/ッ/ーの変換コストは母音準一致セル相当を vowelRatio に連動させる(#105)。
+		// 旧セッション(未指定)は VOWEL_RATIO から導出し、候補・再生成を生成画面と揃える。
+		if (data.param.VARIATION_COST == null) {
+			data.param.VARIATION_COST = 20 * Number(data.param.VOWEL_RATIO);
+		}
+	}
+}
+
 function hasResults() {
 	return Array.isArray(data.results) && data.results.length > 0
 		&& Array.isArray(data.unitsList) && data.unitsList.length === data.results.length;
@@ -1453,10 +1475,7 @@ function enterSetup() {
 	$id("editor-hint").hidden = true;
 	$id("editor-toolbar").hidden = true;
 	$id("editor-lines").hidden = true;
-	// 曲名は表示するだけ(将来ここに曲選択が入る)。無ければセクションごと出さない
-	const title = (data.song && data.song.title) || "";
-	$id("setup-song-title").textContent = title;
-	$id("setup-song-field").hidden = title === "";
+	renderSongField();
 	// 未変換なら変換だけが出口。変換済み(setupFirst)で開いたときだけ離脱できる
 	$id("btn-setup-back").hidden = !hasResults();
 }
@@ -1476,12 +1495,173 @@ function leaveSetup() {
 	}
 }
 
-function setSetupBusy(busy) {
-	setupConverting = busy;
+// セットアップ画面の操作可否をまとめて反映する。変換中とホストへの依頼中は、
+// 多重実行・多重依頼を防ぐため画面内の操作をすべて止める
+function syncSetupControls() {
+	const busy = setupConverting || songRequest !== null;
 	for (const el of $id("editor-setup").querySelectorAll("button, input, select, textarea")) {
 		el.disabled = busy;
 	}
 	$id("btn-setup-convert").disabled = busy || !app;
+}
+
+function setSetupBusy(busy) {
+	setupConverting = busy;
+	syncSetupControls();
+}
+
+// ---- 曲の選択(ホストへの依頼) ----
+// soramimic はMIDIの実体も解析も持たないので、曲の切替は埋め込み元(ホスト)に頼む。
+// エディタは共有ペイロード(sessionStorage)に hostRequest を書いて待機し、ホストが
+// phrases / song / weightsList を差し替えて hostRequest を消したら、新しい曲で
+// セットアップ画面を描き直す。host が無い単体運用では曲セクションの見た目も
+// 挙動も従来どおり(曲名の読み取り専用表示)のまま
+
+function hostInfo() {
+	return (data && data.host && typeof data.host === "object") ? data.host : {};
+}
+
+// ホストが選ばせたい曲の一覧。idの無いエントリは依頼できないので捨てる
+function hostSongs() {
+	const songs = hostInfo().songs;
+	if (!Array.isArray(songs)) return [];
+	return songs.filter((s) => s && typeof s.id === "string" && s.id !== "");
+}
+
+function setSongStatus(text) {
+	const el = $id("setup-song-status");
+	if (!el) return;
+	el.textContent = text || "";
+	el.hidden = !text;
+}
+
+// 曲セクションを data.host / data.song に合わせて描き直す。
+// host.songs があれば select、host.canUploadSong があれば持ち込みボタン、
+// どちらも無ければ曲名を出すだけ(無ければセクションごと出さない)
+function renderSongField() {
+	const songs = hostSongs();
+	const canUpload = hostInfo().canUploadSong === true;
+	const title = (data.song && data.song.title) || "";
+	const sel = $id("setup-song-select");
+	sel.hidden = songs.length === 0;
+	$id("setup-song-actions").hidden = !canUpload;
+	// selectを出すなら同じ内容の読み取り専用表示は要らない
+	$id("setup-song-title").textContent = title;
+	$id("setup-song-title").hidden = songs.length > 0;
+	if (songs.length > 0) {
+		const current = (data.song && data.song.id) || "";
+		const known = current !== "" && songs.some((s) => s.id === current);
+		sel.innerHTML = "";
+		// いまの曲が一覧に無い(持ち込みMIDI等)ときは、その曲名の項目を先頭に足して
+		// 表示と実際の曲が食い違わないようにする(選んでも依頼は出さない)
+		if (!known) {
+			const opt = document.createElement("option");
+			opt.value = "";
+			opt.textContent = title || "(曲を選ぶ)";
+			sel.appendChild(opt);
+		}
+		for (const s of songs) {
+			const opt = document.createElement("option");
+			opt.value = s.id;
+			opt.textContent = s.title || s.id;
+			sel.appendChild(opt);
+		}
+		sel.value = known ? current : "";
+	}
+	$id("setup-song-field").hidden = songs.length === 0 && !canUpload && title === "";
+}
+
+// ホストに依頼を出して待機に入る。応答(hostRequestの消滅)まで画面の操作は止める
+function requestHostSong(type, id) {
+	if (!data || setupConverting || songRequest) return;
+	const req = { type, nonce: Date.now() };
+	if (id) req.id = id;
+	data.hostRequest = req;
+	songRequest = req;
+	saveData();
+	songRequestDeadline = Date.now() + HOST_TIMEOUT_MS;
+	setSongStatus(type === "song-upload"
+		? "MIDIファイルの選択を待っています..."
+		: "曲を切り替えています...");
+	syncSetupControls();
+	clearInterval(songRequestTimer);
+	songRequestTimer = setInterval(pollHostResponse, HOST_POLL_MS);
+}
+
+function endSongRequest() {
+	clearInterval(songRequestTimer);
+	songRequestTimer = null;
+	songRequest = null;
+	syncSetupControls();
+}
+
+// ホストとは同じ sessionStorage を共有しているだけでイベントは飛んでこないので、
+// 自分が書いた hostRequest が消えるのをポーリングで見張る。応答が来ないまま
+// 期限を過ぎたら依頼を取り下げて操作を戻す(永久ロックを避ける)
+function pollHostResponse() {
+	if (!songRequest) {
+		endSongRequest();
+		return;
+	}
+	let next = null;
+	try {
+		next = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));
+	} catch (err) {
+		console.warn("ホストの応答を読めませんでした:", err);
+	}
+	if (!next || typeof next !== "object") next = null;
+	const waiting = next && next.hostRequest && next.hostRequest.nonce === songRequest.nonce;
+	if (waiting) {
+		if (Date.now() < songRequestDeadline) return;
+		delete data.hostRequest;
+		saveData();
+		endSongRequest();
+		renderSongField(); // 選び直した表示を現在の曲に戻す
+		setSongStatus("曲の切り替えに応答がありませんでした。もう一度お試しください。");
+		return;
+	}
+	endSongRequest();
+	applyHostResponse(next);
+}
+
+// ホストの応答を取り込む。phrases が差し替わっていれば新しい曲として描き直し、
+// 変わっていなければキャンセル(ファイル選択をやめた等)として待機解除だけにする
+function applyHostResponse(next) {
+	const changed = !!next && Array.isArray(next.phrases) && next.phrases.length > 0
+		&& JSON.stringify(next.phrases) !== JSON.stringify(data.phrases);
+	if (!changed) {
+		delete data.hostRequest;
+		saveData();
+		renderSongField(); // 選び直した表示を現在の曲に戻す
+		setSongStatus("");
+		return;
+	}
+	// 差し替え前に古い曲への参照(選択)を落としておく
+	setSelection(null);
+	// ホストが書き戻したペイロードをそのまま採用する。単語リスト・パラメータの
+	// 選択はUI(DOM)側に残っているので、曲だけが差し替わる
+	data = next;
+	delete data.hostRequest;
+	if (!Array.isArray(data.results)) data.results = [];
+	if (!Array.isArray(data.unitsList)) data.unitsList = [];
+	// 新しい曲は未変換。中途半端な結果が残っていても捨てる
+	if (!hasResults()) {
+		data.results = [];
+		data.unitsList = [];
+		delete data.tokensList;
+	}
+	if (!Array.isArray(data.weightsList)) delete data.weightsList;
+	normalizeParam();
+	data.history = [];
+	data.future = [];
+	data.dirtyLines = [];
+	saveData();
+	renderAll(); // 前の曲の結果が残っていれば消える
+	updateHistoryButtons();
+	renderSongField();
+	setSongStatus("");
+	// 変換済みで開いた(setupFirst)場合でも、新しい曲は未変換なので出口は変換だけ
+	$id("btn-setup-back").hidden = !hasResults();
 }
 
 // 「この設定で変換」。phrases → tokensList → unitsList → results の順に作り、
@@ -1538,6 +1718,16 @@ async function setupConvert() {
 
 function setupSetupScreen() {
 	$id("btn-setup-convert").addEventListener("click", setupConvert);
+	// 曲の選択・MIDIの持ち込みはホストへの依頼(選択即依頼)。
+	// プレースホルダ("")やいまの曲を選び直しただけのときは何もしない
+	$id("setup-song-select").addEventListener("change", () => {
+		const id = $id("setup-song-select").value;
+		if (!id || (data.song && data.song.id === id)) return;
+		requestHostSong("song", id);
+	});
+	$id("btn-setup-song-upload").addEventListener("click", () => {
+		requestHostSong("song-upload");
+	});
 	$id("btn-setup-back").addEventListener("click", () => {
 		if (setupConverting) return;
 		leaveSetup();
@@ -1607,6 +1797,8 @@ export function validateEditorData(obj) {
 	return null;
 }
 
+// ホスト固有の一時情報(host / hostRequest)は載せない。書き出しJSONは
+// 単体の編集ツールでも読み直せる自己完結した内容だけにする
 function exportData() {
 	const payload = {
 		format: EXPORT_FORMAT,
@@ -1701,20 +1893,7 @@ async function start() {
 	// 未変換でも以降の処理が同じ形を前提にできるよう、空配列で埋めておく
 	if (!Array.isArray(data.results)) data.results = [];
 	if (!Array.isArray(data.unitsList)) data.unitsList = [];
-	// 旧セッション/旧エクスポートの param には母音・子音の掛け算ハック
-	// (SAME_VOWEL_REWARD:0.2 / SAME_CONSONANT_REWARD:0.9)が残っていることがある。
-	// 現行の monophoneタイブレーク行列(#102)ではこのハックはスコアを汚すため除去する
-	// (未指定=lib既定1で無効化)。VOWEL_RATIO 未指定は現行既定 0.8 とみなす。
-	if (data.param && typeof data.param === "object") {
-		delete data.param.SAME_VOWEL_REWARD;
-		delete data.param.SAME_CONSONANT_REWARD;
-		if (data.param.VOWEL_RATIO == null) data.param.VOWEL_RATIO = 0.8;
-		// ン/ッ/ーの変換コストは母音準一致セル相当を vowelRatio に連動させる(#105)。
-		// 旧セッション(未指定)は VOWEL_RATIO から導出し、候補・再生成を生成画面と揃える。
-		if (data.param.VARIATION_COST == null) {
-			data.param.VARIATION_COST = 20 * Number(data.param.VOWEL_RATIO);
-		}
-	}
+	normalizeParam();
 
 	// 親アプリ(soramimic-video等)から渡る行ごとの位置別重み(任意フィールド)。
 	// 配列でなければ「重みなし」として扱う(長さの検証はエンジン側がやる)
@@ -1788,7 +1967,8 @@ async function start() {
 		$id("btn-reconvert").disabled = !db;
 		if (setupMode) {
 			$id("setup-progress").hidden = true;
-			$id("btn-setup-convert").disabled = false;
+			// 初期化前に曲を選ぶ操作をしていたら、依頼中のロックは維持する
+			syncSetupControls();
 		}
 		renderPanel(); // 読み込み中表示のパネルが開いていたら差し替える
 	} catch (err) {
