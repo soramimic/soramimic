@@ -1776,8 +1776,9 @@ async function start() {
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる
 		// 単語リスト未指定でセットアップ画面から始めた場合はまだDBを組めない。
-		// 「この設定で変換」の syncEngine() が、選ばれたリストで組む
-		if (data.wordlist) {
+		// 「この設定で変換」の syncEngine() が、選ばれたリストで組む。
+		// 編集画面から始めるのに単語リストが無いのは従来どおりエラー扱い
+		if (!setupMode || data.wordlist) {
 			db = await buildDatabase(app, data.wordlist, data.where);
 			dbWhere = data.where;
 			dbWordlistKey = wordlistKey(data.wordlist);
