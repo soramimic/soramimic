@@ -37,6 +37,18 @@
             </details>
             <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
           </div>
+          <!-- 元歌詞(字幕用)。埋め込み元(soramimic-video)は元歌詞を字幕に使うので、
+               曲とセットの情報としてここで入力・確認できるようにする。入力すると
+               行ごとの元歌詞(originalLines)まで作ってホストへ渡す。変換の入力には
+               使わない。ホストがいない単体運用(soramimic.com)では字幕を作らないので
+               セクションごと出さない -->
+          <div class="field" id="setup-lyrics-field" hidden>
+            <h3 class="field-label">元歌詞(字幕用)</h3>
+            <textarea id="setup-lyrics" class="input setup-lyrics" rows="6"
+              aria-label="元歌詞(字幕用)"
+              placeholder="曲の元の歌詞(任意)。字幕に使われます"></textarea>
+            <p id="setup-lyrics-status" class="editor-status setup-lyrics-status" hidden></p>
+          </div>
           <div id="setup-settings-slot"></div>
           <div class="setup-actions">
             <button id="btn-setup-convert" class="btn btn-primary" disabled>この設定で変換</button>

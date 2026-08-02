@@ -8,6 +8,7 @@ import {
 	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
 import { originalTextToCsv, looksLikeTidyHeader } from "./wordlistInput.js";
+import { alignLyricsToLines } from "./xfAlign.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
@@ -195,6 +196,10 @@ function renderLine(line) {
 	const caption = document.createElement("div");
 	caption.className = "editor-line-caption";
 	caption.textContent = (data.phrases && data.phrases[line]) || "";
+	// 元歌詞(字幕用)が対応づいていれば、ホバーでその行を確かめられるようにする
+	// (レイアウトは変えたくないのでツールチップだけ)
+	const original = Array.isArray(data.originalLines) ? data.originalLines[line] : "";
+	if (original) caption.title = original;
 	el.appendChild(caption);
 
 	// 1行 = 発音ユニット数分の列を持つグリッド。
@@ -1559,6 +1564,7 @@ function enterSetup() {
 	$id("editor-toolbar").hidden = true;
 	$id("editor-lines").hidden = true;
 	renderSongField();
+	renderLyricsField();
 	// 未変換なら変換だけが出口。変換済み(setupFirst)で開いたときだけ離脱できる
 	$id("btn-setup-back").hidden = !hasResults();
 }
@@ -1738,6 +1744,9 @@ function applyHostResponse(next) {
 	}
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
 	normalizeParam();
+	// 行ごとの元歌詞は前の曲の phrases に対する対応づけなので、新しい曲で作り直す
+	//(ホストが元歌詞ごと差し替えていれば、その元歌詞で対応づけ直す)
+	syncOriginalLines();
 	data.history = [];
 	data.future = [];
 	data.dirtyLines = [];
@@ -1745,9 +1754,68 @@ function applyHostResponse(next) {
 	renderAll(); // 前の曲の結果が残っていれば消える
 	updateHistoryButtons();
 	renderSongField();
+	renderLyricsField();
 	setSongStatus("");
 	// 変換済みで開いた(setupFirst)場合でも、新しい曲は未変換なので出口は変換だけ
 	$id("btn-setup-back").hidden = !hasResults();
+}
+
+// ---- 元歌詞(字幕用) ----
+// 埋め込み元(soramimic-video)は元歌詞を字幕に使う。エディタ側で入力・確認できる
+// ようにして、行ごとの対応づけ(originalLines: phrases と同じ長さ・対応づかない行は
+// 空文字)まで作ってホストへ渡す。対応づけはMIDI取り込みと同じ xfAlign を使う。
+// 元歌詞は変換の入力には使わない(今回は字幕用のみ)
+
+// 元歌詞欄を出すのはホスト(埋め込み元)から開かれたとき、または元歌詞を
+// 渡されたときだけ。単体運用(soramimic.com)は字幕を作らないので従来どおり出さない
+function lyricsEnabled() {
+	return typeof data.lyrics === "string"
+		|| (!!data.host && typeof data.host === "object");
+}
+
+// data.lyrics と phrases を対応づけて data.originalLines を作り直す。
+// 元歌詞が空(または行が無い)なら originalLines ごと落とす
+function syncOriginalLines() {
+	const text = typeof data.lyrics === "string" ? data.lyrics : "";
+	const phrases = Array.isArray(data.phrases) ? data.phrases : [];
+	if (text.trim() === "" || phrases.length === 0) {
+		delete data.originalLines;
+		return;
+	}
+	data.originalLines = alignLyricsToLines(phrases, text).originalLines;
+}
+
+// 何行が対応づいたかを出す(生成画面のMIDI取り込みと同じ流儀)。
+// 表示は data.originalLines から導くので、状態と食い違わない
+function renderLyricsStatus() {
+	const el = $id("setup-lyrics-status");
+	const lines = data.originalLines;
+	if (!Array.isArray(lines) || lines.length === 0) {
+		el.textContent = "";
+		el.hidden = true;
+		return;
+	}
+	const matched = lines.filter((t) => t !== "").length;
+	el.textContent = `対応づけ: ${matched}/${lines.length}行`
+		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "");
+	el.hidden = false;
+}
+
+// 入力を取り込んで対応づけ・保存・状態表示までやる
+function applyLyrics(text) {
+	data.lyrics = text;
+	syncOriginalLines();
+	saveData();
+	renderLyricsStatus();
+}
+
+// 元歌詞欄を data に合わせて描き直す(初回・ホストの応答後)
+function renderLyricsField() {
+	const enabled = lyricsEnabled();
+	$id("setup-lyrics-field").hidden = !enabled;
+	$id("setup-lyrics").value =
+		(enabled && typeof data.lyrics === "string") ? data.lyrics : "";
+	renderLyricsStatus();
 }
 
 // 「この設定で変換」。phrases → tokensList → unitsList → results の順に作り、
@@ -1804,6 +1872,13 @@ async function setupConvert() {
 
 function setupSetupScreen() {
 	$id("btn-setup-convert").addEventListener("click", setupConvert);
+	// 元歌詞は打鍵のたびに対応づけを走らせず、少し止まってからまとめて反映する
+	const lyrics = $id("setup-lyrics");
+	let lyricsTimer = null;
+	lyrics.addEventListener("input", () => {
+		clearTimeout(lyricsTimer);
+		lyricsTimer = setTimeout(() => applyLyrics(lyrics.value), 300);
+	});
 	// 曲の選択・MIDIの持ち込みはホストへの依頼(選択即依頼)。
 	// プレースホルダ("")やいまの曲を選び直しただけのときは何もしない
 	$id("setup-song-select").addEventListener("change", () => {
@@ -1897,6 +1972,9 @@ function exportData() {
 		unitsList: data.unitsList,
 		weightsList: data.weightsList || null,
 	};
+	// 元歌詞(字幕用)は持っているときだけ載せる。ホストはこれを字幕に使う
+	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
+	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
 	const blob = new Blob([JSON.stringify(payload, null, 1)], {
 		type: "application/json",
 	});
@@ -1993,6 +2071,13 @@ async function start() {
 	// 編集行の記録がなければ全行を再計算対象にしておく(安全側)
 	if (!Array.isArray(data.dirtyLines)) {
 		data.dirtyLines = data.results.map((_, i) => i);
+	}
+
+	// 元歌詞(字幕用)は読み込み直後に行対応づけまで済ませておく。ホストはいつ
+	// ペイロードを読んでも、いまの phrases に対応した originalLines を見られる
+	if (lyricsEnabled()) {
+		syncOriginalLines();
+		saveData();
 	}
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する

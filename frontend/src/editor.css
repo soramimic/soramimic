@@ -584,6 +584,15 @@
 	margin: 0.5rem 0 0;
 }
 
+/* 元歌詞(字幕用)。曲のすぐ下に置く任意入力 */
+.setup-lyrics {
+	margin-top: 0.5rem;
+}
+
+.setup-lyrics-status {
+	margin: 0.5rem 0 0;
+}
+
 .setup-actions {
 	display: flex;
 	align-items: center;
