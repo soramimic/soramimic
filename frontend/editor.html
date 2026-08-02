@@ -18,9 +18,17 @@
              設定UIの中身は「変換のしかた」モーダルと同じ #editor-settings-body を
              DOMごと付け替えて使い回す(両者は同時に出ないので実体は1つでよい) -->
         <section id="editor-setup" class="editor-setup" hidden>
+          <!-- 曲。ホストが host.songs / host.canUploadSong を渡していれば曲を選べる
+               (曲データはホストが持つので、選択は hostRequest で依頼する)。
+               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる -->
           <div class="field" id="setup-song-field" hidden>
             <h3 class="field-label">曲</h3>
             <p id="setup-song-title" class="setup-song-title"></p>
+            <select id="setup-song-select" class="input" aria-label="曲" hidden></select>
+            <div id="setup-song-actions" class="setup-song-actions" hidden>
+              <button id="btn-setup-song-upload" class="btn" type="button">自分のMIDIを使う</button>
+            </div>
+            <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
           </div>
           <div id="setup-settings-slot"></div>
           <div class="setup-actions">
