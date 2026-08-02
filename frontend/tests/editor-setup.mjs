@@ -185,6 +185,45 @@ try {
 	assert(!("setupFirst" in await readData(page)),
 		"離脱後も setupFirst が残っている(リロードでまたセットアップに戻ってしまう)");
 
+	// ---- ホストが渡した絞り込み(トップレベルwhere)がそのまま効く ----
+	// soramimic-video のような生成側は、conf のファセット既定から where を組んで
+	// シードに載せてくる。その式は facetClause + compileWhere と同じ形なので、
+	// restoreFacets がチェック状態を復元でき、「この設定で変換」で組み直しても
+	// 同じ条件に戻る。ここが崩れると、渡した絞り込みが黙って消えて(=条件が
+	// 広がって)ホスト側の出力と食い違う。
+	const conf = await (await fetch(`${BASE}/conf/setting.json`)).json();
+	const baseball = conf.wordlist.find((w) => w.value === "BASEBALL");
+	assert(baseball && baseball.facets, "confに野球選手のファセットが無い");
+	const checkedValues = (p) =>
+		p.$$eval("#editor-facets input[type=checkbox]",
+			(els) => els.filter((e) => e.checked).map((e) => e.value).join(","));
+
+	// 既定どおりの絞り込み(ホストが何も触らずに送ってくる式)
+	await seed(page, {
+		phrases: PHRASES,
+		wordlist: baseball,
+		where: "((type=family) or (type=full) or (type=registered))",
+	});
+	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
+	await waitSetupReady(page);
+	await page.waitForSelector("#editor-facet-field:not([hidden])", { timeout: 30000 });
+	assert(await checkedValues(page) === "family,full,registered",
+		"既定の絞り込みが復元されていない: " + await checkedValues(page));
+
+	// 既定と違う絞り込み(ホスト側で絞り込み直した状態)
+	const HOST_WHERE = "((type=nick))";
+	await seed(page, { phrases: PHRASES, wordlist: baseball, where: HOST_WHERE });
+	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
+	await waitSetupReady(page);
+	await page.waitForSelector("#editor-facet-field:not([hidden])", { timeout: 30000 });
+	assert(await checkedValues(page) === "nick",
+		"渡した絞り込みが復元されていない: " + await checkedValues(page));
+	await page.click("#btn-setup-convert");
+	await waitEditor(page);
+	const afterFiltered = await readData(page);
+	assert(afterFiltered.where === HOST_WHERE,
+		"変換で絞り込みが変わった: " + JSON.stringify(afterFiltered.where));
+
 	// ---- 壊れたシード(phrasesもresultsも無い)は従来どおり空表示 ----
 	await seed(page, { param: {} });
 	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
