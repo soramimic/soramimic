@@ -13,6 +13,22 @@
       </header>
 
       <main>
+        <!-- セットアップ画面(第1ステップ)。変換済みの results を持たずに開いたとき
+             (=phrasesだけ渡されたとき)と、ホストが setupFirst を立てたときに出る。
+             設定UIの中身は「変換のしかた」モーダルと同じ #editor-settings-body を
+             DOMごと付け替えて使い回す(両者は同時に出ないので実体は1つでよい) -->
+        <section id="editor-setup" class="editor-setup" hidden>
+          <div class="field" id="setup-song-field" hidden>
+            <h3 class="field-label">曲</h3>
+            <p id="setup-song-title" class="setup-song-title"></p>
+          </div>
+          <div id="setup-settings-slot"></div>
+          <div class="setup-actions">
+            <button id="btn-setup-convert" class="btn btn-primary" disabled>この設定で変換</button>
+            <button id="btn-setup-back" class="btn btn-ghost" hidden>編集画面へ戻る</button>
+            <span id="setup-progress" class="editor-status" hidden></span>
+          </div>
+        </section>
         <p id="editor-empty" class="editor-empty" hidden>
           編集する変換結果がありません。<a href="./">生成画面</a>で変換したあと、「編集ツールで開く」から開いてください。
           書き出したファイル(JSON)があれば
@@ -20,7 +36,7 @@
           から再開できます。
         </p>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
-        <p class="editor-hint">
+        <p id="editor-hint" class="editor-hint">
           単語チップをタップすると候補から差し替えられます。元歌詞のカナはドラッグで範囲選択、選択の端タップで縮小、隣のタップで拡張できます。
           🔒で単語を固定し、「固定以外を再生成」でそれ以外を作り直せます(差し替えた単語は自動で固定されます)。替え歌単語や候補は長押し(PCはホバー)で詳細(フルネーム・ID等)が見られます。
           元歌詞の読みの間違いは、範囲選択してパネルの「元歌詞の読みを修正」から直せます。
@@ -67,7 +83,7 @@
           <h2>変換のしかた</h2>
           <button id="btn-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
-        <div class="editor-settings-body">
+        <div id="editor-settings-body" class="editor-settings-body">
           <!-- 単語リスト。conf/setting.json から組み立てるので、取れない環境
                (スタンドアロン配置)ではセクションごと出さない -->
           <div class="field" id="editor-wordlist-field" hidden>
