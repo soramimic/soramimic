@@ -120,4 +120,69 @@ const xf = (surface, kana) => ({ surface, kana });
 	print("[ok] 空行の扱い");
 }
 
+// ---- 母音を伸ばしたカナ・行数一致(「ふるさと」相当・回帰) ----
+// XFは1音を複数音符で伸ばすと「ユウメハイイマ」のように母音が挿入される。
+// 長音として畳んで比べ、行数が一致するなら元歌詞の改行どおりに1:1で対応づける
+{
+	const lyrics = "うさぎ追いし かの山\n小ぶな釣りし かの川\n夢は今も めぐりて\n忘れがたき ふるさと";
+	const { lines, matchedCount, snappedCount } = alignLyrics([
+		xf("うさぎおいしかのやま", "ウサギオイシカノヤマ"),
+		xf("こぶなつりしかのかわ", "コブナツリシカノカワ"),
+		xf("ゆうめはいいまもめえぐうりいて", "ユウメハイイマモメエグウリイテ"),
+		xf("わすれがたきふるさと", "ワスレガタキフルサト"),
+	], lyrics);
+	assert.deepEqual(lines.map((l) => l.text), lyrics.split("\n"));
+	assert.equal(matchedCount, 4);
+	assert.equal(snappedCount, 4);
+	print("[ok] 母音伸ばしカナ・行数一致で元歌詞の改行どおりに対応");
+}
+
+// ---- 漢字ばかりで字面が重ならない行も、前後から1行に絞れるなら対応づく ----
+// 「夕焼小焼の 赤とんぼ」と「ユウヤケコヤケエノアカトンボ」は共通の文字がほぼ無い
+{
+	const lyrics = "夕焼小焼の 赤とんぼ\n負われて見たのは いつの日か";
+	const { lines, matchedCount } = alignLyrics([
+		xf("", "ユウヤケコヤケエノアカトンボ"),
+		xf("", "オワレテミタノオハアイツノオヒイカ"),
+	], lyrics);
+	assert.deepEqual(lines.map((l) => l.text), lyrics.split("\n"));
+	assert.equal(matchedCount, 2);
+	print("[ok] 前後の対応から1行に絞れる行の穴埋め");
+}
+
+// ---- 1歌詞行を分けるとき、区切りの記号・空白は前の行に付ける ----
+// 正規化で落とした文字が次の行の頭に食い込まない(「…愛してた　あ」/「なたと…」)
+{
+	const { lines, snappedCount } = alignLyrics(
+		[xf("", "ソノスベテヲアイシテタ"), xf("", "アナタトトモニ")],
+		"そのすべてを愛してた　あなたとともに",
+	);
+	assert.deepEqual(lines.map((l) => l.text), ["そのすべてを愛してた", "あなたとともに"]);
+	// 元歌詞の1行をまるごと採れた行はない(区切りは推定)
+	assert.equal(snappedCount, 0);
+	print("[ok] 歌詞行内の分割位置と記号の寄せ方");
+}
+
+// ---- 元歌詞の改行が歌詞の切れ目と無関係なら、行にスナップせず文字で切る ----
+{
+	const { lines, snappedCount } = alignLyrics(
+		[xf("二人だけの空が", "フタリダケノソラガ"), xf("広がる夜に", "ヒロガルヨルニ")],
+		"2人だけの空が広が\nる夜に",
+	);
+	assert.deepEqual(lines.map((l) => l.text), ["2人だけの空が", "広がる夜に"]);
+	assert.equal(snappedCount, 0);
+	print("[ok] 改行が折り返しのときは文字走査を採る");
+}
+
+// ---- 歌詞行の一部しか歌われないなら、行まるごとを持ってこない(回帰) ----
+// 行にスナップすると「私は沈む」「けど、とけない」になってしまう
+{
+	const { lines } = alignLyrics(
+		[xf("沈む", "シズム"), xf("とけ", "トケ")],
+		"私は沈むけど、とけない",
+	);
+	assert.deepEqual(lines.map((l) => l.text), ["沈む", "とけ"]);
+	print("[ok] 歌われない部分を含む歌詞行は必要な区間だけ切り出す");
+}
+
 print("元歌詞アライメント: 全テスト通過");

@@ -1796,8 +1796,13 @@ function renderLyricsStatus() {
 		return;
 	}
 	const matched = lines.filter((t) => t !== "").length;
+	// 元歌詞の1行をまるごと採れた行と、行の途中で区切りを推定した行を分けて出す。
+	// 「n/m行」だけだと、区切りがずれていても全行そのまま対応づいたように見える
+	const whole = new Set((data.lyrics || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+	const guessed = lines.filter((t) => t !== "" && !whole.has(t.trim())).length;
 	el.textContent = `対応づけ: ${matched}/${lines.length}行`
-		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "");
+		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "")
+		+ (guessed > 0 ? `(うち${guessed}行は行の途中で区切り)` : "");
 	el.hidden = false;
 }
 
