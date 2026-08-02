@@ -16,7 +16,7 @@
   ファセット絞り込み)の共有部品。生成画面と編集ツールの両方から使う(コンテナ要素を引数で受ける)
 - `tests/smoke.mjs` — 実ブラウザのスモークテスト(#5)。`npm run test:smoke`
 - `tests/editor-smoke.mjs` / `tests/editor-settings.mjs` / `tests/editor-setup.mjs` /
-  `tests/editor-song.mjs` — 編集ツールのE2E。
+  `tests/editor-song.mjs` / `tests/editor-lyrics.mjs` — 編集ツールのE2E。
   `npm run test:editor`(タッチ操作は `tests/editor-touch.mjs`・`npm run test:touch`)
 
 ```sh
@@ -42,6 +42,22 @@ sessionStorage の `soramimic-editor` に入れてから `editor.html` を開く
 - 任意フィールド: `wordlist` / `param` / `where`(初期選択)、`weightsList`(位置別重み)、
   `song: {title, id}`(セットアップ画面に出す現在の曲。`id` は下の `host.songs` と対応させる)
 
+### 元歌詞(字幕用)
+
+埋め込み元(soramimic-video 等)は元歌詞を字幕に使う。エディタのセットアップ画面に
+「元歌詞(字幕用)」の入力欄を出し、行ごとの対応づけまで済ませて返す。
+**変換の入力には使わない**(変換の入力は従来どおり `phrases`)。
+
+- ホスト → エディタ: `lyrics: "<元歌詞の生テキスト>"`(任意)。初期値として欄に入る
+- エディタ → ホスト: `lyrics`(編集後の生テキスト)と
+  `originalLines: ["<phrases[0]に対応する元歌詞>", ...]`
+  — **`phrases` と同じ長さ**で、対応づかなかった行は空文字。
+  対応づけはMIDI取り込みと同じ `src/xfAlign.js`(`alignLyricsToLines`)で行う
+- 読み込み直後・入力のたび・曲の差し替え後に作り直して書き戻す。
+  書き出しJSONにも(持っていれば)両方載る
+- 入力欄を出すのは `host` があるか `lyrics` を渡されたときだけ。
+  どちらも無い環境(soramimic.com 単体)では欄ごと出ない
+
 ### 曲の選択(埋め込み元=ホストとのやりとり)
 
 soramimic はMIDIの実体も解析も持たないので、セットアップ画面で曲を替えるときは
@@ -54,10 +70,10 @@ sessionStorage を共有しているだけでイベントは飛ばないので�
 - エディタ → ホスト(依頼。書いたらエディタは待機状態に入り、画面の操作を止める)
   - `hostRequest: {type: "song", id, nonce}` — カタログから曲を選んだ
   - `hostRequest: {type: "song-upload", nonce}` — 自分のMIDIを使いたい
-- ホストの応答: 依頼を処理して `phrases` / `song` / `weightsList` を新しい曲のものに
-  差し替え、`results` / `tokensList` / `unitsList` を削除して未変換に戻し、
-  `hostRequest` を削除して書き戻す。キャンセル(ファイル選択をやめた等)は
-  `phrases` を変えずに `hostRequest` だけ削除する
+- ホストの応答: 依頼を処理して `phrases` / `song` / `weightsList`(と元歌詞を持って
+  いれば `lyrics`)を新しい曲のものに差し替え、`results` / `tokensList` / `unitsList` /
+  `originalLines` を削除して未変換に戻し、`hostRequest` を削除して書き戻す。
+  キャンセル(ファイル選択をやめた等)は `phrases` を変えずに `hostRequest` だけ削除する
 - エディタは `hostRequest` の消滅を1.5秒ごとに見張り、`phrases` が変わっていれば
   新しい曲でセットアップ画面を描き直す(単語リスト・パラメータの選択は維持)。
   変わっていなければ待機解除だけ。30秒応答が無ければ依頼を取り下げて待機解除する

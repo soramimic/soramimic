@@ -505,6 +505,19 @@
 	margin-top: 0.5rem;
 }
 
+/* 編集欄に流し込むファイル読み込みのボタンと状態表示(編集欄と一緒に出入りする) */
+.editor-original-file {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+	margin-top: 0.5rem;
+}
+
+.editor-original-file .editor-status {
+	margin: 0;
+}
+
 /* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
 .editor-settings-actions {
 	border-top: 1px solid var(--border);
@@ -545,12 +558,38 @@
 	font-weight: 600;
 }
 
-/* 曲select・「自分のMIDIを使う」・依頼中の表示。曲セクションの中で縦に積む */
+/* 「自分のMIDIを使う」・サンプル一覧の折りたたみ・依頼中の表示。
+   曲セクションの中で縦に積む */
 .setup-song-actions {
 	margin-top: 0.5rem;
 }
 
+/* サンプル一覧は「自分のMIDIを使う」より控えめに(生成画面の折りたたみと同じ流儀) */
+.setup-song-samples {
+	margin-top: 0.5rem;
+}
+
+.setup-song-samples > summary {
+	cursor: pointer;
+	font-size: 0.85rem;
+	color: var(--muted);
+	user-select: none;
+}
+
+.setup-song-samples[open] > summary {
+	margin-bottom: 0.5rem;
+}
+
 .setup-song-status {
+	margin: 0.5rem 0 0;
+}
+
+/* 元歌詞(字幕用)。曲のすぐ下に置く任意入力 */
+.setup-lyrics {
+	margin-top: 0.5rem;
+}
+
+.setup-lyrics-status {
 	margin: 0.5rem 0 0;
 }
 

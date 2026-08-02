@@ -275,6 +275,54 @@ try {
 	const notMine = wordsOriginal.filter((s) => !ORIGINAL_SURFACES.has(s));
 	assert(notMine.length === 0, "自作リスト以外の単語が出ている: " + notMine.join(","));
 
+	// ---- 自作リスト: CSV/テキストファイルからも読み込める ----
+	// 貼り付けと同じ経路(textarea → input → localStorage → 正規化CSV)を通ること、
+	// そのまま再変換すれば自作リストの語だけになることを見る
+	await openSettings(editor);
+	await editor.fill("#editor-original-text", ""); // 消してからファイルで埋め直す
+	const [chooser] = await Promise.all([
+		editor.waitForEvent("filechooser"),
+		editor.click("#btn-original-file"),
+	]);
+	await chooser.setFiles({
+		name: "mylist.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.from(ORIGINAL_PLAIN, "utf8"),
+	});
+	await editor.waitForFunction(
+		(t) => document.getElementById("editor-original-text").value === t,
+		ORIGINAL_PLAIN, { timeout: 10000 });
+	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
+		"ファイル読み込みが貼り付けと同じ経路(localStorage保存)を通っていない");
+	const fileStatus = await editor.textContent("#original-file-status");
+	assert(fileStatus.includes("mylist.csv") && fileStatus.includes("9"),
+		"読み込みの状態表示(ファイル名・件数)が出ていない: " + fileStatus);
+	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	const wordsFromFile = (await wordsOf(editor)).split("|").filter(Boolean);
+	assert(wordsFromFile.length > 0, "ファイルから読み込んだ自作リストでの結果が空");
+	const notMineFile = wordsFromFile.filter((s) => !ORIGINAL_SURFACES.has(s));
+	assert(notMineFile.length === 0,
+		"ファイル読み込み後に自作リスト以外の単語が出ている: " + notMineFile.join(","));
+
+	// ---- 上限(2MB)を超えるファイルは読み込まずに断る ----
+	await openSettings(editor);
+	const [bigChooser] = await Promise.all([
+		editor.waitForEvent("filechooser"),
+		editor.click("#btn-original-file"),
+	]);
+	await bigChooser.setFiles({
+		name: "huge.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.alloc(2 * 1024 * 1024 + 1, 0x61),
+	});
+	await editor.waitForFunction(
+		() => document.getElementById("original-file-status").textContent.includes("大きすぎ"),
+		undefined, { timeout: 10000 });
+	assert(await editor.inputValue("#editor-original-text") === ORIGINAL_PLAIN,
+		"上限を超えるファイルなのに編集欄が書き換わっている");
+	await closeSettings(editor);
+
 	// ---- 書き出し: 自作リストのCSVごと自己完結する ----
 	const [download] = await Promise.all([
 		editor.waitForEvent("download"),

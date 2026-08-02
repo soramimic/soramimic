@@ -1,7 +1,8 @@
 // セットアップ画面の曲選択(ホストへの依頼)のE2E。
 // soramimic はMIDIの実体も解析も持たないので、曲の切替は埋め込み元(ホスト)に頼む
 // という契約を、テスト自身がホスト役になって実ブラウザで確認する:
-//   host.songs 入りのシード → 曲select が出る。選ぶと hostRequest が書かれて待機になる。
+//   host.songs 入りのシード → いまの曲名と「サンプルから選ぶ」の折りたたみが出る。
+//   折りたたみを開いて選ぶと hostRequest が書かれて待機になる。
 //   ホスト役が phrases を差し替えて hostRequest を消す → 新しい曲で描き直され変換できる。
 //   ホスト役が hostRequest だけ消す(キャンセル) → 待機解除で曲は元のまま。
 //   host.canUploadSong → 「自分のMIDIを使う」から song-upload の依頼が出る。
@@ -44,6 +45,12 @@ function assert(cond, message) {
 
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 const isHidden = (page, sel) => page.isHidden(sel);
+
+// サンプル曲のselectは折りたたみの中にあるので、触る前に開く
+const openSamples = async (page) => {
+	await page.click("#setup-song-samples > summary");
+	await page.waitForSelector("#setup-song-select", { state: "visible", timeout: 10000 });
+};
 
 // セットアップ画面が操作できる状態(エンジン初期化済み)になるまで待つ
 const waitSetupReady = (page) =>
@@ -102,7 +109,7 @@ try {
 	const pageErrors = [];
 	page.on("pageerror", (e) => pageErrors.push(e));
 
-	// ---- host.songs 入りのシード → 曲select が出る ----
+	// ---- host.songs 入りのシード → 曲名+「自分のMIDIを使う」+折りたたんだ一覧 ----
 	await page.goto(`${BASE}/editor.html`);
 	await seed(page, {
 		phrases: PHRASES,
@@ -110,11 +117,25 @@ try {
 		host: { songs: SONGS, canUploadSong: true },
 	});
 	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
-	assert(!(await isHidden(page, "#setup-song-select")), "曲selectが出ていない");
-	assert(await isHidden(page, "#setup-song-title"),
-		"曲selectがあるのに読み取り専用の曲名も出ている");
+	// いまの曲名は折りたたみを開かなくても常に見える
+	assert(!(await isHidden(page, "#setup-song-title")), "いまの曲名が出ていない");
+	assert(await page.textContent("#setup-song-title") === "ふるさと", "いまの曲名が違う");
 	assert(!(await isHidden(page, "#btn-setup-song-upload")),
 		"canUploadSong なのに「自分のMIDIを使う」が無い");
+	// サンプル一覧は既定で閉じた折りたたみ(=selectはまだ見えない)
+	assert(!(await isHidden(page, "#setup-song-samples")), "サンプルの折りたたみが出ていない");
+	assert(!(await page.$eval("#setup-song-samples", (el) => el.open)),
+		"サンプルの折りたたみが既定で開いている");
+	assert(await isHidden(page, "#setup-song-select"), "折りたたむ前から曲selectが見えている");
+	// 主役は「自分のMIDIを使う」。サンプル一覧より上にあること(DOM順)
+	assert(await page.evaluate(() => {
+		const actions = document.getElementById("setup-song-actions");
+		const samples = document.getElementById("setup-song-samples");
+		return !!(actions.compareDocumentPosition(samples) & Node.DOCUMENT_POSITION_FOLLOWING);
+	}), "「自分のMIDIを使う」がサンプル一覧より下にある");
+
+	await openSamples(page);
+	assert(!(await isHidden(page, "#setup-song-select")), "開いても曲selectが出ていない");
 	assert(await page.$eval("#setup-song-select", (el) => el.value) === "furusato",
 		"いまの曲がselectに反映されていない");
 	assert(await page.$$eval("#setup-song-select option", (els) => els.length) === SONGS.length,
@@ -145,6 +166,11 @@ try {
 	await waitIdleSetup(page);
 	assert(await page.$eval("#setup-song-select", (el) => el.value) === "katatsumuri",
 		"新しい曲がselectに反映されていない");
+	// 描き直したあとは折りたたみに戻る。新しい曲名は上に出ているので分かる
+	assert(await page.textContent("#setup-song-title") === "かたつむり",
+		"新しい曲名が上に出ていない");
+	assert(!(await page.$eval("#setup-song-samples", (el) => el.open)),
+		"応答後もサンプルの折りたたみが開いたままになっている");
 	assert(await isHidden(page, "#setup-song-status"), "応答後も依頼中の表示が残っている");
 	assert(!(await isHidden(page, "#editor-setup")),
 		"曲を替えたのにセットアップ画面から出てしまった");
@@ -182,6 +208,7 @@ try {
 	});
 	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
 	await waitSetupReady(page);
+	await openSamples(page);
 	await page.selectOption("#setup-song-select", "katatsumuri");
 	await waitRequest(page, "song");
 	await respondAsHost(page, "void d;"); // phrases はそのまま = キャンセル
@@ -204,6 +231,8 @@ try {
 		delete d.results; delete d.tokensList; delete d.unitsList;
 	`);
 	await waitIdleSetup(page);
+	assert(await page.textContent("#setup-song-title") === "自分のMIDI",
+		"持ち込んだ曲の名前が上に出ていない");
 	// 一覧に無い曲(持ち込み)なので、その曲名の項目が先頭に足されて選ばれる
 	assert(await page.$eval("#setup-song-select", (el) => el.selectedOptions[0].textContent)
 		=== "自分のMIDI", "持ち込んだ曲の名前がselectに出ていない");
@@ -213,6 +242,8 @@ try {
 	// ---- host 無しのシード → 従来どおり読み取り専用の曲名表示 ----
 	await seed(page, { phrases: PHRASES, song: { title: "ふるさと" } });
 	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
+	assert(await isHidden(page, "#setup-song-samples"),
+		"host が無いのにサンプルの折りたたみが出ている");
 	assert(await isHidden(page, "#setup-song-select"), "host が無いのに曲selectが出ている");
 	assert(await isHidden(page, "#btn-setup-song-upload"),
 		"host が無いのにMIDI持ち込みボタンが出ている");

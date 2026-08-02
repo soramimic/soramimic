@@ -20,15 +20,34 @@
         <section id="editor-setup" class="editor-setup" hidden>
           <!-- 曲。ホストが host.songs / host.canUploadSong を渡していれば曲を選べる
                (曲データはホストが持つので、選択は hostRequest で依頼する)。
-               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる -->
+               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる。
+               ここまで来て細かく編集したい人の目的は「自分の曲でやる」なので、
+               埋め込み元の詳細設定と同じ並びにする: いまの曲名は常に見せ、
+               「自分のMIDIを使う」を主役に置き、サンプル一覧は折りたたみに格下げする -->
           <div class="field" id="setup-song-field" hidden>
             <h3 class="field-label">曲</h3>
             <p id="setup-song-title" class="setup-song-title"></p>
-            <select id="setup-song-select" class="input" aria-label="曲" hidden></select>
             <div id="setup-song-actions" class="setup-song-actions" hidden>
               <button id="btn-setup-song-upload" class="btn" type="button">自分のMIDIを使う</button>
             </div>
+            <!-- ホストが曲一覧を渡さないときは、この details ごと出さない -->
+            <details id="setup-song-samples" class="setup-song-samples" hidden>
+              <summary>サンプルから選ぶ</summary>
+              <select id="setup-song-select" class="input" aria-label="曲"></select>
+            </details>
             <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
+          </div>
+          <!-- 元歌詞(字幕用)。埋め込み元(soramimic-video)は元歌詞を字幕に使うので、
+               曲とセットの情報としてここで入力・確認できるようにする。入力すると
+               行ごとの元歌詞(originalLines)まで作ってホストへ渡す。変換の入力には
+               使わない。ホストがいない単体運用(soramimic.com)では字幕を作らないので
+               セクションごと出さない -->
+          <div class="field" id="setup-lyrics-field" hidden>
+            <h3 class="field-label">元歌詞(字幕用)</h3>
+            <textarea id="setup-lyrics" class="input setup-lyrics" rows="6"
+              aria-label="元歌詞(字幕用)"
+              placeholder="曲の元の歌詞(任意)。字幕に使われます"></textarea>
+            <p id="setup-lyrics-status" class="editor-status setup-lyrics-status" hidden></p>
           </div>
           <div id="setup-settings-slot"></div>
           <div class="setup-actions">
@@ -100,6 +119,14 @@
             <textarea id="editor-original-text" class="input editor-original-text" rows="10" hidden
               aria-label="自作リスト"
               placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
+            <!-- 貼り付けの代わりにCSV/テキストを選んで流し込む。読み込み先は上の
+                 textarea なので、以降(正規化CSV・localStorage・再変換)は
+                 貼り付けたときとまったく同じ経路を通る -->
+            <div id="editor-original-file" class="editor-original-file" hidden>
+              <button id="btn-original-file" class="btn" type="button">ファイルを読み込む</button>
+              <span id="original-file-status" class="editor-status" hidden></span>
+            </div>
+            <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
           </div>
           <div class="field">
             <h3 class="field-label">パラメータ</h3>

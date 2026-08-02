@@ -7,7 +7,8 @@ import "./editor.css";
 import {
 	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
-import { originalTextToCsv } from "./wordlistInput.js";
+import { originalTextToCsv, looksLikeTidyHeader } from "./wordlistInput.js";
+import { alignLyricsToLines } from "./xfAlign.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
@@ -24,6 +25,9 @@ const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
+// 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
+// sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
+const ORIGINAL_FILE_MAX = 2 * 1024 * 1024;
 
 let data = null;
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
@@ -59,9 +63,15 @@ function $id(id) {
 	return document.getElementById(id);
 }
 
+let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
+
+// 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
+// それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
+// 黙って落とすと、編集し続けたあとでリロードして全部消える
 function saveData() {
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
 		console.warn("保存失敗、履歴を切り詰めます:", err);
@@ -69,8 +79,16 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+			return true;
 		} catch (err2) {
 			console.error(err2);
+			if (!saveFailureNotified) {
+				saveFailureNotified = true;
+				alert("編集内容をブラウザに保存できませんでした(保存容量オーバー)。"
+					+ "自作リストが大きすぎるかもしれません。リストを小さくするか、"
+					+ "「書き出し」でファイルに保存してください。");
+			}
+			return false;
 		}
 	}
 }
@@ -178,6 +196,10 @@ function renderLine(line) {
 	const caption = document.createElement("div");
 	caption.className = "editor-line-caption";
 	caption.textContent = (data.phrases && data.phrases[line]) || "";
+	// 元歌詞(字幕用)が対応づいていれば、ホバーでその行を確かめられるようにする
+	// (レイアウトは変えたくないのでツールチップだけ)
+	const original = Array.isArray(data.originalLines) ? data.originalLines[line] : "";
+	if (original) caption.title = original;
 	el.appendChild(caption);
 
 	// 1行 = 発音ユニット数分の列を持つグリッド。
@@ -1196,6 +1218,70 @@ function syncSettingsUi() {
 	syncWordlistUi();
 }
 
+// ---- 自作リストの入力(貼り付け / ファイル読み込み) ----
+
+function setOriginalFileStatus(text) {
+	const el = $id("original-file-status");
+	if (!el) return;
+	el.textContent = text || "";
+	el.hidden = !text;
+}
+
+// 自作リストの入力欄(貼り付け用のtextarea + ファイル読み込み)をまとめて出し入れする
+function showOriginalInput(show) {
+	$id("editor-original-text").hidden = !show;
+	$id("editor-original-file").hidden = !show;
+	if (!show) setOriginalFileStatus("");
+}
+
+// 自作リストの内容は生成画面と共有する(localStorage)。容量オーバーは黙って
+// 落とさず、その場の状態表示で知らせる
+function saveOriginalText(text) {
+	try {
+		localStorage.setItem(ORIGINAL_STORAGE_KEY, text);
+	} catch (err) {
+		console.warn("自作リストの保存に失敗:", err);
+		setOriginalFileStatus(
+			"自作リストを保存できませんでした(ブラウザの保存容量オーバー)。行数を減らしてください");
+	}
+}
+
+// 読み込んだ内容の件数(コメント・空行と、tidy CSVの見出し行を除いた行数)。
+// 正確な語数ではなく「入った」ことが分かるための目安表示
+function countOriginalEntries(text) {
+	const lines = String(text).split(/\r\n|\n|\r/)
+		.map((l) => l.trim())
+		.filter((l) => l !== "" && !l.startsWith("#"));
+	if (lines.length > 0 && looksLikeTidyHeader(lines[0])) lines.shift();
+	return lines.length;
+}
+
+// 選んだCSV/テキストを自作リストの編集欄に流し込む。ここでやるのは
+// textareaを埋めてinputを発火させるところまでで、正規化CSV(originalTextToCsv)も
+// localStorageへの保存も貼り付けたときとまったく同じハンドラに任せる
+async function loadOriginalFile(file) {
+	if (file.size > ORIGINAL_FILE_MAX) {
+		setOriginalFileStatus(
+			`ファイルが大きすぎます(${(file.size / 1024 / 1024).toFixed(1)}MB)。`
+			+ `${ORIGINAL_FILE_MAX / 1024 / 1024}MBまでのCSV/テキストにしてください`);
+		return;
+	}
+	let text;
+	try {
+		text = await file.text();
+	} catch (err) {
+		console.error(err);
+		setOriginalFileStatus("ファイルを読み込めませんでした: " + err.message);
+		return;
+	}
+	const ta = $id("editor-original-text");
+	ta.value = text;
+	// 先に成功の表示を出しておく。保存に失敗したときは input のハンドラが
+	// この表示を上書きするので、失敗のほうが残る
+	setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
+	ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 // 単語リスト選択・自作リストの編集欄・ファセットを data.wordlist / data.where に
 // 合わせ直す。単語リストの選択UIは conf が取れた環境にしか無いので、
 // 無ければファセットだけ面倒を見る
@@ -1204,7 +1290,7 @@ function syncWordlistUi() {
 	const sel = $id("editor-wordlist");
 	if (wordlistCatalog && sel) {
 		if (entry.value) sel.value = entry.value;
-		$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+		showOriginalInput(entry.value === "ORIGINAL");
 	}
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
@@ -1221,7 +1307,7 @@ function syncWordlistUi() {
 function onWordlistChange() {
 	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
 	if (!entry) return;
-	$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+	showOriginalInput(entry.value === "ORIGINAL");
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
 	renderFacets($id("editor-facets"), entry);
@@ -1292,12 +1378,14 @@ async function setupWordlistPicker() {
 	const ta = $id("editor-original-text");
 	// 自作リストの内容は生成画面と共有する(localStorage)
 	ta.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-	ta.addEventListener("input", () => {
-		try {
-			localStorage.setItem(ORIGINAL_STORAGE_KEY, ta.value);
-		} catch (err) {
-			console.warn("自作リストの保存に失敗:", err);
-		}
+	ta.addEventListener("input", () => saveOriginalText(ta.value));
+	// ファイルからの読み込みも、textareaに流し込んで input を通すだけ(同じ経路)
+	const fileInput = $id("original-file");
+	$id("btn-original-file").addEventListener("click", () => fileInput.click());
+	fileInput.addEventListener("change", () => {
+		const file = fileInput.files && fileInput.files[0];
+		fileInput.value = ""; // 同じファイルの選び直しでもchangeが発火するように
+		if (file) loadOriginalFile(file);
 	});
 	// phrasesだけで開かれた(単語リスト未指定の)ときは、生成画面と同じ既定
 	// (conf の active。無ければ先頭)を初期選択にして、絞り込み表示とも揃える
@@ -1476,6 +1564,7 @@ function enterSetup() {
 	$id("editor-toolbar").hidden = true;
 	$id("editor-lines").hidden = true;
 	renderSongField();
+	renderLyricsField();
 	// 未変換なら変換だけが出口。変換済み(setupFirst)で開いたときだけ離脱できる
 	$id("btn-setup-back").hidden = !hasResults();
 }
@@ -1536,18 +1625,21 @@ function setSongStatus(text) {
 }
 
 // 曲セクションを data.host / data.song に合わせて描き直す。
-// host.songs があれば select、host.canUploadSong があれば持ち込みボタン、
-// どちらも無ければ曲名を出すだけ(無ければセクションごと出さない)
+// host.songs があれば「サンプルから選ぶ」の折りたたみ、host.canUploadSong があれば
+// 持ち込みボタン、どちらも無ければ曲名を出すだけ(無ければセクションごと出さない)。
+// いまの曲名は折りたたみを開かなくても分かるよう常に出す
 function renderSongField() {
 	const songs = hostSongs();
 	const canUpload = hostInfo().canUploadSong === true;
 	const title = (data.song && data.song.title) || "";
 	const sel = $id("setup-song-select");
-	sel.hidden = songs.length === 0;
+	const samples = $id("setup-song-samples");
+	samples.hidden = songs.length === 0;
+	// 描き直すのは初回とホストの応答後。いまの曲名が上に出ているので畳んでおく
+	samples.open = false;
 	$id("setup-song-actions").hidden = !canUpload;
-	// selectを出すなら同じ内容の読み取り専用表示は要らない
 	$id("setup-song-title").textContent = title;
-	$id("setup-song-title").hidden = songs.length > 0;
+	$id("setup-song-title").hidden = title === "";
 	if (songs.length > 0) {
 		const current = (data.song && data.song.id) || "";
 		const known = current !== "" && songs.some((s) => s.id === current);
@@ -1652,6 +1744,9 @@ function applyHostResponse(next) {
 	}
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
 	normalizeParam();
+	// 行ごとの元歌詞は前の曲の phrases に対する対応づけなので、新しい曲で作り直す
+	//(ホストが元歌詞ごと差し替えていれば、その元歌詞で対応づけ直す)
+	syncOriginalLines();
 	data.history = [];
 	data.future = [];
 	data.dirtyLines = [];
@@ -1659,9 +1754,68 @@ function applyHostResponse(next) {
 	renderAll(); // 前の曲の結果が残っていれば消える
 	updateHistoryButtons();
 	renderSongField();
+	renderLyricsField();
 	setSongStatus("");
 	// 変換済みで開いた(setupFirst)場合でも、新しい曲は未変換なので出口は変換だけ
 	$id("btn-setup-back").hidden = !hasResults();
+}
+
+// ---- 元歌詞(字幕用) ----
+// 埋め込み元(soramimic-video)は元歌詞を字幕に使う。エディタ側で入力・確認できる
+// ようにして、行ごとの対応づけ(originalLines: phrases と同じ長さ・対応づかない行は
+// 空文字)まで作ってホストへ渡す。対応づけはMIDI取り込みと同じ xfAlign を使う。
+// 元歌詞は変換の入力には使わない(今回は字幕用のみ)
+
+// 元歌詞欄を出すのはホスト(埋め込み元)から開かれたとき、または元歌詞を
+// 渡されたときだけ。単体運用(soramimic.com)は字幕を作らないので従来どおり出さない
+function lyricsEnabled() {
+	return typeof data.lyrics === "string"
+		|| (!!data.host && typeof data.host === "object");
+}
+
+// data.lyrics と phrases を対応づけて data.originalLines を作り直す。
+// 元歌詞が空(または行が無い)なら originalLines ごと落とす
+function syncOriginalLines() {
+	const text = typeof data.lyrics === "string" ? data.lyrics : "";
+	const phrases = Array.isArray(data.phrases) ? data.phrases : [];
+	if (text.trim() === "" || phrases.length === 0) {
+		delete data.originalLines;
+		return;
+	}
+	data.originalLines = alignLyricsToLines(phrases, text).originalLines;
+}
+
+// 何行が対応づいたかを出す(生成画面のMIDI取り込みと同じ流儀)。
+// 表示は data.originalLines から導くので、状態と食い違わない
+function renderLyricsStatus() {
+	const el = $id("setup-lyrics-status");
+	const lines = data.originalLines;
+	if (!Array.isArray(lines) || lines.length === 0) {
+		el.textContent = "";
+		el.hidden = true;
+		return;
+	}
+	const matched = lines.filter((t) => t !== "").length;
+	el.textContent = `対応づけ: ${matched}/${lines.length}行`
+		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "");
+	el.hidden = false;
+}
+
+// 入力を取り込んで対応づけ・保存・状態表示までやる
+function applyLyrics(text) {
+	data.lyrics = text;
+	syncOriginalLines();
+	saveData();
+	renderLyricsStatus();
+}
+
+// 元歌詞欄を data に合わせて描き直す(初回・ホストの応答後)
+function renderLyricsField() {
+	const enabled = lyricsEnabled();
+	$id("setup-lyrics-field").hidden = !enabled;
+	$id("setup-lyrics").value =
+		(enabled && typeof data.lyrics === "string") ? data.lyrics : "";
+	renderLyricsStatus();
 }
 
 // 「この設定で変換」。phrases → tokensList → unitsList → results の順に作り、
@@ -1718,6 +1872,13 @@ async function setupConvert() {
 
 function setupSetupScreen() {
 	$id("btn-setup-convert").addEventListener("click", setupConvert);
+	// 元歌詞は打鍵のたびに対応づけを走らせず、少し止まってからまとめて反映する
+	const lyrics = $id("setup-lyrics");
+	let lyricsTimer = null;
+	lyrics.addEventListener("input", () => {
+		clearTimeout(lyricsTimer);
+		lyricsTimer = setTimeout(() => applyLyrics(lyrics.value), 300);
+	});
 	// 曲の選択・MIDIの持ち込みはホストへの依頼(選択即依頼)。
 	// プレースホルダ("")やいまの曲を選び直しただけのときは何もしない
 	$id("setup-song-select").addEventListener("change", () => {
@@ -1811,6 +1972,9 @@ function exportData() {
 		unitsList: data.unitsList,
 		weightsList: data.weightsList || null,
 	};
+	// 元歌詞(字幕用)は持っているときだけ載せる。ホストはこれを字幕に使う
+	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
+	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
 	const blob = new Blob([JSON.stringify(payload, null, 1)], {
 		type: "application/json",
 	});
@@ -1907,6 +2071,13 @@ async function start() {
 	// 編集行の記録がなければ全行を再計算対象にしておく(安全側)
 	if (!Array.isArray(data.dirtyLines)) {
 		data.dirtyLines = data.results.map((_, i) => i);
+	}
+
+	// 元歌詞(字幕用)は読み込み直後に行対応づけまで済ませておく。ホストはいつ
+	// ペイロードを読んでも、いまの phrases に対応した originalLines を見られる
+	if (lyricsEnabled()) {
+		syncOriginalLines();
+		saveData();
 	}
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する

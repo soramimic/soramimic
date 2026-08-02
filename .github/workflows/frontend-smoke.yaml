@@ -52,3 +52,5 @@ jobs:
         run: node tests/editor-setup.mjs
       - name: 編集ツール曲選択E2E(ホストへの依頼・待機・キャンセル)
         run: node tests/editor-song.mjs
+      - name: 編集ツール元歌詞E2E(字幕用の元歌詞・行ごとの対応づけ)
+        run: node tests/editor-lyrics.mjs
