@@ -50,3 +50,5 @@ jobs:
         run: node tests/editor-settings.mjs
       - name: 編集ツールセットアップ画面E2E(phrasesだけのシードからブラウザ変換)
         run: node tests/editor-setup.mjs
+      - name: 編集ツール曲選択E2E(ホストへの依頼・待機・キャンセル)
+        run: node tests/editor-song.mjs
