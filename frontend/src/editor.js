@@ -4,7 +4,9 @@
 // 以降: タップ・ドラッグ選択、候補グループ化・使用中表示・長押し詳細、戻る/進む
 import "./style.css";
 import "./editor.css";
-import { initSoramimicApp, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
+import {
+	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
+} from "./appCore.js";
 import { originalTextToCsv } from "./wordlistInput.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
@@ -34,6 +36,8 @@ let paramControls = null; // 変換設定パネルのパラメータUI(生成画
 let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
 let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
 let reconverting = false; // 再変換中(多重実行を防ぐ)
+let setupMode = false; // セットアップ画面(第1ステップ)を表示中
+let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
 
 // 選択中の範囲: {line, start, end}(endは排他)。単語チップ選択もperiodをこの形にする
 let selection = null;
@@ -1290,6 +1294,15 @@ async function setupWordlistPicker() {
 			console.warn("自作リストの保存に失敗:", err);
 		}
 	});
+	// phrasesだけで開かれた(単語リスト未指定の)ときは、生成画面と同じ既定
+	// (conf の active。無ければ先頭)を初期選択にして、絞り込み表示とも揃える
+	if (!data.wordlist || !data.wordlist.value) {
+		const def = known.find((e) => e.active) || known[0];
+		if (def) {
+			data.wordlist = Object.assign({}, def);
+			sel.value = def.value;
+		}
+	}
 	sel.addEventListener("change", onWordlistChange);
 	syncWordlistUi();
 	$id("editor-wordlist-field").hidden = false;
@@ -1406,6 +1419,128 @@ function setupSettingsPanel() {
 		const outside = e.clientX < r.left || e.clientX > r.right
 			|| e.clientY < r.top || e.clientY > r.bottom;
 		if (outside) dialog.close();
+	});
+}
+
+// ---- セットアップ画面(第1ステップ) ----
+// 編集画面がメインで設定はオプションだが、起動時だけは 設定 → 編集画面 の順で出す。
+// エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけで、
+// tokensList / unitsList / results はここでブラウザ変換して作る。
+// 設定UI(単語リスト・パラメータ・絞り込み)は⚙モーダルと同じ実体を借りる:
+// セットアップ画面と⚙モーダルは同時に出ないので、#editor-settings-body を
+// DOMごと付け替えれば paramControls も含めてまるごと共有できる
+
+function hasResults() {
+	return Array.isArray(data.results) && data.results.length > 0
+		&& Array.isArray(data.unitsList) && data.unitsList.length === data.results.length;
+}
+
+function moveSettingsBody(toSetup) {
+	const body = $id("editor-settings-body");
+	if (!body) return;
+	if (toSetup) {
+		$id("setup-settings-slot").appendChild(body);
+		return;
+	}
+	const dialog = $id("editor-settings");
+	dialog.insertBefore(body, dialog.querySelector(".editor-settings-actions"));
+}
+
+function enterSetup() {
+	setupMode = true;
+	moveSettingsBody(true);
+	$id("editor-setup").hidden = false;
+	$id("editor-hint").hidden = true;
+	$id("editor-toolbar").hidden = true;
+	$id("editor-lines").hidden = true;
+	// 曲名は表示するだけ(将来ここに曲選択が入る)。無ければセクションごと出さない
+	const title = (data.song && data.song.title) || "";
+	$id("setup-song-title").textContent = title;
+	$id("setup-song-field").hidden = title === "";
+	// 未変換なら変換だけが出口。変換済み(setupFirst)で開いたときだけ離脱できる
+	$id("btn-setup-back").hidden = !hasResults();
+}
+
+// セットアップ画面を畳んで編集画面に入る。第1ステップは起動時だけなので、
+// ここで setupFirst を落としてリロードでも戻らないようにする
+function leaveSetup() {
+	setupMode = false;
+	$id("editor-setup").hidden = true;
+	moveSettingsBody(false);
+	$id("editor-hint").hidden = false;
+	$id("editor-toolbar").hidden = false;
+	$id("editor-lines").hidden = false;
+	if (data.setupFirst) {
+		delete data.setupFirst;
+		saveData();
+	}
+}
+
+function setSetupBusy(busy) {
+	setupConverting = busy;
+	for (const el of $id("editor-setup").querySelectorAll("button, input, select, textarea")) {
+		el.disabled = busy;
+	}
+	$id("btn-setup-convert").disabled = busy || !app;
+}
+
+// 「この設定で変換」。phrases → tokensList → unitsList → results の順に作り、
+// 生成画面から「編集ツールで開く」で渡ってくるのと同じ形のデータにする
+async function setupConvert() {
+	if (!app || setupConverting) return;
+	const progress = $id("setup-progress");
+	setSetupBusy(true);
+	progress.hidden = false;
+	progress.textContent = "準備中...";
+	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
+	data.param = Object.assign({}, data.param, paramControls.getParam());
+	data.wordlist = pickedWordlistEntry();
+	facetsEnabled = hasFacets(data.wordlist);
+	data.where = facetsEnabled
+		? compileWhere($id("editor-facets"), data.wordlist)
+		: undefined; // エントリ既定の where を使う
+	let tokensList;
+	let unitsList;
+	try {
+		await syncEngine();
+		tokensList = app.textAnalyzer.tokenizeTogether(data.phrases);
+		unitsList = unitsListFromTokens(app, tokensList);
+	} catch (err) {
+		console.error(err);
+		progress.textContent = "変換の準備に失敗しました: " + err.message;
+		setSetupBusy(false);
+		return;
+	}
+	progress.textContent = `変換中... 0/${data.phrases.length}`;
+	app.soramimiMaker.generateFromTokens(
+		tokensList, db, data.param,
+		(result, i) => {
+			progress.textContent = `変換中... ${i + 1}/${data.phrases.length}`;
+		},
+		(results) => {
+			data.tokensList = tokensList;
+			data.unitsList = unitsList;
+			data.results = results;
+			data.dirtyLines = []; // 変換直後はどの行も編集済みでない
+			data.history = [];
+			data.future = [];
+			saveData();
+			progress.hidden = true;
+			setSetupBusy(false);
+			leaveSetup();
+			renderAll();
+			updateHistoryButtons();
+			$id("btn-regenerate").disabled = false;
+			$id("btn-reconvert").disabled = false;
+		},
+		null, data.weightsList || null);
+}
+
+function setupSetupScreen() {
+	$id("btn-setup-convert").addEventListener("click", setupConvert);
+	$id("btn-setup-back").addEventListener("click", () => {
+		if (setupConverting) return;
+		leaveSetup();
 	});
 }
 
@@ -1547,11 +1682,25 @@ async function start() {
 	} catch (err) {
 		console.error("編集データの読み込みに失敗:", err);
 	}
-	if (!data || !Array.isArray(data.results) || !Array.isArray(data.unitsList)) {
+	if (!data || typeof data !== "object") {
 		data = null; // 壊れたデータで編集操作が動かないように
 		empty.hidden = false;
 		return;
 	}
+	// 変換済みの results があれば従来どおり編集画面から開く(後方互換)。
+	// 無ければ phrases(行ごとの歌詞)からブラウザで変換するセットアップ画面から始める。
+	// ホストが setupFirst を立てていれば、results があってもセットアップ画面から
+	const converted = hasResults();
+	const convertible = Array.isArray(data.phrases) && data.phrases.length > 0;
+	if (!converted && !convertible) {
+		data = null;
+		empty.hidden = false;
+		return;
+	}
+	setupMode = !converted || data.setupFirst === true;
+	// 未変換でも以降の処理が同じ形を前提にできるよう、空配列で埋めておく
+	if (!Array.isArray(data.results)) data.results = [];
+	if (!Array.isArray(data.unitsList)) data.unitsList = [];
 	// 旧セッション/旧エクスポートの param には母音・子音の掛け算ハック
 	// (SAME_VOWEL_REWARD:0.2 / SAME_CONSONANT_REWARD:0.9)が残っていることがある。
 	// 現行の monophoneタイブレーク行列(#102)ではこのハックはスコアを汚すため除去する
@@ -1593,9 +1742,17 @@ async function start() {
 	$id("btn-redo").addEventListener("click", redo);
 	updateHistoryButtons();
 	setupSettingsPanel();
+	setupSetupScreen();
+	if (setupMode) enterSetup();
 
 	const status = $id("editor-status");
-	status.hidden = false;
+	// セットアップ画面では準備中の表示もその中(#setup-progress)に出す
+	if (setupMode) {
+		$id("setup-progress").hidden = false;
+		$id("setup-progress").textContent = "準備中...";
+	} else {
+		status.hidden = false;
+	}
 	try {
 		// 生成画面の「音の合わせ方」(vowelRatio)を引き継いで候補計算を揃える
 		const core = await initSoramimicApp({
@@ -1618,16 +1775,27 @@ async function start() {
 		}
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる
-		db = await buildDatabase(app, data.wordlist, data.where);
-		dbWhere = data.where;
-		dbWordlistKey = wordlistKey(data.wordlist);
+		// 単語リスト未指定でセットアップ画面から始めた場合はまだDBを組めない。
+		// 「この設定で変換」の syncEngine() が、選ばれたリストで組む。
+		// 編集画面から始めるのに単語リストが無いのは従来どおりエラー扱い
+		if (!setupMode || data.wordlist) {
+			db = await buildDatabase(app, data.wordlist, data.where);
+			dbWhere = data.where;
+			dbWordlistKey = wordlistKey(data.wordlist);
+		}
 		status.hidden = true;
-		$id("btn-regenerate").disabled = false;
-		$id("btn-reconvert").disabled = false;
+		$id("btn-regenerate").disabled = !db;
+		$id("btn-reconvert").disabled = !db;
+		if (setupMode) {
+			$id("setup-progress").hidden = true;
+			$id("btn-setup-convert").disabled = false;
+		}
 		renderPanel(); // 読み込み中表示のパネルが開いていたら差し替える
 	} catch (err) {
 		console.error(err);
 		status.textContent = "候補機能の初期化に失敗しました: " + err.message;
+		status.hidden = false;
+		$id("setup-progress").hidden = true;
 	}
 }
 

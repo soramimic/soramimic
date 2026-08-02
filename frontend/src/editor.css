@@ -93,6 +93,11 @@
 	margin-bottom: 0.8rem;
 }
 
+/* display指定がUAの [hidden] を上書きしないように(セットアップ画面・空表示で隠す) */
+.editor-toolbar[hidden] {
+	display: none;
+}
+
 .editor-toolbar .input {
 	width: auto;
 }
@@ -484,7 +489,7 @@
 	color: var(--text);
 }
 
-.editor-settings-body {
+.editor-settings > .editor-settings-body {
 	overflow-y: auto;
 	flex: 1;
 	min-height: 0;
@@ -520,6 +525,41 @@
 	}
 
 	.editor-settings .param-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* ---- セットアップ画面(第1ステップ) ----
+   変換前の設定をひととおり出す全画面のステップ。中身(#editor-settings-body)は
+   ⚙モーダルと同じ実体を借りてくるので、ここで足すのは枠と操作行だけ */
+
+.editor-setup {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 1rem 1.2rem;
+}
+
+.setup-song-title {
+	margin: 0;
+	font-weight: 600;
+}
+
+.setup-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	border-top: 1px solid var(--border);
+	margin-top: 1rem;
+	padding-top: 0.8rem;
+}
+
+.setup-actions .editor-status {
+	margin: 0;
+}
+
+@media (max-width: 640px) {
+	.editor-setup .param-grid {
 		grid-template-columns: 1fr;
 	}
 }

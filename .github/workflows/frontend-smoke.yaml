@@ -48,3 +48,5 @@ jobs:
         run: node tests/editor-filler.mjs
       - name: 編集ツール設定モーダルE2E(パラメータ・単語重複・ファセット絞り込み)
         run: node tests/editor-settings.mjs
+      - name: 編集ツールセットアップ画面E2E(phrasesだけのシードからブラウザ変換)
+        run: node tests/editor-setup.mjs
