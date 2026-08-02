@@ -545,9 +545,26 @@
 	font-weight: 600;
 }
 
-/* 曲select・「自分のMIDIを使う」・依頼中の表示。曲セクションの中で縦に積む */
+/* 「自分のMIDIを使う」・サンプル一覧の折りたたみ・依頼中の表示。
+   曲セクションの中で縦に積む */
 .setup-song-actions {
 	margin-top: 0.5rem;
+}
+
+/* サンプル一覧は「自分のMIDIを使う」より控えめに(生成画面の折りたたみと同じ流儀) */
+.setup-song-samples {
+	margin-top: 0.5rem;
+}
+
+.setup-song-samples > summary {
+	cursor: pointer;
+	font-size: 0.85rem;
+	color: var(--muted);
+	user-select: none;
+}
+
+.setup-song-samples[open] > summary {
+	margin-bottom: 0.5rem;
 }
 
 .setup-song-status {

@@ -20,14 +20,21 @@
         <section id="editor-setup" class="editor-setup" hidden>
           <!-- 曲。ホストが host.songs / host.canUploadSong を渡していれば曲を選べる
                (曲データはホストが持つので、選択は hostRequest で依頼する)。
-               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる -->
+               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる。
+               ここまで来て細かく編集したい人の目的は「自分の曲でやる」なので、
+               埋め込み元の詳細設定と同じ並びにする: いまの曲名は常に見せ、
+               「自分のMIDIを使う」を主役に置き、サンプル一覧は折りたたみに格下げする -->
           <div class="field" id="setup-song-field" hidden>
             <h3 class="field-label">曲</h3>
             <p id="setup-song-title" class="setup-song-title"></p>
-            <select id="setup-song-select" class="input" aria-label="曲" hidden></select>
             <div id="setup-song-actions" class="setup-song-actions" hidden>
               <button id="btn-setup-song-upload" class="btn" type="button">自分のMIDIを使う</button>
             </div>
+            <!-- ホストが曲一覧を渡さないときは、この details ごと出さない -->
+            <details id="setup-song-samples" class="setup-song-samples" hidden>
+              <summary>サンプルから選ぶ</summary>
+              <select id="setup-song-select" class="input" aria-label="曲"></select>
+            </details>
             <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
           </div>
           <div id="setup-settings-slot"></div>

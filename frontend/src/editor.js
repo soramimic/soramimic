@@ -1536,18 +1536,21 @@ function setSongStatus(text) {
 }
 
 // 曲セクションを data.host / data.song に合わせて描き直す。
-// host.songs があれば select、host.canUploadSong があれば持ち込みボタン、
-// どちらも無ければ曲名を出すだけ(無ければセクションごと出さない)
+// host.songs があれば「サンプルから選ぶ」の折りたたみ、host.canUploadSong があれば
+// 持ち込みボタン、どちらも無ければ曲名を出すだけ(無ければセクションごと出さない)。
+// いまの曲名は折りたたみを開かなくても分かるよう常に出す
 function renderSongField() {
 	const songs = hostSongs();
 	const canUpload = hostInfo().canUploadSong === true;
 	const title = (data.song && data.song.title) || "";
 	const sel = $id("setup-song-select");
-	sel.hidden = songs.length === 0;
+	const samples = $id("setup-song-samples");
+	samples.hidden = songs.length === 0;
+	// 描き直すのは初回とホストの応答後。いまの曲名が上に出ているので畳んでおく
+	samples.open = false;
 	$id("setup-song-actions").hidden = !canUpload;
-	// selectを出すなら同じ内容の読み取り専用表示は要らない
 	$id("setup-song-title").textContent = title;
-	$id("setup-song-title").hidden = songs.length > 0;
+	$id("setup-song-title").hidden = title === "";
 	if (songs.length > 0) {
 		const current = (data.song && data.song.id) || "";
 		const known = current !== "" && songs.some((s) => s.id === current);
