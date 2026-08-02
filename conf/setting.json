@@ -81,6 +81,90 @@
    ]
   },
   {
+   "value": "MUNICIPALITY",
+   "text": "市区町村",
+   "filepath": "wordlists/municipality.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "status",
+     "label": "状態",
+     "values": [
+      { "v": "current", "label": "現存", "default": true },
+      { "v": "former", "label": "廃止・旧名" }
+     ]
+    },
+    {
+     "column": "type",
+     "label": "表記",
+     "values": [
+      { "v": "full", "label": "正式名称", "default": true },
+      { "v": "short", "label": "短縮形", "default": true }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "SCHOOL",
+   "text": "学校名",
+   "filepath": "wordlists/school.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "school_type",
+     "label": "校種",
+     "values": [
+      { "v": "高等学校", "label": "高校", "default": true },
+      { "v": "大学", "label": "大学", "default": true },
+      { "v": "中学校", "label": "中学" },
+      { "v": "小学校", "label": "小学校" },
+      { "v": "幼稚園", "label": "幼稚園" },
+      { "v": "認定こども園", "label": "こども園" },
+      { "v": "義務教育学校", "label": "義務教育学校" },
+      { "v": "中等教育学校", "label": "中等教育学校" },
+      { "v": "特別支援学校", "label": "特別支援学校" },
+      { "v": "高等専門学校", "label": "高専" },
+      { "v": "短期大学", "label": "短大" },
+      { "v": "専修学校", "label": "専修学校" },
+      { "v": "各種学校", "label": "各種学校" }
+     ]
+    },
+    {
+     "column": "type",
+     "label": "表記",
+     "values": [
+      { "v": "name", "label": "固有部分", "default": true },
+      { "v": "nick", "label": "通称", "default": true },
+      { "v": "common", "label": "通用形" }
+     ]
+    },
+    {
+     "column": "status",
+     "label": "状態",
+     "values": [
+      { "v": "current", "label": "現存", "default": true },
+      { "v": "former", "label": "廃校" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "MYOJI",
+   "text": "名字",
+   "filepath": "wordlists/myoji.csv",
+   "dbtype": "tidy",
+   "facets": [
+    {
+     "column": "verified",
+     "label": "読みの裏付け",
+     "values": [
+      { "v": "yes", "label": "確認済み", "default": true },
+      { "v": "no", "label": "未確認" }
+     ]
+    }
+   ]
+  },
+  {
    "label": "生物",
    "items": [
     {
