@@ -107,6 +107,14 @@
             <textarea id="editor-original-text" class="input editor-original-text" rows="10" hidden
               aria-label="自作リスト"
               placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
+            <!-- 貼り付けの代わりにCSV/テキストを選んで流し込む。読み込み先は上の
+                 textarea なので、以降(正規化CSV・localStorage・再変換)は
+                 貼り付けたときとまったく同じ経路を通る -->
+            <div id="editor-original-file" class="editor-original-file" hidden>
+              <button id="btn-original-file" class="btn" type="button">ファイルを読み込む</button>
+              <span id="original-file-status" class="editor-status" hidden></span>
+            </div>
+            <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
           </div>
           <div class="field">
             <h3 class="field-label">パラメータ</h3>

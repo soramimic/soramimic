@@ -7,7 +7,7 @@ import "./editor.css";
 import {
 	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
-import { originalTextToCsv } from "./wordlistInput.js";
+import { originalTextToCsv, looksLikeTidyHeader } from "./wordlistInput.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
@@ -24,6 +24,9 @@ const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
+// 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
+// sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
+const ORIGINAL_FILE_MAX = 2 * 1024 * 1024;
 
 let data = null;
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
@@ -59,9 +62,15 @@ function $id(id) {
 	return document.getElementById(id);
 }
 
+let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
+
+// 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
+// それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
+// 黙って落とすと、編集し続けたあとでリロードして全部消える
 function saveData() {
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
 		console.warn("保存失敗、履歴を切り詰めます:", err);
@@ -69,8 +78,16 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+			return true;
 		} catch (err2) {
 			console.error(err2);
+			if (!saveFailureNotified) {
+				saveFailureNotified = true;
+				alert("編集内容をブラウザに保存できませんでした(保存容量オーバー)。"
+					+ "自作リストが大きすぎるかもしれません。リストを小さくするか、"
+					+ "「書き出し」でファイルに保存してください。");
+			}
+			return false;
 		}
 	}
 }
@@ -1196,6 +1213,70 @@ function syncSettingsUi() {
 	syncWordlistUi();
 }
 
+// ---- 自作リストの入力(貼り付け / ファイル読み込み) ----
+
+function setOriginalFileStatus(text) {
+	const el = $id("original-file-status");
+	if (!el) return;
+	el.textContent = text || "";
+	el.hidden = !text;
+}
+
+// 自作リストの入力欄(貼り付け用のtextarea + ファイル読み込み)をまとめて出し入れする
+function showOriginalInput(show) {
+	$id("editor-original-text").hidden = !show;
+	$id("editor-original-file").hidden = !show;
+	if (!show) setOriginalFileStatus("");
+}
+
+// 自作リストの内容は生成画面と共有する(localStorage)。容量オーバーは黙って
+// 落とさず、その場の状態表示で知らせる
+function saveOriginalText(text) {
+	try {
+		localStorage.setItem(ORIGINAL_STORAGE_KEY, text);
+	} catch (err) {
+		console.warn("自作リストの保存に失敗:", err);
+		setOriginalFileStatus(
+			"自作リストを保存できませんでした(ブラウザの保存容量オーバー)。行数を減らしてください");
+	}
+}
+
+// 読み込んだ内容の件数(コメント・空行と、tidy CSVの見出し行を除いた行数)。
+// 正確な語数ではなく「入った」ことが分かるための目安表示
+function countOriginalEntries(text) {
+	const lines = String(text).split(/\r\n|\n|\r/)
+		.map((l) => l.trim())
+		.filter((l) => l !== "" && !l.startsWith("#"));
+	if (lines.length > 0 && looksLikeTidyHeader(lines[0])) lines.shift();
+	return lines.length;
+}
+
+// 選んだCSV/テキストを自作リストの編集欄に流し込む。ここでやるのは
+// textareaを埋めてinputを発火させるところまでで、正規化CSV(originalTextToCsv)も
+// localStorageへの保存も貼り付けたときとまったく同じハンドラに任せる
+async function loadOriginalFile(file) {
+	if (file.size > ORIGINAL_FILE_MAX) {
+		setOriginalFileStatus(
+			`ファイルが大きすぎます(${(file.size / 1024 / 1024).toFixed(1)}MB)。`
+			+ `${ORIGINAL_FILE_MAX / 1024 / 1024}MBまでのCSV/テキストにしてください`);
+		return;
+	}
+	let text;
+	try {
+		text = await file.text();
+	} catch (err) {
+		console.error(err);
+		setOriginalFileStatus("ファイルを読み込めませんでした: " + err.message);
+		return;
+	}
+	const ta = $id("editor-original-text");
+	ta.value = text;
+	// 先に成功の表示を出しておく。保存に失敗したときは input のハンドラが
+	// この表示を上書きするので、失敗のほうが残る
+	setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
+	ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 // 単語リスト選択・自作リストの編集欄・ファセットを data.wordlist / data.where に
 // 合わせ直す。単語リストの選択UIは conf が取れた環境にしか無いので、
 // 無ければファセットだけ面倒を見る
@@ -1204,7 +1285,7 @@ function syncWordlistUi() {
 	const sel = $id("editor-wordlist");
 	if (wordlistCatalog && sel) {
 		if (entry.value) sel.value = entry.value;
-		$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+		showOriginalInput(entry.value === "ORIGINAL");
 	}
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
@@ -1221,7 +1302,7 @@ function syncWordlistUi() {
 function onWordlistChange() {
 	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
 	if (!entry) return;
-	$id("editor-original-text").hidden = entry.value !== "ORIGINAL";
+	showOriginalInput(entry.value === "ORIGINAL");
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
 	renderFacets($id("editor-facets"), entry);
@@ -1292,12 +1373,14 @@ async function setupWordlistPicker() {
 	const ta = $id("editor-original-text");
 	// 自作リストの内容は生成画面と共有する(localStorage)
 	ta.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-	ta.addEventListener("input", () => {
-		try {
-			localStorage.setItem(ORIGINAL_STORAGE_KEY, ta.value);
-		} catch (err) {
-			console.warn("自作リストの保存に失敗:", err);
-		}
+	ta.addEventListener("input", () => saveOriginalText(ta.value));
+	// ファイルからの読み込みも、textareaに流し込んで input を通すだけ(同じ経路)
+	const fileInput = $id("original-file");
+	$id("btn-original-file").addEventListener("click", () => fileInput.click());
+	fileInput.addEventListener("change", () => {
+		const file = fileInput.files && fileInput.files[0];
+		fileInput.value = ""; // 同じファイルの選び直しでもchangeが発火するように
+		if (file) loadOriginalFile(file);
 	});
 	// phrasesだけで開かれた(単語リスト未指定の)ときは、生成画面と同じ既定
 	// (conf の active。無ければ先頭)を初期選択にして、絞り込み表示とも揃える

@@ -505,6 +505,19 @@
 	margin-top: 0.5rem;
 }
 
+/* 編集欄に流し込むファイル読み込みのボタンと状態表示(編集欄と一緒に出入りする) */
+.editor-original-file {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+	margin-top: 0.5rem;
+}
+
+.editor-original-file .editor-status {
+	margin: 0;
+}
+
 /* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
 .editor-settings-actions {
 	border-top: 1px solid var(--border);
