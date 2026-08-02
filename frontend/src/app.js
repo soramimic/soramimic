@@ -1,6 +1,8 @@
 // UIの配線。機能は旧 widget/(SettingArea, ConversionArea, NavigationButtons)と同等。
 import { fetchText, fetchJson } from "./api.js";
-import { loadEngine, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
+import {
+	loadEngine, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
+} from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { createYomiApi } from "./yomiApi.js";
 import {
@@ -390,12 +392,7 @@ export async function startApp() {
 		({ app } = await enginePromise);
 		// 発音ユニット列(結果単語のperiodが指すインデックス列)も渡し、
 		// 編集画面が表示のためだけにトークナイザを再初期化しなくて済むようにする
-		const unitsList = lastConversion.tokensList.map((tokens) =>
-			app.textAnalyzer.getYomiAndPhraseBreak(tokens).map((u) => ({
-				surface_form: u.surface_form,
-				pronunciation: u.pronunciation,
-				phrase: u.phrase,
-			})));
+		const unitsList = unitsListFromTokens(app, lastConversion.tokensList);
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify({
 			phrases: lastConversion.phrases,
 			tokensList: lastConversion.tokensList,

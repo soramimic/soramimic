@@ -76,6 +76,18 @@ export async function initSoramimicApp({ vowelRatio = 0.8 } = {}) {
 	return { app: engine.appFor(vowelRatio), appFor: engine.appFor, mecab: engine.mecab, config };
 }
 
+// トークン列(textAnalyzer.tokenizeTogether の出力)から、編集ツールが表示・編集に
+// 使う発音ユニット列を導出する。生成画面の「編集ツールで開く」と、編集ツールの
+// セットアップ画面が phrases から自前変換する経路の両方で使う(二重実装しない)
+export function unitsListFromTokens(app, tokensList) {
+	return tokensList.map((tokens) =>
+		app.textAnalyzer.getYomiAndPhraseBreak(tokens).map((u) => ({
+			surface_form: u.surface_form,
+			pronunciation: u.pronunciation,
+			phrase: u.phrase,
+		})));
+}
+
 // 単語リスト設定エントリ(conf/setting.json の wordlist 要素)からDBを構築する。
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
 export async function buildDatabase(app, entry, where) {
