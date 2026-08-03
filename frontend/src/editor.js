@@ -25,6 +25,7 @@ const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
+const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
 const ORIGINAL_FILE_MAX = 2 * 1024 * 1024;
@@ -108,6 +109,7 @@ function snapshotState() {
 		param: data.param,
 		wordlist: data.wordlist,
 		where: data.where === undefined ? null : data.where,
+		noteLengthAlpha: data.noteLengthAlpha,
 	}));
 }
 
@@ -119,6 +121,36 @@ function restoreState(s) {
 	if (s.param) data.param = s.param;
 	if (s.wordlist) data.wordlist = s.wordlist;
 	if ("where" in s) data.where = s.where === null ? undefined : s.where;
+	if ("noteLengthAlpha" in s) data.noteLengthAlpha = s.noteLengthAlpha;
+}
+
+// ホストは曲のノート長から作ったα=1の生重みを渡し、soramimicがUIのαを
+// 適用する。既存のweightsListは任意の位置別重みとして後方互換で残す。
+function noteLengthWeights() {
+	if (!Array.isArray(data.noteLengthRawList)) return data.weightsList || null;
+	const alpha = Number(data.noteLengthAlpha);
+	if (!Number.isFinite(alpha) || alpha <= 0) return null;
+	return data.noteLengthRawList.map((row) =>
+		Array.isArray(row) ? row.map((raw) => Number(raw) ** alpha) : row);
+}
+
+function normalizeNoteLengthSetting() {
+	if (!Array.isArray(data.noteLengthRawList)) {
+		delete data.noteLengthRawList;
+		delete data.noteLengthAlpha;
+		return;
+	}
+	const alpha = Number(data.noteLengthAlpha);
+	data.noteLengthAlpha = Number.isFinite(alpha) && alpha >= 0
+		? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA;
+}
+
+function applyNoteLengthSetting() {
+	if (!Array.isArray(data.noteLengthRawList)) return;
+	const input = $id("editor-note-length-alpha");
+	const alpha = Number(input && input.value);
+	data.noteLengthAlpha = Number.isFinite(alpha) && alpha >= 0
+		? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA;
 }
 
 // 編集操作(差し替え・固定切替・再生成・読み修正)の直前に呼び、現在の状態を積む
@@ -1016,10 +1048,11 @@ function buildPanel() {
 	// 候補の取得と同姓同名(表記+読みが同じでidが違う)のグループ化。
 	// 単語重複なしの判定はid単位なので、同名でも別idはそれぞれ選べるようにする
 	const target = unitsOf(line).slice(start, end).map((u) => u.pronunciation);
-	// 位置別の重み(親アプリから渡る weightsList。ノート長重視など)があれば、
+	// 位置別の重み(汎用weightsList、または生ノート長とαから導出)があれば、
 	// 選択範囲に対応する区間を切り出して候補計算にも効かせる
-	const rangeWeights = data.weightsList && Array.isArray(data.weightsList[line])
-		? data.weightsList[line].slice(start, end)
+	const allWeights = noteLengthWeights();
+	const rangeWeights = allWeights && Array.isArray(allWeights[line])
+		? allWeights[line].slice(start, end)
 		: null;
 	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
 	const used = usedIdSet(line, start, end);
@@ -1175,7 +1208,7 @@ function regenerate() {
 			btn.disabled = false;
 			progress.hidden = true;
 		},
-		locksPerLine, data.weightsList || null);
+		locksPerLine, noteLengthWeights());
 }
 
 // ---- 「変換のしかた」モーダル(パラメータ・絞り込み) ----
@@ -1215,6 +1248,12 @@ function syncSettingsUi() {
 	if (!paramControls) return;
 	paramControls.setValues(valuesFromParam(data.param));
 	paramControls.syncPreset();
+	const noteField = $id("editor-note-length-field");
+	if (noteField) noteField.hidden = !Array.isArray(data.noteLengthRawList);
+	const noteInput = $id("editor-note-length-alpha");
+	if (noteInput && Array.isArray(data.noteLengthRawList)) {
+		noteInput.value = String(data.noteLengthAlpha);
+	}
 	syncWordlistUi();
 }
 
@@ -1432,6 +1471,7 @@ async function reconvertAll() {
 	pushHistory();
 	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
 	data.param = Object.assign({}, data.param, paramControls.getParam());
+	applyNoteLengthSetting();
 	if (listChanged) {
 		data.wordlist = nextEntry;
 		facetsEnabled = hasFacets(nextEntry);
@@ -1468,7 +1508,7 @@ async function reconvertAll() {
 			progress.hidden = true;
 			setReconverting(false);
 		},
-		locksPerLine, data.weightsList || null);
+		locksPerLine, noteLengthWeights());
 }
 
 // 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる。
@@ -1490,6 +1530,7 @@ function setupSettingsPanel() {
 		duplicateArea: $id("editor-duplicate-buttons"),
 		values: valuesFromParam(data.param),
 	});
+	syncSettingsUi();
 	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)。
 	// リスト切替で出たり消えたりするので、リスナはコンテナに固定で付けておく
 	syncWordlistUi();
@@ -1602,7 +1643,7 @@ function setSetupBusy(busy) {
 // ---- 曲の選択(ホストへの依頼) ----
 // soramimic はMIDIの実体も解析も持たないので、曲の切替は埋め込み元(ホスト)に頼む。
 // エディタは共有ペイロード(sessionStorage)に hostRequest を書いて待機し、ホストが
-// phrases / song / weightsList を差し替えて hostRequest を消したら、新しい曲で
+// phrases / song / noteLengthRawList を差し替えて hostRequest を消したら、新しい曲で
 // セットアップ画面を描き直す。host が無い単体運用では曲セクションの見た目も
 // 挙動も従来どおり(曲名の読み取り専用表示)のまま
 
@@ -1743,6 +1784,7 @@ function applyHostResponse(next) {
 		delete data.tokensList;
 	}
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
+	normalizeNoteLengthSetting();
 	normalizeParam();
 	// 行ごとの元歌詞は前の曲の phrases に対する対応づけなので、新しい曲で作り直す
 	//(ホストが元歌詞ごと差し替えていれば、その元歌詞で対応づけ直す)
@@ -1833,6 +1875,7 @@ async function setupConvert() {
 	progress.textContent = "準備中...";
 	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
 	data.param = Object.assign({}, data.param, paramControls.getParam());
+	applyNoteLengthSetting();
 	data.wordlist = pickedWordlistEntry();
 	facetsEnabled = hasFacets(data.wordlist);
 	data.where = facetsEnabled
@@ -1872,7 +1915,7 @@ async function setupConvert() {
 			$id("btn-regenerate").disabled = false;
 			$id("btn-reconvert").disabled = false;
 		},
-		null, data.weightsList || null);
+		null, noteLengthWeights());
 }
 
 function setupSetupScreen() {
@@ -1975,7 +2018,10 @@ function exportData() {
 		wordlist: data.wordlist,
 		where: data.where,
 		unitsList: data.unitsList,
-		weightsList: data.weightsList || null,
+		// 生ノート長があるときは現在のαで再計算し、旧版向け互換値も古くしない。
+		weightsList: noteLengthWeights(),
+		noteLengthRawList: data.noteLengthRawList || null,
+		noteLengthAlpha: data.noteLengthAlpha,
 	};
 	// 元歌詞(字幕用)は持っているときだけ載せる。ホストはこれを字幕に使う
 	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
@@ -2067,6 +2113,7 @@ async function start() {
 	// 親アプリ(soramimic-video等)から渡る行ごとの位置別重み(任意フィールド)。
 	// 配列でなければ「重みなし」として扱う(長さの検証はエンジン側がやる)
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
+	normalizeNoteLengthSetting();
 
 	if (!Array.isArray(data.history)) data.history = [];
 	if (!Array.isArray(data.future)) data.future = [];

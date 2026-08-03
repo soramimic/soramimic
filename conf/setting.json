@@ -387,7 +387,7 @@
   },
   {
    "value": "GIMUKYOIKU",
-   "text": "義務教育＋高校",
+   "text": "義務教育",
    "filepath": "wordlists/gimukyoiku.csv",
    "dbtype": "tidy",
    "facets": [
@@ -410,8 +410,8 @@
      "column": "level",
      "label": "学校段階",
      "values": [
-      { "v": "小学校", "label": "小学校", "where": "level~=小学校" },
-      { "v": "中学校", "label": "中学校", "where": "level~=中学校" },
+      { "v": "小学校", "label": "小学校", "where": "level~=小学校", "default": true },
+      { "v": "中学校", "label": "中学校", "where": "level~=中学校", "default": true },
       { "v": "高等学校", "label": "高校", "where": "level~=高等学校" }
      ]
     }

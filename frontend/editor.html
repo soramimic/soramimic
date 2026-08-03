@@ -133,6 +133,16 @@
             <div id="editor-preset-buttons" class="btn-group-wrap"></div>
             <div id="editor-param-area" class="param-grid"></div>
           </div>
+          <!-- ノート長は曲データを渡したホストでだけ利用できる。設定と指数計算は
+               soramimic側が担当し、ホストはα=1の生重みだけを渡す。 -->
+          <div class="field" id="editor-note-length-field" hidden>
+            <h3 class="field-label">ノート長重視</h3>
+            <input id="editor-note-length-alpha" class="input" type="number"
+              min="0" max="2" step="0.05" value="0.25"
+              aria-label="ノート長重視 α(0でオフ)" />
+            <p class="field-note">長く伸ばす音符ほど音の一致を優先します。0でオフ、
+              0.25は候補が近いときだけ効く控えめな設定です。</p>
+          </div>
           <div class="field">
             <h3 class="field-label">単語重複</h3>
             <div id="editor-duplicate-buttons" class="btn-group"></div>
