@@ -39,8 +39,11 @@ sessionStorage の `soramimic-editor` に入れてから `editor.html` を開く
   変換してから編集画面に入る
 - `results` があるときは従来どおり編集画面から始まる
 - `setupFirst: true` を立てると、`results` があってもセットアップ画面から始まる
-- 任意フィールド: `wordlist` / `param` / `where`(初期選択)、`weightsList`(位置別重み)、
+- 任意フィールド: `wordlist` / `param` / `where`(初期選択)、`weightsList`(汎用の位置別重み)、
+  `noteLengthRawList`(α=1のノート長生重み) / `noteLengthAlpha`(既定0.25、0でオフ)、
   `song: {title, id}`(セットアップ画面に出す現在の曲。`id` は下の `host.songs` と対応させる)
+- `noteLengthRawList` があれば「変換のしかた」にノート長αを表示し、変換時に
+  `raw ** alpha` を計算する。設定はUndo/RedoとJSON書き出し・再読込の対象になる
 
 ### 元歌詞(字幕用)
 
@@ -70,8 +73,9 @@ sessionStorage を共有しているだけでイベントは飛ばないので�
 - エディタ → ホスト(依頼。書いたらエディタは待機状態に入り、画面の操作を止める)
   - `hostRequest: {type: "song", id, nonce}` — カタログから曲を選んだ
   - `hostRequest: {type: "song-upload", nonce}` — 自分のMIDIを使いたい
-- ホストの応答: 依頼を処理して `phrases` / `song` / `weightsList`(と元歌詞を持って
-  いれば `lyrics`)を新しい曲のものに差し替え、`results` / `tokensList` / `unitsList` /
+- ホストの応答: 依頼を処理して `phrases` / `song` / `noteLengthRawList`
+  (旧版互換では `weightsList` も可)と、元歌詞を持っていれば `lyrics` を
+  新しい曲のものに差し替え、`results` / `tokensList` / `unitsList` /
   `originalLines` を削除して未変換に戻し、`hostRequest` を削除して書き戻す。
   キャンセル(ファイル選択をやめた等)は `phrases` を変えずに `hostRequest` だけ削除する
 - エディタは `hostRequest` の消滅を1.5秒ごとに見張り、`phrases` が変わっていれば
