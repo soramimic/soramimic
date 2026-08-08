@@ -24,7 +24,7 @@ const PLAIN = [
 // ---- 1. idの決定性 ----
 const csv = wordList.plainToCsv(PLAIN);
 assert.strictEqual(csv, wordList.plainToCsv(PLAIN), "同じ入力から同じCSVが出ること");
-assert.ok(!csv.endsWith("\n"), "末尾改行なし(パーサが最終空行で落ちるため)");
+assert.ok(!csv.endsWith("\n"), "正規化CSVの末尾に改行を付けないこと");
 
 const rows = csv.split("\n");
 assert.strictEqual(rows[0], "id,original,surface,pronunciation", "ヘッダが付くこと");
@@ -49,6 +49,13 @@ const fromPlain = wordList.parsePlain(PLAIN);
 const fromCsv = wordList.parseTidy(csv, "");
 assert.deepStrictEqual(fromCsv, fromPlain,
 	"CSV経由のDBがplain経由のDBと一致しないと、書き出しJSONのidが合わなくなる");
+assert.deepStrictEqual(wordList.parseTidy(csv + "\n", ""), fromPlain,
+	"末尾改行付きCSVを読み込めない");
+assert.deepStrictEqual(wordList.parseTidy(csv + "\r\n\r\n", ""), fromPlain,
+	"末尾に複数の空行があるCSVを読み込めない");
+assert.deepStrictEqual(wordList.parseTidy(
+	rows.slice(0, 2).concat(["", ",,,", " \t ", ...rows.slice(2)]).join("\n"), ""), fromPlain,
+	"途中に空行があるCSVを読み込めない");
 // 実データが入っていることも確認(空同士の一致でごまかされないように)
 assert.ok(Object.keys(fromPlain).length > 0, "DBが空");
 
