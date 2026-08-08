@@ -176,7 +176,7 @@ export function tidyTextToCsv(text, getYomi) {
 			if (kana) values[pAt] = kana;
 		}
 	}
-	// 末尾に改行を付けない(エンジンのCSVパーサが最終空行で落ちるため)
+	// JSONに埋め込む正規化CSVは末尾改行なしで統一する
 	return [columns.concat(added).join(","), ...body.map((v) => v.join(","))].join("\n");
 }
 

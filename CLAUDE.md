@@ -26,4 +26,4 @@ cd frontend && npm run test:smoke               # 実ブラウザスモーク
 ## ハマりどころ
 
 - vite dev/preview は `.gz` を再圧縮するため、kuromoji辞書は `vite.config.js` のプラグインが直接配信(触らない)
-- wordlists のCSVは**末尾改行なし**(パーサが最終空行で落ちる)
+- wordlists のCSVパーサは空行を無視する。正規化CSVの出力は末尾改行なしで統一する
