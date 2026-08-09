@@ -44,6 +44,15 @@
       { "v": "manager", "label": "監督" },
       { "v": "mascot", "label": "マスコット" }
      ]
+    },
+    {
+     "column": "scope",
+     "label": "収録範囲",
+     "values": [
+      { "v": "jleague", "label": "Jリーグ経験者", "default": true },
+      { "v": "world", "label": "世界的著名選手" },
+      { "v": "overseas_japanese", "label": "海外のみの日本人" }
+     ]
     }
    ]
   },
