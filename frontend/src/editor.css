@@ -500,9 +500,28 @@
 	margin-bottom: 0;
 }
 
-/* 自作リストの編集欄。選択が「自作リスト」のときだけ select の下に現れる */
-.editor-original-text {
+/* 適用中の自作リストを開き直す導線。入力本体は専用モーダルに分離する */
+.editor-original-edit {
 	margin-top: 0.5rem;
+}
+
+/* 自作リストの登録モーダル */
+.editor-original-dialog[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.editor-midi-dialog[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.editor-original-text {
+	width: 100%;
+	min-height: 12rem;
+	resize: vertical;
 }
 
 /* 編集欄に流し込むファイル読み込みのボタンと状態表示(編集欄と一緒に出入りする) */
@@ -535,6 +554,16 @@
 		margin: 0;
 		border: none;
 		border-radius: 0;
+	}
+
+	.editor-original-dialog[open] {
+		width: calc(100vw - 1rem);
+		max-height: calc(100dvh - 1rem);
+	}
+
+	.editor-midi-dialog[open] {
+		width: calc(100vw - 1rem);
+		max-height: calc(100dvh - 1rem);
 	}
 
 	.editor-settings .param-grid {

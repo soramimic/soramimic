@@ -254,14 +254,43 @@ try {
 
 	// ---- 自作リスト: モーダル内で書いてそのまま使える ----
 	await openSettings(editor);
+	// 選んだだけでは設定画面に入力操作を常駐させず、専用モーダルを開く。
+	// キャンセルしたときは直前のリストへ戻る。
 	await editor.selectOption("#editor-wordlist", "ORIGINAL");
-	await editor.waitForSelector("#editor-original-text:not([hidden])", { timeout: 10000 });
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
+	await editor.click("#btn-original-cancel");
+	await editor.waitForFunction(
+		() => document.getElementById("editor-wordlist").value === "BASEBALL",
+		undefined, { timeout: 10000 });
+	assert(await editor.inputValue("#editor-wordlist") === "BASEBALL",
+		"自作リスト登録のキャンセルで元の選択へ戻らない");
+	assert(await facetGroupCount(editor) === 1,
+		"自作リスト登録のキャンセルで元のファセットへ戻らない");
+	await editor.selectOption("#editor-wordlist", "ORIGINAL");
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	assert(await editor.isHidden("#editor-facet-field"),
 		"自作リストなのにファセットが出ている");
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
-	// 生成画面と共有する localStorage にも保存される
+	// 明示的な貼り付けボタンでもtextareaと同じ入力経路を通る
+	const clipboardText = "山田,ヤマダ\n佐藤,サトウ";
+	await editor.evaluate((text) => {
+		Object.defineProperty(navigator, "clipboard", {
+			configurable: true,
+			value: { readText: async () => text },
+		});
+	}, clipboardText);
+	await editor.click("#btn-original-paste");
+	await editor.waitForFunction(
+		(t) => document.getElementById("editor-original-text").value === t,
+		clipboardText, { timeout: 10000 });
+	assert((await editor.textContent("#original-file-status")).includes("2語"),
+		"クリップボード貼り付けの件数が表示されていない");
+	// 後続の既存テストは元の自作リストを使う
+	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
+	await editor.click("#btn-original-register");
+	// 登録したときだけ生成画面と共有する localStorage に保存される
 	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
-		"自作リストが localStorage に保存されていない");
+		"登録した自作リストが localStorage に保存されていない");
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 	const afterOriginal = await readData(editor);
@@ -279,6 +308,8 @@ try {
 	// 貼り付けと同じ経路(textarea → input → localStorage → 正規化CSV)を通ること、
 	// そのまま再変換すれば自作リストの語だけになることを見る
 	await openSettings(editor);
+	await editor.click("#btn-original-edit");
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ""); // 消してからファイルで埋め直す
 	const [chooser] = await Promise.all([
 		editor.waitForEvent("filechooser"),
@@ -292,11 +323,12 @@ try {
 	await editor.waitForFunction(
 		(t) => document.getElementById("editor-original-text").value === t,
 		ORIGINAL_PLAIN, { timeout: 10000 });
-	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
-		"ファイル読み込みが貼り付けと同じ経路(localStorage保存)を通っていない");
 	const fileStatus = await editor.textContent("#original-file-status");
 	assert(fileStatus.includes("mylist.csv") && fileStatus.includes("9"),
 		"読み込みの状態表示(ファイル名・件数)が出ていない: " + fileStatus);
+	await editor.click("#btn-original-register");
+	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
+		"ファイルから登録した内容がlocalStorageに保存されていない");
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 	const wordsFromFile = (await wordsOf(editor)).split("|").filter(Boolean);
@@ -305,8 +337,33 @@ try {
 	assert(notMineFile.length === 0,
 		"ファイル読み込み後に自作リスト以外の単語が出ている: " + notMineFile.join(","));
 
-	// ---- 上限(2MB)を超えるファイルは読み込まずに断る ----
+	// ---- 従来の2MBを超えるstations.csvも読み込める ----
 	await openSettings(editor);
+	await editor.click("#btn-original-edit");
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
+	const stationsCsv = await readFile(
+		new URL("../dist/wordlists/stations.csv", import.meta.url));
+	assert(stationsCsv.byteLength > 2 * 1024 * 1024,
+		"stations.csvが旧上限を超えていないため回帰テストにならない");
+	const [stationsChooser] = await Promise.all([
+		editor.waitForEvent("filechooser"),
+		editor.click("#btn-original-file"),
+	]);
+	await stationsChooser.setFiles({
+		name: "stations.csv",
+		mimeType: "text/csv",
+		buffer: stationsCsv,
+	});
+	await editor.waitForFunction(
+		() => document.getElementById("original-file-status").textContent
+			.includes("stations.csv"),
+		undefined, { timeout: 10000 });
+	assert((await editor.inputValue("#editor-original-text")).startsWith("id,"),
+		"stations.csvが自作リスト欄に読み込まれていない");
+	// 後続の拒否テストでは「入力欄が書き換わらない」ことを小さい値で比較する
+	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
+
+	// ---- 上限(10MB)を超えるファイルは読み込まずに断る ----
 	const [bigChooser] = await Promise.all([
 		editor.waitForEvent("filechooser"),
 		editor.click("#btn-original-file"),
@@ -314,13 +371,14 @@ try {
 	await bigChooser.setFiles({
 		name: "huge.csv",
 		mimeType: "text/csv",
-		buffer: Buffer.alloc(2 * 1024 * 1024 + 1, 0x61),
+		buffer: Buffer.alloc(10 * 1024 * 1024 + 1, 0x61),
 	});
 	await editor.waitForFunction(
 		() => document.getElementById("original-file-status").textContent.includes("大きすぎ"),
 		undefined, { timeout: 10000 });
 	assert(await editor.inputValue("#editor-original-text") === ORIGINAL_PLAIN,
 		"上限を超えるファイルなのに編集欄が書き換わっている");
+	await editor.click("#btn-original-cancel");
 	await closeSettings(editor);
 
 	// ---- 書き出し: 自作リストのCSVごと自己完結する ----
@@ -360,9 +418,10 @@ try {
 	// (再変換・書き出し・埋め込み先の行解決がどれも同じ読みを見るようにするため)
 	await openSettings(editor);
 	await editor.waitForSelector("#editor-wordlist-field:not([hidden])", { timeout: 30000 });
-	await editor.selectOption("#editor-wordlist", "ORIGINAL");
-	await editor.waitForSelector("#editor-original-text:not([hidden])", { timeout: 10000 });
+	await editor.click("#btn-original-edit");
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN + "\n林檎");
+	await editor.click("#btn-original-register");
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 	const guessedCsv = (await readData(editor)).wordlist.csvText;
