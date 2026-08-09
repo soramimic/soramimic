@@ -28,7 +28,9 @@ const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除す�
 const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
-const ORIGINAL_FILE_MAX = 2 * 1024 * 1024;
+// stations.csv のような同梱リストも自作リストとして読み直せる容量にする。
+// 処理量はサーバー側と同じく10,000行の上限でも抑える。
+const ORIGINAL_FILE_MAX = 10 * 1024 * 1024;
 
 let data = null;
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
@@ -62,6 +64,34 @@ let readingFixOpen = false; // 元歌詞の読み修正フォームの開閉
 
 function $id(id) {
 	return document.getElementById(id);
+}
+
+// videoのapp shell内に埋め込まれたときだけ、ブランドを親画面へ戻る導線にする。
+// 単体のeditor.htmlではHTMLの href="./" を変更せず、従来どおり生成画面へ戻る。
+function setupEmbedNavigation() {
+	if (new URLSearchParams(window.location.search).get("embed") !== "video") return;
+	// URLだけを直接開いた場合は親shellが通知を受け取れないため、通常導線を保つ。
+	if (window.parent === window) return;
+
+	const brand = $id("editor-brand");
+	brand.removeAttribute("href");
+	brand.textContent = "← 動画作成に戻る";
+	brand.setAttribute("aria-label", "動画作成に戻る");
+	brand.setAttribute("role", "button");
+	brand.tabIndex = 0;
+
+	const requestClose = () => {
+		window.parent.postMessage({ type: "soramimic:request-close" }, window.location.origin);
+	};
+	brand.addEventListener("click", (event) => {
+		event.preventDefault();
+		requestClose();
+	});
+	brand.addEventListener("keydown", (event) => {
+		if (event.key !== "Enter" && event.key !== " ") return;
+		event.preventDefault();
+		requestClose();
+	});
 }
 
 let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
@@ -1266,11 +1296,9 @@ function setOriginalFileStatus(text) {
 	el.hidden = !text;
 }
 
-// 自作リストの入力欄(貼り付け用のtextarea + ファイル読み込み)をまとめて出し入れする
-function showOriginalInput(show) {
-	$id("editor-original-text").hidden = !show;
-	$id("editor-original-file").hidden = !show;
-	if (!show) setOriginalFileStatus("");
+// 自作リストを選択中なら、専用モーダルを開き直すボタンを設定画面に出す。
+function showOriginalEditButton(show) {
+	$id("btn-original-edit").hidden = !show;
 }
 
 // 自作リストの内容は生成画面と共有する(localStorage)。容量オーバーは黙って
@@ -1321,15 +1349,43 @@ async function loadOriginalFile(file) {
 	ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// 自作リスト欄へクリップボードのテキストを流し込む。Clipboard API が使えない
+// HTTP配置や権限拒否では、欄へフォーカスして通常の Ctrl/Cmd+V を案内する。
+async function pasteOriginalText() {
+	const ta = $id("editor-original-text");
+	try {
+		if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+			throw new Error("clipboard unavailable");
+		}
+		const text = await navigator.clipboard.readText();
+		if (!text) {
+			setOriginalFileStatus("クリップボードにテキストがありません");
+			return;
+		}
+		ta.value = text;
+		setOriginalFileStatus(`クリップボードから${countOriginalEntries(text)}語を貼り付けました`);
+		ta.dispatchEvent(new Event("input", { bubbles: true }));
+	} catch (err) {
+		console.warn("クリップボードを読み取れませんでした:", err);
+		ta.focus();
+		setOriginalFileStatus("入力欄に Ctrl+V（Macは⌘V）で貼り付けてください");
+	}
+}
+
 // 単語リスト選択・自作リストの編集欄・ファセットを data.wordlist / data.where に
 // 合わせ直す。単語リストの選択UIは conf が取れた環境にしか無いので、
 // 無ければファセットだけ面倒を見る
+let wordlistUiValue = "";
+
 function syncWordlistUi() {
 	const entry = data.wordlist || {};
 	const sel = $id("editor-wordlist");
 	if (wordlistCatalog && sel) {
-		if (entry.value) sel.value = entry.value;
-		showOriginalInput(entry.value === "ORIGINAL");
+		if (entry.value) {
+			sel.value = entry.value;
+			wordlistUiValue = entry.value;
+		}
+		showOriginalEditButton(entry.value === "ORIGINAL");
 	}
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
@@ -1346,7 +1402,9 @@ function syncWordlistUi() {
 function onWordlistChange() {
 	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
 	if (!entry) return;
-	showOriginalInput(entry.value === "ORIGINAL");
+	showOriginalEditButton(entry.value === "ORIGINAL");
+	if (entry.value === "ORIGINAL") openOriginalDialog(wordlistUiValue);
+	else wordlistUiValue = entry.value;
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
 	renderFacets($id("editor-facets"), entry);
@@ -1355,6 +1413,53 @@ function onWordlistChange() {
 	if (facetsEnabled && entry.value === (data.wordlist && data.wordlist.value)) {
 		restoreFacets($id("editor-facets"), data.where);
 	}
+}
+
+let originalDialogRestoreValue = null;
+let originalDialogAccepted = false;
+
+// 自作リストは別モーダルで編集する。選択操作から開いた場合は、キャンセル時に
+// それまで適用されていた単語リストへセレクトを戻す。
+function openOriginalDialog(restoreValue = null) {
+	const dialog = $id("editor-original-dialog");
+	const ta = $id("editor-original-text");
+	originalDialogRestoreValue = restoreValue && restoreValue !== "ORIGINAL"
+		? restoreValue : null;
+	originalDialogAccepted = false;
+	const saved = localStorage.getItem(ORIGINAL_STORAGE_KEY);
+	if (saved !== null) ta.value = saved;
+	else if (data.wordlist && data.wordlist.value === "ORIGINAL") {
+		ta.value = data.wordlist.csvText || "";
+	}
+	setOriginalFileStatus("");
+	dialog.showModal();
+	ta.focus();
+}
+
+function cancelOriginalDialog() {
+	$id("editor-original-dialog").close();
+}
+
+function acceptOriginalDialog() {
+	const text = $id("editor-original-text").value;
+	if (!text.trim()) {
+		setOriginalFileStatus("単語を1つ以上入力してください");
+		return;
+	}
+	saveOriginalText(text);
+	originalDialogAccepted = true;
+	originalDialogRestoreValue = null;
+	wordlistUiValue = "ORIGINAL";
+	$id("editor-original-dialog").close();
+	showOriginalEditButton(true);
+}
+
+function finishOriginalDialog() {
+	if (!originalDialogAccepted && originalDialogRestoreValue) {
+		$id("editor-wordlist").value = originalDialogRestoreValue;
+		onWordlistChange();
+	}
+	originalDialogRestoreValue = null;
 }
 
 // いま選択されている単語リストのエントリ。自作リストのときは編集欄の内容を
@@ -1411,21 +1516,25 @@ async function setupWordlistPicker() {
 		for (const entry of item.items) addOption(group, entry);
 		sel.appendChild(group);
 	}
-	addOption(sel, { value: "ORIGINAL", text: "自作リスト" });
+	addOption(sel, { value: "ORIGINAL", text: "自作リストを使う" });
 	wordlistCatalog = catalog;
 
 	const ta = $id("editor-original-text");
-	// 自作リストの内容は生成画面と共有する(localStorage)
-	ta.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-	ta.addEventListener("input", () => saveOriginalText(ta.value));
-	// ファイルからの読み込みも、textareaに流し込んで input を通すだけ(同じ経路)
+	// 自作リストの内容は「このリストを使う」で生成画面と共有する(localStorage)。
+	// ファイル・クリップボードはtextareaに流し込むところまで同じ経路を使う。
 	const fileInput = $id("original-file");
+	$id("btn-original-edit").addEventListener("click", () => openOriginalDialog());
+	$id("btn-original-paste").addEventListener("click", pasteOriginalText);
 	$id("btn-original-file").addEventListener("click", () => fileInput.click());
 	fileInput.addEventListener("change", () => {
 		const file = fileInput.files && fileInput.files[0];
 		fileInput.value = ""; // 同じファイルの選び直しでもchangeが発火するように
 		if (file) loadOriginalFile(file);
 	});
+	$id("btn-original-register").addEventListener("click", acceptOriginalDialog);
+	$id("btn-original-cancel").addEventListener("click", cancelOriginalDialog);
+	$id("btn-original-close").addEventListener("click", cancelOriginalDialog);
+	$id("editor-original-dialog").addEventListener("close", finishOriginalDialog);
 	// phrasesだけで開かれた(単語リスト未指定の)ときは、生成画面と同じ既定
 	// (conf の active。無ければ先頭)を初期選択にして、絞り込み表示とも揃える
 	if (!data.wordlist || !data.wordlist.value) {
@@ -1447,6 +1556,9 @@ function setReconverting(busy) {
 	// 閉じる操作だけは残したいので×は対象外
 	for (const el of $id("editor-settings").querySelectorAll("button, input, select, textarea")) {
 		if (el.id === "btn-settings-close") continue;
+		el.disabled = busy;
+	}
+	for (const el of $id("editor-original-dialog").querySelectorAll("button, input, textarea")) {
 		el.disabled = busy;
 	}
 	$id("btn-reconvert").disabled = busy || !db;
@@ -1632,6 +1744,10 @@ function syncSetupControls() {
 	for (const el of $id("editor-setup").querySelectorAll("button, input, select, textarea")) {
 		el.disabled = busy;
 	}
+	for (const el of $id("editor-midi-dialog").querySelectorAll("button, textarea")) {
+		if (el.id === "btn-setup-midi-close") continue;
+		el.disabled = busy;
+	}
 	$id("btn-setup-convert").disabled = busy || !app;
 }
 
@@ -1660,9 +1776,15 @@ function hostSongs() {
 
 function setSongStatus(text) {
 	const el = $id("setup-song-status");
-	if (!el) return;
-	el.textContent = text || "";
-	el.hidden = !text;
+	if (el) {
+		el.textContent = text || "";
+		el.hidden = !text;
+	}
+	const modal = $id("setup-midi-status");
+	if (modal) {
+		modal.textContent = text || "";
+		modal.hidden = !text;
+	}
 }
 
 // 曲セクションを data.host / data.song に合わせて描き直す。
@@ -1681,6 +1803,7 @@ function renderSongField() {
 	$id("setup-song-actions").hidden = !canUpload;
 	$id("setup-song-title").textContent = title;
 	$id("setup-song-title").hidden = title === "";
+	$id("setup-midi-title").textContent = title || "MIDIファイルを選んでください";
 	if (songs.length > 0) {
 		const current = (data.song && data.song.id) || "";
 		const known = current !== "" && songs.some((s) => s.id === current);
@@ -1865,6 +1988,16 @@ function renderLyricsField() {
 	renderLyricsStatus();
 }
 
+function openMidiDialog() {
+	renderLyricsField();
+	setSongStatus("");
+	$id("editor-midi-dialog").showModal();
+}
+
+function closeMidiDialog() {
+	$id("editor-midi-dialog").close();
+}
+
 // 「この設定で変換」。phrases → tokensList → unitsList → results の順に作り、
 // 生成画面から「編集ツールで開く」で渡ってくるのと同じ形のデータにする
 async function setupConvert() {
@@ -1934,9 +2067,12 @@ function setupSetupScreen() {
 		if (!id || (data.song && data.song.id === id)) return;
 		requestHostSong("song", id);
 	});
-	$id("btn-setup-song-upload").addEventListener("click", () => {
+	$id("btn-setup-song-upload").addEventListener("click", openMidiDialog);
+	$id("btn-setup-midi-file").addEventListener("click", () => {
 		requestHostSong("song-upload");
 	});
+	$id("btn-setup-midi-close").addEventListener("click", closeMidiDialog);
+	$id("btn-setup-midi-done").addEventListener("click", closeMidiDialog);
 	$id("btn-setup-back").addEventListener("click", () => {
 		if (setupConverting) return;
 		leaveSetup();
@@ -2202,4 +2338,5 @@ async function start() {
 	}
 }
 
+setupEmbedNavigation();
 start();
