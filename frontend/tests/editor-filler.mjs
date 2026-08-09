@@ -97,8 +97,9 @@ try {
 	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await editor.selectOption("#editor-wordlist", "ORIGINAL");
-	await editor.waitForSelector("#editor-original-text:not([hidden])", { timeout: 10000 });
+	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
+	await editor.click("#btn-original-register");
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 
