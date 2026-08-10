@@ -46,6 +46,8 @@ jobs:
         run: node tests/wordlist-csv.mjs
       - name: filler(万能候補)のテスト
         run: node tests/filler.mjs
+      - name: 出力形式のテスト
+        run: node tests/convert-output.mjs
       - name: XF MIDI取り込みのテスト
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト

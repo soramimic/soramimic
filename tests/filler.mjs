@@ -184,7 +184,7 @@ print("[ok] 固定単語と共存し、隙間だけfillerになる");
 // ---- 6. 下流(コピー整形)がfiller混じりでも壊れない ----
 {
 	const withOriginal = mixed.map((line) => line.map((w) => ({ ...w })));
-	for (const fmt of ["1", "2", "3"]) {
+	for (const fmt of ["1", "2", "3", "4"]) {
 		const text = makeResultText(withOriginal, fmt);
 		assert.ok(!text.includes("undefined"),
 			`makeResultText(${fmt})にundefinedが混ざらない:\n` + text);
