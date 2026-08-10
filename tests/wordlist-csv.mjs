@@ -93,14 +93,16 @@ const noYomiApp = {
 assert.ok(looksLikeTidyHeader("id,original,surface,pronunciation"), "ヘッダを認識しない");
 assert.ok(looksLikeTidyHeader("surface,pronunciation"), "部分的なヘッダを認識しない");
 assert.ok(looksLikeTidyHeader("SURFACE, Pronunciation"), "大文字・空白入りのヘッダを認識しない");
+assert.ok(looksLikeTidyHeader("表記,読み"), "Video互換の日本語列名を認識しない");
 assert.ok(looksLikeTidyHeader("surface,image,備考"), "既知列が1つでもあればヘッダ");
-// セルが1つだけの行はヘッダにしない(plainの1語目が「surface」でも語として扱う)
-assert.ok(!looksLikeTidyHeader("surface"), "1セルの行をヘッダと誤認している");
+// Video互換: 必須のsurfaceだけを書いた1列ヘッダもtidyとして扱う
+assert.ok(looksLikeTidyHeader("surface"), "1列のsurfaceヘッダを認識しない");
 assert.ok(!looksLikeTidyHeader("カレーライス,カレー,ライス"), "plainの行をヘッダと誤認している");
 assert.ok(!looksLikeTidyHeader(""), "空行をヘッダと誤認している");
-// 「surface」だけの行から始まる plain は、そのまま1語として取り込まれる
-assert.ok(originalTextToCsv("surface\nカレー", noYomiApp).includes("0,surface,surface,surface"),
-	"1セルの1行目が語として取り込まれていない");
+assert.strictEqual(originalTextToCsv("surface\nカレー", noYomiApp), [
+	"surface,id,original,pronunciation",
+	"カレー,0,カレー,",
+].join("\n"), "1列のsurface CSVを正規化できない");
 // 列名をコメントで書いた説明行から始まる plain もヘッダにしない
 const commented = originalTextToCsv("# id,original,surface,pronunciation\nカレー", noYomiApp);
 assert.strictEqual(commented, "id,original,surface,pronunciation\n0,カレー,カレー,カレー",
@@ -173,6 +175,24 @@ assert.strictEqual(noId, "original,surface,id,pronunciation\nリンゴ,林檎,0,
 // 表記の手がかりが無いCSVは受け付けない(黙って空のDBにしない)
 assert.throws(() => originalTextToCsv("id,pronunciation\n1,リンゴ", noYomiApp),
 	/surface/, "surface/originalの無いCSVが素通りしている");
+
+// Soramimic Video互換: 日本語の列名と引用符内のカンマ・改行を受ける。
+// エンジンの単純CSVパーサへ渡す前に、セル内カンマは読点、改行は空白へ均す。
+const videoStyle = originalTextToCsv([
+	"表記,読み,備考",
+	'"あ,い",アイ,"複数行',
+	'メモ"',
+].join("\n"), noYomiApp);
+assert.strictEqual(videoStyle, [
+	"surface,pronunciation,備考,id,original",
+	"あ、い,アイ,複数行 メモ,0,あ、い",
+].join("\n"), "Video互換CSVの正規化が想定と違う:\n" + videoStyle);
+
+const quotedPlain = originalTextToCsv('"赤,青",アカアオ', noYomiApp);
+assert.strictEqual(quotedPlain, [
+	"id,original,surface,pronunciation",
+	"0,赤、青,赤、青,アカアオ",
+].join("\n"), "plainの引用符つきCSVを正規化できない:\n" + quotedPlain);
 
 // ハーネスが console.log を黙らせるので直接書き出す
 process.stdout.write("[ok] wordlist csv contract\n");

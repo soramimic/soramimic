@@ -6,6 +6,7 @@
 	--text: #1e293b;
 	--muted: #64748b;
 	--border: #e2e8f0;
+	--danger: #b91c1c;
 }
 
 * {
@@ -244,7 +245,12 @@ main {
 	border-radius: 8px;
 	font: inherit;
 	background: var(--panel);
-	color: inherit;
+	color: var(--text);
+}
+
+.input::placeholder {
+	color: var(--muted);
+	opacity: 1;
 }
 
 textarea.input {
@@ -477,9 +483,13 @@ textarea.input {
 
 dialog {
 	width: min(90vw, 640px);
+	max-height: calc(100dvh - 2rem);
+	overflow: auto;
 	border: 1px solid var(--border);
 	border-radius: 12px;
 	padding: 1.2rem;
+	background: var(--panel);
+	color: var(--text);
 }
 
 dialog::backdrop {
@@ -506,14 +516,34 @@ dialog h2 {
 	display: grid;
 	gap: 0.35rem;
 	margin-bottom: 0.7rem;
+}
+
+.custom-wordlist-name > span {
 	font-size: 0.85rem;
 	font-weight: 600;
 }
 
+.custom-wordlist-file {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.7rem;
+}
+
+.custom-wordlist-file span {
+	color: var(--muted);
+	font-size: 0.78rem;
+}
+
 .custom-wordlist-status {
 	margin: 0.65rem 0 0;
-	color: #b91c1c;
+	color: var(--muted);
 	font-size: 0.85rem;
+}
+
+.custom-wordlist-status.is-error {
+	color: var(--danger);
 }
 
 .custom-wordlist-dialog-buttons .dialog-button-spacer {
@@ -521,8 +551,35 @@ dialog h2 {
 }
 
 .btn-danger {
-	color: #b91c1c;
+	color: var(--danger);
 	border-color: currentColor;
+}
+
+@media (max-width: 768px) {
+	#original-text {
+		height: 38dvh;
+		min-height: 10rem;
+	}
+
+	.custom-wordlist-dialog-buttons {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem;
+	}
+
+	.custom-wordlist-dialog-buttons .dialog-button-spacer {
+		display: none;
+	}
+
+	.custom-wordlist-dialog-buttons .btn {
+		padding-inline: 0.7rem;
+		white-space: nowrap;
+	}
+
+	#original-delete {
+		grid-column: 1 / -1;
+		justify-self: start;
+	}
 }
 
 @media (prefers-color-scheme: dark) {
@@ -532,5 +589,6 @@ dialog h2 {
 		--text: #e2e8f0;
 		--muted: #94a3b8;
 		--border: #334155;
+		--danger: #fca5a5;
 	}
 }

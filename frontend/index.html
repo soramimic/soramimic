@@ -143,7 +143,7 @@
           <p>単語リストを提供いただいた皆さま:野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、サッカー選手表-&gt;ヨロスーさま、駅名表-&gt;すきやきすきや様</p>
           <h2>更新履歴</h2>
           <div id="changelog">
-            <div>2026/08/11 自作の単語リストを名前付きで複数保存できるようにしました</div>
+            <div>2026/08/11 自作の単語リストを名前付きで複数保存し、CSV・テキストファイルから読み込めるようにしました</div>
             <div>2026/07/26 「うっせぇ」「はぁ」など小書きカナを含む行が変換できない不具合を修正</div>
             <div>2026/07/20 v2を公開(サイトを全面リニューアル)</div>
             <div>2024/12/25 野球選手表更新(20240811ver)</div>
@@ -181,6 +181,11 @@
           <input id="original-name" class="input" type="text" maxlength="100"
             placeholder="例: 歴代レスラー" autocomplete="off" />
         </label>
+        <div class="custom-wordlist-file">
+          <button id="btn-original-file" class="btn" type="button">CSV・テキストを読み込む</button>
+          <span>「表記,読み…」または表記／読み（surface／pronunciation）列のCSV</span>
+        </div>
+        <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
         <textarea id="original-text" class="input" rows="16"
           placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
         <p id="original-status" class="custom-wordlist-status" role="status" hidden></p>
