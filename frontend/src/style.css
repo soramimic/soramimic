@@ -146,6 +146,30 @@ main {
 	white-space: nowrap;
 }
 
+#btn-copy-result.copy-success {
+	border-color: #16a34a;
+	background: #f0fdf4;
+	color: #15803d;
+	opacity: 1;
+}
+
+#btn-copy-result.copy-success::before {
+	content: "✓";
+	margin-right: 0.3rem;
+}
+
+#btn-copy-result.copy-error {
+	border-color: #dc2626;
+	background: #fef2f2;
+	color: #b91c1c;
+	opacity: 1;
+}
+
+#btn-copy-result.copy-error::before {
+	content: "!";
+	margin-right: 0.3rem;
+}
+
 .wordlist-facets:not(:empty) {
 	margin-top: 0.5rem;
 }

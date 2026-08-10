@@ -99,8 +99,14 @@ try {
 	if (copiedResult !== output) {
 		throw new Error("出力結果とコピー内容が一致しない");
 	}
-	if (await page.textContent("#btn-copy-result") !== "コピーしました") {
-		throw new Error("コピー完了表示が出ない");
+	if (await page.textContent("#btn-copy-result") !== "コピー") {
+		throw new Error("コピー後にボタン文言が変わった");
+	}
+	if (!await page.locator("#btn-copy-result").evaluate((el) => el.classList.contains("copy-success"))) {
+		throw new Error("コピー成功状態が表示されない");
+	}
+	if (await page.textContent("#copy-result-status") !== "コピーしました") {
+		throw new Error("コピー成功が読み上げ通知されない");
 	}
 
 	// ---- パラメータ永続化: 設定を変えてリロードしても復元されることを確認 ----
