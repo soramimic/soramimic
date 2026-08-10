@@ -4,6 +4,7 @@ import {
 	loadEngine, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
+import { writeClipboard } from "./clipboard.js";
 import { createYomiApi } from "./yomiApi.js";
 import {
 	setupButtonGroup, createParamControls,
@@ -48,6 +49,8 @@ export async function startApp() {
 	const outputField = $id("output-field");
 	const outputText = $id("output-text");
 	const formatSelect = $id("format-select");
+	const btnCopyResult = $id("btn-copy-result");
+	const copyResultStatus = $id("copy-result-status");
 	const duplicateButtons = $id("duplicate-buttons");
 	const wordlistButtons = $id("wordlist-buttons");
 	const wordlistFacets = $id("wordlist-facets");
@@ -461,6 +464,7 @@ export async function startApp() {
 			outputText.value = makeResultText(result, formatSelect.value);
 			btnOpenEditor.hidden = false;
 		}
+		btnCopyResult.disabled = outputText.value.length === 0;
 		resetConvertUi();
 		saveMainState();
 	}
@@ -468,8 +472,32 @@ export async function startApp() {
 	formatSelect.addEventListener("change", () => {
 		if (pastResult && pastResult.length > 0) {
 			outputText.value = makeResultText(pastResult, formatSelect.value);
+			btnCopyResult.disabled = false;
 		}
 		saveMainState();
+	});
+
+	btnCopyResult.addEventListener("click", async () => {
+		if (!outputText.value) return;
+		btnCopyResult.disabled = true;
+		let message;
+		try {
+			await writeClipboard(outputText.value);
+			message = "コピーしました";
+		} catch (err) {
+			console.error(err);
+			message = "コピーに失敗しました";
+		}
+		btnCopyResult.textContent = message;
+		copyResultStatus.textContent = message;
+		setTimeout(() => {
+			btnCopyResult.textContent = "コピー";
+			btnCopyResult.disabled = outputText.value.length === 0;
+			copyResultStatus.textContent = "";
+		}, 1500);
+	});
+	outputText.addEventListener("input", () => {
+		btnCopyResult.disabled = outputText.value.length === 0;
 	});
 
 	// 前回の変換結果の復元(単語リストの選択状態も戻す)
@@ -500,6 +528,7 @@ export async function startApp() {
 			lastConversion = savedMain.lastConversion;
 			outputField.hidden = false;
 			outputText.value = makeResultText(pastResult, formatSelect.value);
+			btnCopyResult.disabled = false;
 			btnOpenEditor.hidden = false;
 		}
 	}
@@ -522,6 +551,7 @@ export async function startApp() {
 		progress.hidden = false;
 		progressText.textContent = `0/${phrases.length}`;
 		outputText.value = "";
+		btnCopyResult.disabled = true;
 
 		// UI描画を挟んでから重い処理に入る
 		setTimeout(async () => {
@@ -555,6 +585,7 @@ export async function startApp() {
 				if (gen !== convertGen) return;
 				outputField.hidden = false;
 				outputText.value = "エラーが発生しました: " + err.message;
+				btnCopyResult.disabled = false;
 				resetConvertUi();
 			}
 		}, 50);
