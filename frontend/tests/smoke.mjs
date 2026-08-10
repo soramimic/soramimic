@@ -62,29 +62,41 @@ try {
 		throw new Error("出力形式が出力結果欄の中にない");
 	}
 
-	// ---- ファセット: 未指定なら全チェック表示、一括操作もグループごとに効く ----
+	// ---- ファセット: Excel風の「すべて選択」で全選択・全解除・中間状態を表す ----
 	await page.click("#wordlist-buttons button[data-value='POKEMON']");
 	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>
 		groups.map((group) => ({
-			all: group.querySelectorAll('input[type="checkbox"]').length,
-			checked: group.querySelectorAll('input[type="checkbox"]:checked').length,
+			all: group.querySelectorAll("input.facet-value").length,
+			checked: group.querySelectorAll("input.facet-value:checked").length,
+			selectAll: group.querySelector("input.facet-select-all-input").checked,
+			indeterminate: group.querySelector("input.facet-select-all-input").indeterminate,
 		})));
-	if (initialFacetState.length === 0 || initialFacetState.some((s) => s.all === 0 || s.checked !== s.all)) {
+	if (initialFacetState.length === 0 || initialFacetState.some((s) =>
+		s.all === 0 || s.checked !== s.all || !s.selectAll || s.indeterminate)) {
 		throw new Error("既定指定のないファセットが全チェックで始まらない: " +
 			JSON.stringify(initialFacetState));
 	}
 	const firstFacet = page.locator("#wordlist-facets .facet-group").first();
-	await firstFacet.getByRole("button", { name: "タイプを全はずし" }).click();
-	if (await firstFacet.locator('input[type="checkbox"]:checked').count() !== 0) {
-		throw new Error("全はずしでチェックが外れない");
+	const selectAll = firstFacet.getByRole("checkbox", { name: "タイプをすべて選択" });
+	await selectAll.uncheck();
+	if (await firstFacet.locator("input.facet-value:checked").count() !== 0) {
+		throw new Error("すべて選択を外しても個別チェックが外れない");
 	}
-	await firstFacet.getByRole("button", { name: "タイプを全チェック" }).click();
-	if (await firstFacet.locator('input[type="checkbox"]:checked').count() !==
-		await firstFacet.locator('input[type="checkbox"]').count()) {
-		throw new Error("全チェックですべて選択されない");
+	await selectAll.check();
+	if (await firstFacet.locator("input.facet-value:checked").count() !==
+		await firstFacet.locator("input.facet-value").count()) {
+		throw new Error("すべて選択を入れても全件チェックされない");
+	}
+	await firstFacet.locator("input.facet-value").first().uncheck();
+	if (!await selectAll.evaluate((el) => el.indeterminate)) {
+		throw new Error("一部選択時にすべて選択が中間状態にならない");
 	}
 	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
 	await page.click("#wordlist-buttons button[data-value='BASEBALL']");
+	const baseballSelectAll = page.getByRole("checkbox", { name: "種類をすべて選択" });
+	if (!await baseballSelectAll.evaluate((el) => el.indeterminate)) {
+		throw new Error("既定が部分選択のファセットで中間状態にならない");
+	}
 
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
