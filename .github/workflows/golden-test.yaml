@@ -40,6 +40,8 @@ jobs:
         run: node tests/unit-weights.mjs
       - name: 自作リストの正規化CSV(csvText契約・idの決定性)のテスト
         run: node tests/wordlist-csv.mjs
+      - name: 名前付き自作リスト保存・旧データ移行のテスト
+        run: node tests/custom-wordlists.mjs
       - name: filler(万能候補)のテスト
         run: node tests/filler.mjs
       - name: 出力形式のテスト

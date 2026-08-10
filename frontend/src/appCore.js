@@ -6,8 +6,9 @@ import { createSoramimic } from "./lib/index.js";
 import { KuromojiTokenizer } from "./lib/kuromojiTokenizer.js";
 import { fetchText, fetchJson } from "./api.js";
 import { originalTextToCsv } from "./wordlistInput.js";
+import { customWordlistId, LEGACY_ORIGINAL_STORAGE_KEY } from "./customWordlists.js";
 
-export const ORIGINAL_STORAGE_KEY = "originalWordlist";
+export const ORIGINAL_STORAGE_KEY = LEGACY_ORIGINAL_STORAGE_KEY;
 
 // 重いリソース(データJSON約5MB + kuromoji辞書約18MB)を並列ロードして
 // 生成エンジンを組み立てる。UI側は設定だけで先に起動できるよう分離してある
@@ -91,6 +92,12 @@ export function unitsListFromTokens(app, tokensList) {
 // 単語リスト設定エントリ(conf/setting.json の wordlist 要素)からDBを構築する。
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
 export async function buildDatabase(app, entry, where) {
+	if (customWordlistId(entry.value)) {
+		if (typeof entry.csvText === "string") {
+			return app.wordList.parseTidy(entry.csvText, "");
+		}
+		return app.wordList.parseTidy(originalTextToCsv(entry.originalText || "", app), "");
+	}
 	if (entry.value === "ORIGINAL") {
 		// entry.csvText は自作リストの正規化済み tidy CSV(plainToCsv の出力)。
 		// 編集ツールの書き出しJSONはこれを同梱するので、別環境・別ブラウザで
