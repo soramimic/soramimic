@@ -481,17 +481,20 @@ export async function startApp() {
 		if (!outputText.value) return;
 		btnCopyResult.disabled = true;
 		let message;
+		let state;
 		try {
 			await writeClipboard(outputText.value);
 			message = "コピーしました";
+			state = "success";
 		} catch (err) {
 			console.error(err);
 			message = "コピーに失敗しました";
+			state = "error";
 		}
-		btnCopyResult.textContent = message;
+		btnCopyResult.classList.add(`copy-${state}`);
 		copyResultStatus.textContent = message;
 		setTimeout(() => {
-			btnCopyResult.textContent = "コピー";
+			btnCopyResult.classList.remove("copy-success", "copy-error");
 			btnCopyResult.disabled = outputText.value.length === 0;
 			copyResultStatus.textContent = "";
 		}, 1500);
