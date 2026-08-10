@@ -156,6 +156,9 @@ try {
 		`単語の長さの初期値がparamと違う: ${initialValues[2]}`);
 	assert(await activePreset(editor) === "バランス",
 		"生成画面の既定(バランス)がプリセットに反映されていない");
+	const editorSelectAll = editor.getByRole("checkbox", { name: "種類をすべて選択" });
+	assert(await editorSelectAll.evaluate((el) => el.indeterminate),
+		"生成時の部分選択を復元しても、すべて選択が中間状態にならない");
 
 	// ---- パラメータ変更 → 再変換で結果が変わる ----
 	const wordsBefore = await wordsOf(editor);
