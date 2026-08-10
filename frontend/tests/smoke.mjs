@@ -52,6 +52,10 @@ try {
 	if (initState !== "変換") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
+	const defaultFormat = await page.inputValue("#format-select");
+	if (defaultFormat !== "4") {
+		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
+	}
 
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");

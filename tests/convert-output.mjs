@@ -15,19 +15,31 @@ const result = [
 ];
 
 assert.equal(
-	makeResultText(result, "1"),
+	makeResultText(result, "4"),
 	[
 		"ルーペ  速さ  モル濃度",
 		"ゆめ  ならば  どれほど",
 		"",
 		"ろ過  楕円  商",
-		"よかっ  たで  しょー",
+		"よかっ  たで  しょう",
 		"",
 	].join("\n"),
 	"既定形式は替え歌と元歌詞ひらがなを同じ境界で区切る",
 );
 
-// 詳細形式の既存仕様は維持する。
+// 従来形式の意味は保存済み設定との互換性のため維持する。
+assert.equal(
+	makeResultText([result[0]], "1"),
+	"ルーペ  速さ  モル濃度\n夢ならばどれほど\n",
+);
+assert.equal(
+	makeResultText([[
+		{ surface: "ユメハ", original_surface: "夢は", originalkana: "ユメワ" },
+		{ surface: "コキョウ", original_surface: "故郷", originalkana: "コキョー" },
+	]], "4"),
+	"ユメハ  コキョウ\nゆめは  こきょー\n",
+	"元表記の助詞は保ち、漢字だけの区間は読みで補う",
+);
 assert.equal(
 	makeResultText([result[0]], "2"),
 	"ルーペ/ハヤサ/モルノウド\nユメ/ナラバ/ドレホド\n",

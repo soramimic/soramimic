@@ -73,6 +73,8 @@ try {
 
 	// ---- 編集画面: アライン表示と初期化完了(候補DB構築)を待つ ----
 	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	assert(await editor.inputValue("#copy-format") === "4",
+		"編集画面の既定コピー形式が対応区切りではない");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
 		{ timeout: 120000 },
