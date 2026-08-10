@@ -76,19 +76,19 @@
                 </span>
               </div>
               <div class="field" id="output-field" hidden>
-                <h2 id="output-heading" class="field-label">出力結果</h2>
-                <div class="output-toolbar">
-                  <label class="output-format-control" for="format-select">
-                    <span class="field-label">出力形式</span>
-                    <select id="format-select" class="input">
+                <div class="output-header">
+                  <h2 id="output-heading">出力結果</h2>
+                  <div class="output-toolbar">
+                    <label class="visually-hidden" for="format-select">出力形式</label>
+                    <select id="format-select" class="input output-format-control">
                       <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
                       <option value="1">替え歌/元歌詞</option>
                       <option value="2">替え歌読み/元歌詞読み</option>
                       <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
                     </select>
-                  </label>
-                  <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
-                  <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
+                    <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
+                    <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
+                  </div>
                 </div>
                 <textarea id="output-text" class="input" rows="12" placeholder="出力結果"
                   aria-labelledby="output-heading"></textarea>
