@@ -56,6 +56,11 @@ try {
 	if (defaultFormat !== "4") {
 		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
 	}
+	const formatNearOutput = await page.evaluate(() =>
+		document.getElementById("output-field").contains(document.getElementById("format-select")));
+	if (!formatNearOutput) {
+		throw new Error("出力形式が出力結果欄の中にない");
+	}
 
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
@@ -78,6 +83,24 @@ try {
 	}
 	if (output.includes("うまく変換できる単語を見つけられませんでした")) {
 		throw new Error("変換結果が空");
+	}
+
+	// ---- 結果コピー: 現在表示されている本文をそのままコピーする ----
+	await page.evaluate(() => {
+		window.__copiedResult = null;
+		navigator.clipboard.writeText = (text) => {
+			window.__copiedResult = text;
+			return Promise.resolve();
+		};
+	});
+	await page.click("#btn-copy-result");
+	await page.waitForFunction(() => window.__copiedResult !== null, { timeout: 10000 });
+	const copiedResult = await page.evaluate(() => window.__copiedResult);
+	if (copiedResult !== output) {
+		throw new Error("出力結果とコピー内容が一致しない");
+	}
+	if (await page.textContent("#btn-copy-result") !== "コピーしました") {
+		throw new Error("コピー完了表示が出ない");
 	}
 
 	// ---- パラメータ永続化: 設定を変えてリロードしても復元されることを確認 ----

@@ -76,8 +76,22 @@
                 </span>
               </div>
               <div class="field" id="output-field" hidden>
-                <h2 class="field-label">出力結果</h2>
-                <textarea id="output-text" class="input" rows="12" placeholder="出力結果"></textarea>
+                <h2 id="output-heading" class="field-label">出力結果</h2>
+                <div class="output-toolbar">
+                  <label class="output-format-control" for="format-select">
+                    <span class="field-label">出力形式</span>
+                    <select id="format-select" class="input">
+                      <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
+                      <option value="1">替え歌/元歌詞</option>
+                      <option value="2">替え歌読み/元歌詞読み</option>
+                      <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
+                    </select>
+                  </label>
+                  <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
+                  <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
+                </div>
+                <textarea id="output-text" class="input" rows="12" placeholder="出力結果"
+                  aria-labelledby="output-heading"></textarea>
                 <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
               </div>
             </div>
@@ -88,15 +102,6 @@
                 <h3 class="field-label">単語リスト</h3>
                 <div id="wordlist-buttons" class="btn-group-wrap"></div>
                 <div id="wordlist-facets" class="wordlist-facets"></div>
-              </div>
-              <div class="field">
-                <h3 class="field-label">出力形式</h3>
-                <select id="format-select" class="input">
-                  <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
-                  <option value="1">替え歌/元歌詞</option>
-                  <option value="2">替え歌読み/元歌詞読み</option>
-                  <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
-                </select>
               </div>
               <div class="field">
                 <h3 class="field-label">単語重複</h3>
