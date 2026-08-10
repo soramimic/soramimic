@@ -102,6 +102,9 @@
                 <h3 class="field-label">単語リスト</h3>
                 <div id="wordlist-buttons" class="btn-group-wrap"></div>
                 <div id="wordlist-facets" class="wordlist-facets"></div>
+                <div id="custom-wordlist-actions" class="custom-wordlist-actions" hidden>
+                  <button id="btn-custom-wordlist-edit" class="btn" type="button">自作リストを編集</button>
+                </div>
               </div>
               <div class="field">
                 <h3 class="field-label">単語重複</h3>
@@ -140,6 +143,7 @@
           <p>単語リストを提供いただいた皆さま:野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、サッカー選手表-&gt;ヨロスーさま、駅名表-&gt;すきやきすきや様</p>
           <h2>更新履歴</h2>
           <div id="changelog">
+            <div>2026/08/11 自作の単語リストを名前付きで複数保存できるようにしました</div>
             <div>2026/07/26 「うっせぇ」「はぁ」など小書きカナを含む行が変換できない不具合を修正</div>
             <div>2026/07/20 v2を公開(サイトを全面リニューアル)</div>
             <div>2024/12/25 野球選手表更新(20240811ver)</div>
@@ -171,12 +175,20 @@
       </dialog>
 
       <dialog id="original-dialog">
-        <h2>単語リストの登録</h2>
+        <h2 id="original-dialog-title">自作単語リストの保存</h2>
+        <label class="custom-wordlist-name">
+          <span>リスト名</span>
+          <input id="original-name" class="input" type="text" maxlength="100"
+            placeholder="例: 歴代レスラー" autocomplete="off" />
+        </label>
         <textarea id="original-text" class="input" rows="16"
           placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
-        <div class="dialog-buttons">
+        <p id="original-status" class="custom-wordlist-status" role="status" hidden></p>
+        <div class="dialog-buttons custom-wordlist-dialog-buttons">
+          <button id="original-delete" class="btn btn-danger" type="button" hidden>削除</button>
+          <span class="dialog-button-spacer"></span>
           <button id="original-cancel" class="btn">キャンセル</button>
-          <button id="original-register" class="btn btn-primary">登録</button>
+          <button id="original-register" class="btn btn-primary">保存して使用</button>
         </div>
       </dialog>
     </div>

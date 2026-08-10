@@ -62,6 +62,94 @@ try {
 		throw new Error("出力形式が出力結果欄の中にない");
 	}
 
+	// ---- 名前付き自作リスト: 旧1件データの移行・複数保存・編集・削除 ----
+	await page.evaluate(() => {
+		localStorage.removeItem("soramimic-custom-wordlists");
+		localStorage.setItem("originalWordlist", "山田,ヤマダ");
+		sessionStorage.removeItem("soramimic-main");
+	});
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	const migrated = await page.evaluate(() => ({
+		legacy: localStorage.getItem("originalWordlist"),
+		state: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")),
+	}));
+	if (migrated.legacy !== null || migrated.state.version !== 1
+		|| migrated.state.lists.length !== 1
+		|| migrated.state.lists[0].text !== "山田,ヤマダ") {
+		throw new Error("旧自作リストの移行に失敗: " + JSON.stringify(migrated));
+	}
+	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
+		label: "自作リスト",
+	});
+	if (await page.isHidden("#custom-wordlist-actions")) {
+		throw new Error("保存済み自作リストの編集ボタンが表示されない");
+	}
+	await page.click("#btn-custom-wordlist-edit");
+	await page.waitForSelector("#original-dialog[open]");
+	if (await page.inputValue("#original-text") !== "山田,ヤマダ") {
+		throw new Error("移行した自作リスト本文が編集画面に復元されない");
+	}
+	await page.fill("#original-name", "名字");
+	await page.fill("#original-text", "佐藤,サトウ");
+	await page.click("#original-register");
+
+	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
+		value: "__NEW_CUSTOM_WORDLIST__",
+	});
+	await page.waitForSelector("#original-dialog[open]");
+	await page.fill("#original-name", "食べ物");
+	await page.fill("#original-text", "林檎,リンゴ");
+	await page.click("#original-register");
+	const savedCustom = await page.evaluate(() =>
+		JSON.parse(localStorage.getItem("soramimic-custom-wordlists")));
+	if (savedCustom.lists.length !== 2
+		|| savedCustom.lists[0].name !== "名字"
+		|| savedCustom.lists[0].text !== "佐藤,サトウ"
+		|| savedCustom.lists[1].name !== "食べ物") {
+		throw new Error("複数自作リストの保存に失敗: " + JSON.stringify(savedCustom));
+	}
+
+	// 選択中IDも既存sessionStorage経由で復元され、本文はlocalStorageから再構築される。
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	const restoredCustom = await page.evaluate(() => ({
+		value: document.querySelector("select[aria-label='自作リスト']").value,
+		label: document.querySelector(".wordlist-select-wrap.active span:last-of-type")?.textContent,
+	}));
+	if (!restoredCustom.value.startsWith("CUSTOM:") || restoredCustom.label !== "食べ物") {
+		throw new Error("自作リスト選択の復元に失敗: " + JSON.stringify(restoredCustom));
+	}
+	await page.fill("#input-text", "りんご");
+	await page.click("#btn-convert");
+	await page.waitForFunction(
+		() => !document.getElementById("output-field").hidden
+			&& document.getElementById("output-text").value.length > 0,
+		{ timeout: 120000 },
+	);
+	const customOutput = await page.inputValue("#output-text");
+	if (!customOutput.includes("林檎") || customOutput.includes("エラーが発生しました")) {
+		throw new Error("保存済み自作リストで変換できない: " + customOutput);
+	}
+
+	// 削除時は確認後に既定リストへ安全に戻る。
+	await page.click("#btn-custom-wordlist-edit");
+	page.once("dialog", (dialog) => dialog.accept());
+	await page.click("#original-delete");
+	const afterDelete = await page.evaluate(() => ({
+		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
+		active: document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+	}));
+	if (afterDelete.count !== 1 || afterDelete.active !== "BASEBALL") {
+		throw new Error("自作リスト削除後の状態が不正: " + JSON.stringify(afterDelete));
+	}
+
 	// ---- ファセット: Excel風の「すべて選択」で全選択・全解除・中間状態を表す ----
 	await page.click("#wordlist-buttons button[data-value='POKEMON']");
 	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>

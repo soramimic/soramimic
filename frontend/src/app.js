@@ -1,11 +1,16 @@
 // UIの配線。機能は旧 widget/(SettingArea, ConversionArea, NavigationButtons)と同等。
 import { fetchText, fetchJson } from "./api.js";
 import {
-	loadEngine, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
+	loadEngine, buildDatabase, unitsListFromTokens,
 } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { writeClipboard } from "./clipboard.js";
 import { createYomiApi } from "./yomiApi.js";
+import { originalTextToCsv } from "./wordlistInput.js";
+import {
+	createCustomWordlistRepository, customWordlistId, customWordlistValue,
+	CUSTOM_WORDLISTS_STORAGE_KEY,
+} from "./customWordlists.js";
 import {
 	setupButtonGroup, createParamControls,
 	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
@@ -55,7 +60,11 @@ export async function startApp() {
 	const wordlistButtons = $id("wordlist-buttons");
 	const wordlistFacets = $id("wordlist-facets");
 	const originalDialog = $id("original-dialog");
+	const originalName = $id("original-name");
 	const originalText = $id("original-text");
+	const originalStatus = $id("original-status");
+	const customWordlistActions = $id("custom-wordlist-actions");
+	const btnCustomWordlistEdit = $id("btn-custom-wordlist-edit");
 
 	// 生成画面の状態は sessionStorage に保持し、編集ツール等から戻ってきても
 	// 入力・結果が消えないようにする。歌詞は初期化を待たずここで復元する
@@ -298,10 +307,88 @@ export async function startApp() {
 		wordlistButtons.appendChild(wrap);
 		wordlistSelects.push({ sel, wrap, textEl, capEl, label: item.label });
 	}
-	const originalBtn = addWordlistButton({
-		value: "ORIGINAL",
-		text: "自作の単語リストを使用",
+
+	// 自作リストは名前付きで複数保存し、既存のグループ型UIと同じselectから選ぶ。
+	// 保存本文はentryにもスナップショットとして持たせ、変換・編集ツールが
+	// localStorageの「現在値」に依存しないようにする。
+	const customRepository = createCustomWordlistRepository(localStorage);
+	let customLists = [];
+	let customLoadError = null;
+	try {
+		customLists = customRepository.list(); // 旧originalWordlistの初回移行もここ
+	} catch (err) {
+		console.warn("自作リストの読み込みに失敗:", err);
+		customLoadError = err;
+	}
+	const defaultWordlist = selectedWordlist;
+	const customWrap = document.createElement("span");
+	customWrap.className = "btn wordlist-select-wrap";
+	const customCapEl = document.createElement("span");
+	customCapEl.className = "wordlist-select-caption";
+	customCapEl.textContent = "自作";
+	customCapEl.hidden = true;
+	const customTextEl = document.createElement("span");
+	customTextEl.textContent = "自作リスト";
+	const customSelect = document.createElement("select");
+	customSelect.setAttribute("aria-label", "自作リスト");
+	customWrap.append(customCapEl, customTextEl, customSelect);
+	wordlistButtons.appendChild(customWrap);
+	wordlistSelects.push({
+		sel: customSelect, wrap: customWrap, textEl: customTextEl,
+		capEl: customCapEl, label: "自作リスト",
 	});
+
+	function customEntry(list) {
+		return {
+			value: customWordlistValue(list.id),
+			text: list.name,
+			customId: list.id,
+			originalText: list.text,
+			updatedAt: list.updatedAt,
+		};
+	}
+
+	function renderCustomOptions() {
+		for (const value of [...wordlistByValue.keys()]) {
+			if (customWordlistId(value)) wordlistByValue.delete(value);
+		}
+		customSelect.replaceChildren();
+		const group = document.createElement("optgroup");
+		group.label = "保存済み";
+		for (const list of customLists) {
+			const entry = customEntry(list);
+			const opt = document.createElement("option");
+			opt.value = entry.value;
+			opt.textContent = entry.text;
+			opt.__config = entry;
+			group.appendChild(opt);
+			wordlistByValue.set(entry.value, {
+				entry,
+				activate: () => {
+					customSelect.value = entry.value;
+					setWordlistControl(customSelect);
+					customTextEl.textContent = entry.text;
+					customCapEl.hidden = false;
+				},
+			});
+		}
+		if (customLists.length > 0) customSelect.appendChild(group);
+		const add = document.createElement("option");
+		add.value = "__NEW_CUSTOM_WORDLIST__";
+		add.textContent = "＋ 新しいリスト";
+		customSelect.appendChild(add);
+		customSelect.selectedIndex = -1;
+	}
+	renderCustomOptions();
+	// 旧版で変換済みの結果をsessionStorageから復元する場合、選択値だけでなく
+	// 編集ツールへ渡す変換時リストも移行する。旧キーは新形式保存後に消えるため、
+	// ここを直さないと「編集ツールで開く」で候補DBが空になる。
+	if (savedMain && savedMain.lastConversion && savedMain.lastConversion.wordlist
+		&& savedMain.lastConversion.wordlist.value === "ORIGINAL"
+		&& typeof savedMain.lastConversion.wordlist.csvText !== "string"
+		&& customLists.length > 0) {
+		savedMain.lastConversion.wordlist = customEntry(customLists[0]);
+	}
 
 	// ファセット絞り込み(描画・whereのコンパイル)も編集ツールと共有する。
 	// 共有関数はコンテナ引数を取るので、生成画面のコンテナを束ねただけのラッパにする
@@ -312,19 +399,141 @@ export async function startApp() {
 		setWordlistControl(btn); // プルダウン側の選択も解除する
 		selectedWordlist = btn.__config;
 		renderFacets(selectedWordlist);
-		if (btn === originalBtn) {
-			originalText.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-			originalDialog.showModal();
-		}
+		customWordlistActions.hidden = true;
 		saveMainState();
 	});
 	renderFacets(selectedWordlist);
 
+	let editingCustomId = null;
+	let editingCustomUpdatedAt = null;
+	function showOriginalStatus(message) {
+		originalStatus.textContent = message || "";
+		originalStatus.hidden = !message;
+	}
+	function openOriginalDialog(list = null) {
+		editingCustomId = list ? list.id : null;
+		editingCustomUpdatedAt = list ? list.updatedAt : null;
+		$id("original-dialog-title").textContent = list
+			? "自作単語リストの編集" : "自作単語リストの保存";
+		originalName.value = list ? list.name : "";
+		originalText.value = list ? list.text : "";
+		$id("original-delete").hidden = !list;
+		showOriginalStatus(customLoadError ? customLoadError.message : "");
+		originalDialog.showModal();
+		originalName.focus();
+	}
+
+	function restoreSelectedWordlistControl() {
+		const found = selectedWordlist && wordlistByValue.get(selectedWordlist.value);
+		if (found) found.activate();
+	}
+
+	customSelect.addEventListener("change", () => {
+		if (customSelect.value === "__NEW_CUSTOM_WORDLIST__") {
+			customSelect.selectedIndex = -1;
+			restoreSelectedWordlistControl();
+			openOriginalDialog();
+			return;
+		}
+		const found = wordlistByValue.get(customSelect.value);
+		if (!found) return;
+		found.activate();
+		selectedWordlist = found.entry;
+		renderFacets(selectedWordlist);
+		customWordlistActions.hidden = false;
+		saveMainState();
+	});
+
+	btnCustomWordlistEdit.addEventListener("click", () => {
+		const id = customWordlistId(selectedWordlist && selectedWordlist.value);
+		const list = id && customLists.find((item) => item.id === id);
+		if (list) openOriginalDialog(list);
+	});
+
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
 	$id("original-register").addEventListener("click", () => {
-		localStorage.setItem(ORIGINAL_STORAGE_KEY, originalText.value);
-		track("wordlist_original", {});
-		originalDialog.close();
+		const name = originalName.value.trim();
+		const text = originalText.value;
+		if (!name) {
+			showOriginalStatus("リスト名を入力してください");
+			originalName.focus();
+			return;
+		}
+		if (!text.trim()) {
+			showOriginalStatus("単語を1つ以上入力してください");
+			originalText.focus();
+			return;
+		}
+		try {
+			const saved = editingCustomId
+				? customRepository.update(editingCustomId, { name, text }, {
+					expectedUpdatedAt: editingCustomUpdatedAt,
+				})
+				: customRepository.create({ name, text });
+			customLoadError = null;
+			customLists = customRepository.list();
+			renderCustomOptions();
+			const found = wordlistByValue.get(customWordlistValue(saved.id));
+			found.activate();
+			selectedWordlist = found.entry;
+			renderFacets(selectedWordlist);
+			customWordlistActions.hidden = false;
+			saveMainState();
+			track("wordlist_original", { action: editingCustomId ? "update" : "create" });
+			originalDialog.close();
+		} catch (err) {
+			console.warn("自作リストの保存に失敗:", err);
+			showOriginalStatus("保存できませんでした: " + err.message);
+		}
+	});
+
+	$id("original-delete").addEventListener("click", () => {
+		const list = customLists.find((item) => item.id === editingCustomId);
+		if (!list || !confirm(`「${list.name}」を削除しますか？`)) return;
+		try {
+			customRepository.remove(list.id);
+			customLists = customRepository.list();
+			const wasSelected = customWordlistId(selectedWordlist && selectedWordlist.value) === list.id;
+			renderCustomOptions();
+			if (wasSelected && defaultWordlist) {
+				const fallback = wordlistByValue.get(defaultWordlist.value);
+				if (fallback) fallback.activate();
+				selectedWordlist = defaultWordlist;
+				renderFacets(selectedWordlist);
+				customWordlistActions.hidden = true;
+				saveMainState();
+			}
+			track("wordlist_original", { action: "delete" });
+			originalDialog.close();
+		} catch (err) {
+			console.warn("自作リストの削除に失敗:", err);
+			showOriginalStatus("削除できませんでした: " + err.message);
+		}
+	});
+
+	// 別タブでの作成・更新・削除を一覧へ反映する。編集中のtextareaは上書きせず、
+	// 保存時のupdatedAt比較で競合を検知してユーザーの入力を残す。
+	window.addEventListener("storage", (event) => {
+		if (event.key !== CUSTOM_WORDLISTS_STORAGE_KEY) return;
+		try {
+			const selectedId = customWordlistId(selectedWordlist && selectedWordlist.value);
+			customLists = customRepository.list();
+			renderCustomOptions();
+			const current = selectedId && wordlistByValue.get(customWordlistValue(selectedId));
+			if (current) {
+				current.activate();
+				selectedWordlist = current.entry;
+			} else if (selectedId && defaultWordlist) {
+				const fallback = wordlistByValue.get(defaultWordlist.value);
+				if (fallback) fallback.activate();
+				selectedWordlist = defaultWordlist;
+				customWordlistActions.hidden = true;
+				renderFacets(selectedWordlist);
+				saveMainState();
+			}
+		} catch (err) {
+			console.warn("別タブの自作リスト更新を反映できませんでした:", err);
+		}
 	});
 
 	// ---- サンプル(歌詞 × 単語リスト) ----
@@ -349,9 +558,9 @@ export async function startApp() {
 
 	async function getDatabase(entry, where) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
-		// キーは内容で構成する(ORIGINALは登録テキスト自体をキーにする)
-		if (entry.value === "ORIGINAL") {
-			const key = "ORIGINAL|" + (localStorage.getItem(ORIGINAL_STORAGE_KEY) || "");
+		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
+		if (customWordlistId(entry.value)) {
+			const key = [entry.value, entry.csvText || entry.originalText || ""].join("|");
 			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry));
 			return dbCache.get(key);
 		}
@@ -519,11 +728,15 @@ export async function startApp() {
 			paramControls.setPreset(savedMain.preset);
 		}
 		if (savedMain.wordlistValue) {
-			const found = wordlistByValue.get(savedMain.wordlistValue);
+			// 旧セッションのORIGINALは、移行済みの先頭リストへ読み替える。
+			const restoredValue = savedMain.wordlistValue === "ORIGINAL" && customLists.length > 0
+				? customWordlistValue(customLists[0].id) : savedMain.wordlistValue;
+			const found = wordlistByValue.get(restoredValue);
 			if (found) {
 				found.activate();
 				selectedWordlist = found.entry;
 				renderFacets(selectedWordlist);
+				customWordlistActions.hidden = !customWordlistId(selectedWordlist.value);
 			}
 		}
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
@@ -565,7 +778,16 @@ export async function startApp() {
 				app = engine.appFor(param.VOWEL_RATIO);
 				// ファセットのチェック状態は変換後も操作できるため、
 				// DB構築に実際使ったwhereをここで確定して編集画面へ引き継ぐ
-				const entry = selectedWordlist;
+				let entry = selectedWordlist;
+				// 変換時の自作リストを正規化CSVとしてスナップショット化する。
+				// 変換後に保存内容を編集・削除しても、編集ツール側で同じ候補を再現できる。
+				if (customWordlistId(entry && entry.value)) {
+					entry = {
+						...entry,
+						originalText: undefined,
+						csvText: originalTextToCsv(entry.originalText, app),
+					};
+				}
 				const where = compileWhere(entry);
 				const db = await getDatabase(entry, where);
 				const tokensList = await tokenizePhrases(phrases);
