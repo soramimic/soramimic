@@ -3,8 +3,8 @@
 //
 // 受け付ける書き方は2通り(埋め込み先 soramimic-video の wordlist_csv.py と同じ考え方):
 //
-// 1. ヘッダ付き tidy CSV — 1行目のセルに既知の列名(id/original/surface/pronunciation)が
-//    1つでもあればヘッダとみなし、行の中身は作り直さずに通す。**id はユーザーが書いた値を
+// 1. ヘッダ付き tidy CSV — 1行目のセルに既知の列名(id/original/surface/pronunciationと
+//    日本語の別名)が1つでもあればヘッダとみなす。引用符つきCSVも解釈する。**id はユーザーが書いた値を
 //    尊重する**(振り直さない): 書き出しJSONの results の id と、DB側の id が1対1で
 //    対応している契約(csvText契約)を壊さないため。
 // 2. かんたん形式(plain) — 従来の「見出し語,読み1,読み2…」。1列だけ(=読みが書かれていない)
@@ -28,30 +28,109 @@ const DROPPED_COLUMNS = new Set(["image", "image_page"]);
 // 読みとして通すのはカナ(ひらがな/カタカナ)と長音・繰り返し記号だけ
 const KANA_ONLY = /^[ぁ-ゖァ-ヺーゝゞヽヾ]+$/;
 
-// 列名の揺れ(BOM・前後空白・大文字小文字)だけ均す。エンジンのCSVパーサは列名の
-// 完全一致しか見ないので、日本語の別名(表記/読み 等)はここでは受け付けない
+// Soramimic VideoのアップロードCSVと同じ列名の言い換え。
+const COLUMN_ALIASES = {
+	id: "id", no: "id",
+	original: "original", 正式名称: "original", 原語: "original",
+	surface: "surface", word: "surface", text: "surface",
+	単語: "surface", 表記: "surface", 見出し: "surface",
+	pronunciation: "pronunciation", kana: "pronunciation", yomi: "pronunciation",
+	reading: "pronunciation", 読み: "pronunciation", よみ: "pronunciation",
+	読み方: "pronunciation", カナ: "pronunciation", かな: "pronunciation",
+	ふりがな: "pronunciation",
+};
+
+// 列名の揺れ(BOM・前後空白・大文字小文字・日本語の別名)を均す。
 function normalizeColumn(name) {
 	const cleaned = String(name ?? "").replace(/\uFEFF/g, "").trim();
-	return /^[\x20-\x7e]*$/.test(cleaned) ? cleaned.toLowerCase() : cleaned;
+	const comparable = /^[\x20-\x7e]*$/.test(cleaned) ? cleaned.toLowerCase() : cleaned;
+	return COLUMN_ALIASES[comparable] || comparable;
 }
 
 function cleanCell(value) {
-	return String(value ?? "").replace(/\uFEFF/g, "").trim();
+	return String(value ?? "").replace(/[\uFEFF\u200B]/g, "")
+		.replace(/\r\n|\n|\r/g, " ").replace(/,/g, "、").trim();
+}
+
+// ブラウザ内だけで完結する小さなCSV reader。引用符内のカンマ・改行と
+// 二重引用符("")を解釈し、Video側のPython csv.readerと同じ入力を受ける。
+function parseCsvRows(text) {
+	const rows = [];
+	let row = [];
+	let field = "";
+	let quoted = false;
+	const src = String(text ?? "");
+	for (let i = 0; i < src.length; i++) {
+		const char = src[i];
+		if (quoted) {
+			if (char === '"' && src[i + 1] === '"') {
+				field += '"';
+				i++;
+			} else if (char === '"') {
+				quoted = false;
+			} else {
+				field += char;
+			}
+		} else if (char === '"' && field === "") {
+			quoted = true;
+		} else if (char === ",") {
+			row.push(field);
+			field = "";
+		} else if (char === "\n" || char === "\r") {
+			row.push(field);
+			rows.push(row);
+			row = [];
+			field = "";
+			if (char === "\r" && src[i + 1] === "\n") i++;
+		} else {
+			field += char;
+		}
+	}
+	if (field !== "" || row.length > 0) {
+		row.push(field);
+		rows.push(row);
+	}
+	return rows;
 }
 
 /**
  * 1行目が tidy CSV のヘッダらしいか。
  *
  * 既知の列名が1つでもあればヘッダとみなす(埋め込み先の `_looks_like_header` と同じ発想)。
- * ただし**セルが1つだけの行はヘッダにしない**: plain の1行目がたまたま「surface」の
- * ような語だったときに、語をヘッダとして食べてしまうのを避けるため。
- * 逆に「id,original,surface,pronunciation」そのものを語として並べた plain は区別できず、
- * ヘッダとして解釈される(埋め込み先も同じ割り切り)。
+ * Video互換ではsurfaceだけの1列ヘッダも有効なので、plain の1語目がたまたま
+ * 「surface」等だった場合との区別はできず、ヘッダとして解釈する。
  */
 export function looksLikeTidyHeader(line) {
-	const cells = String(line ?? "").split(",").map(normalizeColumn);
-	if (cells.length < 2) return false;
+	const cells = (parseCsvRows(line)[0] || []).map(normalizeColumn);
 	return cells.some((c) => BASE_COLUMNS.includes(c));
+}
+
+function plainRows(text) {
+	return parseCsvRows(text).map((raw) => {
+		const row = raw.map(cleanCell);
+		for (let i = 0; i < row.length; i++) {
+			const comment = row[i].indexOf("#");
+			if (comment < 0) continue;
+			row[i] = row[i].slice(0, comment).trim();
+			row.length = i + 1;
+			break;
+		}
+		return row;
+	}).filter((row) => row.length > 0 && row[0] !== "");
+}
+
+// ファイル上限の判定用。plainの複数読みは正規化後に複数行へ展開されるため、
+// 物理行ではなく実際にDBへ渡る行数を数える。
+export function countWordlistInputRows(text) {
+	const src = String(text ?? "");
+	const head = firstContentLine(src);
+	if (head && !head.trim().startsWith("#") && looksLikeTidyHeader(head)) {
+		return Math.max(0, parseCsvRows(src)
+			.map((row) => row.map(cleanCell))
+			.filter((row) => row.some((cell) => cell !== "")).length - 1);
+	}
+	return plainRows(src).reduce((count, row) =>
+		count + Math.max(1, row.slice(1).filter(Boolean).length), 0);
 }
 
 // 空行を飛ばした最初の行(ヘッダ判定に使う)
@@ -110,6 +189,23 @@ export function fillPlainReadings(text, getYomi) {
 		.join("\n");
 }
 
+function plainTextToCsv(text, getYomi) {
+	const rows = plainRows(text);
+	const readings = estimateReadings(
+		rows.filter((row) => row.slice(1).filter(Boolean).length === 0).map((row) => row[0]),
+		getYomi);
+	const body = [];
+	for (let i = 0; i < rows.length; i++) {
+		const original = rows[i][0];
+		const variants = rows[i].slice(1).filter(Boolean);
+		if (variants.length === 0) variants.push(readings.get(original) || original);
+		for (const pronunciation of variants) {
+			body.push([String(i), original, original, pronunciation].join(","));
+		}
+	}
+	return [BASE_COLUMNS.join(","), ...body].join("\n");
+}
+
 /**
  * ヘッダ付き tidy CSV を、エンジンが読める形に均す。
  *
@@ -119,9 +215,8 @@ export function fillPlainReadings(text, getYomi) {
  * - 読みが空(または NA)の行は表記から読みを推定して埋める
  */
 export function tidyTextToCsv(text, getYomi) {
-	const rows = String(text ?? "")
-		.split(/\r\n|\n|\r/)
-		.map((line) => line.split(",").map(cleanCell))
+	const rows = parseCsvRows(text)
+		.map((row) => row.map(cleanCell))
 		.filter((cells) => cells.some((c) => c !== ""));
 	if (rows.length === 0) return BASE_COLUMNS.join(",");
 
@@ -194,5 +289,5 @@ export function originalTextToCsv(text, app) {
 	if (!head.trim().startsWith("#") && looksLikeTidyHeader(head)) {
 		return tidyTextToCsv(src, getYomi);
 	}
-	return app.wordList.plainToCsv(fillPlainReadings(src, getYomi));
+	return plainTextToCsv(src, getYomi);
 }

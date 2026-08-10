@@ -82,6 +82,8 @@ try {
 		|| migrated.state.lists[0].text !== "山田,ヤマダ") {
 		throw new Error("旧自作リストの移行に失敗: " + JSON.stringify(migrated));
 	}
+	await page.emulateMedia({ colorScheme: "dark" });
+	await page.setViewportSize({ width: 320, height: 568 });
 	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
 		label: "自作リスト",
 	});
@@ -93,16 +95,68 @@ try {
 	if (await page.inputValue("#original-text") !== "山田,ヤマダ") {
 		throw new Error("移行した自作リスト本文が編集画面に復元されない");
 	}
+	const darkColors = await page.evaluate(() => {
+		const input = getComputedStyle(document.getElementById("original-name"));
+		const textarea = getComputedStyle(document.getElementById("original-text"));
+		const dialog = getComputedStyle(document.getElementById("original-dialog"));
+		const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+		const luminance = (value) => {
+			const channels = rgb(value).map((n) => {
+				const v = n / 255;
+				return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+			});
+			return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+		};
+		const contrast = (fg, bg) => {
+			const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a);
+			return (hi + 0.05) / (lo + 0.05);
+		};
+		return {
+			inputContrast: contrast(input.color, input.backgroundColor),
+			textareaContrast: contrast(textarea.color, textarea.backgroundColor),
+			inputFontSize: parseFloat(input.fontSize),
+			dialogBackground: dialog.backgroundColor,
+			inputBackground: input.backgroundColor,
+			buttonsInsideViewport: [...document.querySelectorAll(
+				"#original-dialog .custom-wordlist-dialog-buttons button:not([hidden])")]
+				.every((button) => {
+					const rect = button.getBoundingClientRect();
+					return rect.left >= 0 && rect.right <= innerWidth;
+				}),
+		};
+	});
+	if (darkColors.inputContrast < 4.5 || darkColors.textareaContrast < 4.5
+		|| darkColors.dialogBackground !== darkColors.inputBackground
+		|| darkColors.inputFontSize < 16 || !darkColors.buttonsInsideViewport) {
+		throw new Error("ダークモード・狭幅の保存画面表示が不正: " + JSON.stringify(darkColors));
+	}
 	await page.fill("#original-name", "名字");
 	await page.fill("#original-text", "佐藤,サトウ");
 	await page.click("#original-register");
+	await page.emulateMedia({ colorScheme: "light" });
+	await page.setViewportSize({ width: 1280, height: 720 });
 
 	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
 		value: "__NEW_CUSTOM_WORDLIST__",
 	});
 	await page.waitForSelector("#original-dialog[open]");
-	await page.fill("#original-name", "食べ物");
-	await page.fill("#original-text", "林檎,リンゴ");
+	const uploadedText = "surface,pronunciation\n林檎,リンゴ";
+	const [chooser] = await Promise.all([
+		page.waitForEvent("filechooser"),
+		page.click("#btn-original-file"),
+	]);
+	await chooser.setFiles({
+		name: "食べ物.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.from(uploadedText, "utf8"),
+	});
+	await page.waitForFunction(
+		(text) => document.getElementById("original-text").value === text,
+		uploadedText, { timeout: 10000 });
+	if (await page.inputValue("#original-name") !== "食べ物"
+		|| !(await page.textContent("#original-status")).includes("1語")) {
+		throw new Error("自作リストファイルの名前・件数表示が不正");
+	}
 	await page.click("#original-register");
 	const savedCustom = await page.evaluate(() =>
 		JSON.parse(localStorage.getItem("soramimic-custom-wordlists")));

@@ -11,6 +11,7 @@ import {
 	createCustomWordlistRepository, customWordlistId, customWordlistValue,
 	CUSTOM_WORDLISTS_STORAGE_KEY,
 } from "./customWordlists.js";
+import { readCustomWordlistFile } from "./customWordlistFile.js";
 import {
 	setupButtonGroup, createParamControls,
 	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
@@ -63,6 +64,7 @@ export async function startApp() {
 	const originalName = $id("original-name");
 	const originalText = $id("original-text");
 	const originalStatus = $id("original-status");
+	const originalFile = $id("original-file");
 	const customWordlistActions = $id("custom-wordlist-actions");
 	const btnCustomWordlistEdit = $id("btn-custom-wordlist-edit");
 
@@ -406,9 +408,10 @@ export async function startApp() {
 
 	let editingCustomId = null;
 	let editingCustomUpdatedAt = null;
-	function showOriginalStatus(message) {
+	function showOriginalStatus(message, isError = true) {
 		originalStatus.textContent = message || "";
 		originalStatus.hidden = !message;
+		originalStatus.classList.toggle("is-error", !!message && isError);
 	}
 	function openOriginalDialog(list = null) {
 		editingCustomId = list ? list.id : null;
@@ -451,6 +454,25 @@ export async function startApp() {
 	});
 
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
+	$id("btn-original-file").addEventListener("click", () => originalFile.click());
+	originalFile.addEventListener("change", async () => {
+		const file = originalFile.files && originalFile.files[0];
+		originalFile.value = ""; // 同じファイルを選び直してもchangeを発火させる
+		if (!file) return;
+		try {
+			const loaded = await readCustomWordlistFile(file);
+			const engine = await enginePromise;
+			// 名前付き保存へ進む前に、選択したファイルが実際に正規化できるか確認する。
+			originalTextToCsv(loaded.text, engine.app);
+			originalText.value = loaded.text;
+			if (!editingCustomId && !originalName.value.trim()) originalName.value = loaded.name;
+			showOriginalStatus(
+				`${file.name}: ${loaded.rows.toLocaleString()}語を入力欄へ読み込みました`, false);
+		} catch (err) {
+			console.warn("自作リストファイルの読み込みに失敗:", err);
+			showOriginalStatus("読み込めませんでした: " + err.message);
+		}
+	});
 	$id("original-register").addEventListener("click", () => {
 		const name = originalName.value.trim();
 		const text = originalText.value;
