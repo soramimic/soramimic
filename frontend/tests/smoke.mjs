@@ -62,6 +62,30 @@ try {
 		throw new Error("出力形式が出力結果欄の中にない");
 	}
 
+	// ---- ファセット: 未指定なら全チェック表示、一括操作もグループごとに効く ----
+	await page.click("#wordlist-buttons button[data-value='POKEMON']");
+	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>
+		groups.map((group) => ({
+			all: group.querySelectorAll('input[type="checkbox"]').length,
+			checked: group.querySelectorAll('input[type="checkbox"]:checked').length,
+		})));
+	if (initialFacetState.length === 0 || initialFacetState.some((s) => s.all === 0 || s.checked !== s.all)) {
+		throw new Error("既定指定のないファセットが全チェックで始まらない: " +
+			JSON.stringify(initialFacetState));
+	}
+	const firstFacet = page.locator("#wordlist-facets .facet-group").first();
+	await firstFacet.getByRole("button", { name: "タイプを全はずし" }).click();
+	if (await firstFacet.locator('input[type="checkbox"]:checked').count() !== 0) {
+		throw new Error("全はずしでチェックが外れない");
+	}
+	await firstFacet.getByRole("button", { name: "タイプを全チェック" }).click();
+	if (await firstFacet.locator('input[type="checkbox"]:checked').count() !==
+		await firstFacet.locator('input[type="checkbox"]').count()) {
+		throw new Error("全チェックですべて選択されない");
+	}
+	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
+	await page.click("#wordlist-buttons button[data-value='BASEBALL']");
+
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
 

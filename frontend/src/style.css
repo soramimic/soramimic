@@ -191,6 +191,27 @@ main {
 	color: var(--muted);
 }
 
+.facet-actions {
+	display: inline-flex;
+	gap: 0.25rem;
+}
+
+.facet-action {
+	padding: 0.15rem 0.4rem;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--panel);
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.72rem;
+	cursor: pointer;
+}
+
+.facet-action:hover {
+	border-color: var(--accent);
+	color: var(--text);
+}
+
 .facet-check {
 	display: inline-flex;
 	align-items: center;

@@ -265,13 +265,32 @@ export function renderFacets(container, entry) {
 		label.className = "facet-label";
 		label.textContent = f.label || f.column || "";
 		group.appendChild(label);
+		const actions = document.createElement("span");
+		actions.className = "facet-actions";
+		for (const [text, checked] of [["全チェック", true], ["全はずし", false]]) {
+			const button = document.createElement("button");
+			button.type = "button";
+			button.className = "facet-action";
+			button.textContent = text;
+			button.setAttribute("aria-label", `${label.textContent}を${text}`);
+			button.addEventListener("click", () => {
+				for (const cb of group.querySelectorAll('input[type="checkbox"]')) {
+					cb.checked = checked;
+				}
+			});
+			actions.appendChild(button);
+		}
+		group.appendChild(actions);
+		// default 指定がない facet は未チェックでも全選択扱いになるため、
+		// 同じ意味を保ったまま初期表示だけ分かりやすく全チェックにする。
+		const hasDefault = f.values.some((item) => item.default === true);
 		for (const item of f.values) {
 			const lbl = document.createElement("label");
 			lbl.className = "facet-check";
 			const cb = document.createElement("input");
 			cb.type = "checkbox";
 			cb.value = item.v;
-			cb.checked = item.default === true;
+			cb.checked = !hasDefault || item.default === true;
 			// 各選択肢が担う where 断片を要素に持たせる(単一列に限らない)
 			cb.__where = facetClause(f, item);
 			lbl.append(cb, document.createTextNode(item.label || item.v));
