@@ -125,24 +125,41 @@ main {
 	margin: 0 0 0.4rem;
 }
 
+.output-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.55rem 0.9rem;
+	margin-bottom: 0.7rem;
+}
+
+.output-header h2 {
+	flex: none;
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 700;
+	line-height: 1.3;
+	color: var(--text);
+}
+
 .output-toolbar {
 	display: flex;
-	align-items: flex-end;
+	flex: 1 1 18rem;
+	align-items: center;
 	gap: 0.6rem;
-	margin-bottom: 0.6rem;
+	min-width: 0;
 }
 
 .output-format-control {
 	flex: 1;
 	min-width: 0;
-}
-
-.output-format-control .field-label {
-	display: block;
+	min-height: 2.75rem;
+	font-size: 0.9rem;
 }
 
 .output-toolbar .btn {
 	flex: none;
+	min-height: 2.75rem;
 	white-space: nowrap;
 }
 
