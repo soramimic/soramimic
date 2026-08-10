@@ -2,6 +2,13 @@
 
 export const MAX_PHRASE_LENGTH = 40;
 
+// エンジン内の読みはカタカナで保持するが、コピー時の元歌詞は読みやすい
+// ひらがなで出す。長音・記号・英数字などはそのまま残す。
+function katakanaToHiragana(text) {
+	return (text || "").replace(/[ァ-ヶ]/g, (char) =>
+		String.fromCharCode(char.charCodeAt(0) - 0x60));
+}
+
 // 長い行を区切り文字(改行・句読点・空白)を考慮して分割する
 export function splitLongLine(text, max_length) {
 	let result = [];
@@ -36,8 +43,9 @@ export function textToPhrases(text) {
 export function makeResultText(result, format) {
 	if (format == "1") {
 		return result.map((line) => {
-			let l1 = line.map((v) => v.surface).join("  "); //word
-			let l2 = line.map((v) => v.original_surface).join(""); //org
+			// 同じ区切りを使い、替え歌の各語と元歌詞の読みを対応させる。
+			let l1 = line.map((v) => v.surface).join("  ");
+			let l2 = line.map((v) => katakanaToHiragana(v.originalkana)).join("  ");
 			return [l1, l2, ""].join("\n");
 		}).join("\n");
 	} else if (format == "2") {
