@@ -52,3 +52,5 @@ jobs:
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
         run: node tests/xfalign.mjs
+      - name: 単語リスト設定のテスト
+        run: node tests/setting-wordlists.mjs
