@@ -198,6 +198,14 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 			: used_words;
         
 		const target = tokens.map(v=>v.pronunciation);
+		// 1文字の読みが複数ユニットになる場合（例: 畑=ハ・タ・ケ）、
+		// surface_form は先頭ユニットだけが所有する。文字の途中を自動生成の
+		// 単語境界にすると「畑 / ハ」と「 / タケ」に分かれ、元歌詞の表記と
+		// 読みの対応が崩れるため、DP の内部境界は文字境界だけに限定する。
+		// 固定つき再生成では既存の period が文字途中にある可能性があるので、
+		// 区間の端点 s/t 自体は許容し、その内側の分割点だけを制限する。
+		const isCharacterBoundary = (index) => index <= 0 || index >= tokens.length
+			|| tokens[index - 1].char_index !== tokens[index].char_index;
 		const phraseBreaks = tokens.map((v,j)=>{
 			if(j===0)return 0;
 			else if(v.phrase !== tokens[j-1].phrase){
@@ -222,6 +230,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 			
 			const results = [];
 			for (let i = s; i<t; i++){
+				if(i !== s && !isCharacterBoundary(i))continue;
 				//if ( number.includes(t-i) == false )continue
 				const subtarget = target.slice(i,t);
 
@@ -236,14 +245,20 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 
 				const prev_words = r[1];
 
-				//1ユニット区間には必ず filler(万能候補)を選択肢として置く(#128)。
+				//1文字区間には必ず filler(万能候補)を選択肢として置く(#128)。
+				//通常は1文字=1ユニットだが、漢字などは1文字が複数ユニットになるため、
+				//文字境界を守ったまま読み全体を1つのfillerにする。
 				//コストが巨大なので実単語が置ける区間では必ず負け、単語が尽きた/
 				//どの単語も合わない区間だけ「元歌詞のまま」で残る。これで
 				//「候補が無い→行が丸ごと空」という経路が無くなる。
 				//文節の報酬・ペナルティは単語の切れ目に対する調整なので未変換の
 				//fillerには掛けない(経路の優劣がfillerの個数だけで決まるようにする)
-				if(t - i === 1){
-					const kana = subtarget[0];
+				const firstCharIndex = tokens[i] && tokens[i].char_index;
+				const isSingleCharacterSpan = t - i === 1
+					|| (firstCharIndex != null && tokens.slice(i, t)
+						.every(token => token.char_index === firstCharIndex));
+				if(isSingleCharacterSpan){
+					const kana = subtarget.join("");
 					const filler_words = [].concat(prev_words);
 					filler_words.push({
 						surface: kana,

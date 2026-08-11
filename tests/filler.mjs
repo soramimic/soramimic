@@ -2,10 +2,10 @@
 //
 // 単語が足りない(DUPLICATE=falseで使い切った)・どの単語も合わない区間があると、
 // 以前は行の変換結果が丸ごと空になっていた。DPに常設した filler
-// (1ユニットを必ず埋められる仮想語。表記も読みも元歌詞のかなそのまま)で
+// (1文字を必ず埋められる仮想語。表記も読みも元歌詞のかなそのまま)で
 // 「変換しきれなかった部分は原曲のまま」という退化になったことを確認する:
 //   1. 2語しかないリスト+DUPLICATE=false+3行 → 空行ゼロ・不足分がfiller
-//   2. fillerのsurface/pronunciation/kanaが元歌詞のかなと一致し、1ユニットずつ並ぶ
+//   2. fillerのsurface/pronunciation/kanaが元歌詞のかなと一致する
 //   3. 実単語が置ける位置ではfillerが勝たない(重み・ペナルティ最大でも同じ)
 //   4. fillerは使用済み(単語重複なし)の対象外で、何度でも使える
 //   5. 固定(locks)と共存でき、隙間がfillerで埋まる
@@ -60,10 +60,10 @@ function assertCovered(words, unitCount, label) {
 	assert.equal(cursor, unitCount, `${label}: 行末まで覆われていない`);
 }
 
-// fillerの単語オブジェクトが仕様どおりか(1ユニット・元かなそのまま・id無し)
-function assertFiller(w, kana, label) {
+// fillerの単語オブジェクトが仕様どおりか(元かなそのまま・id無し)
+function assertFiller(w, kana, label, unitLength = 1) {
 	assert.equal(w.filler, true, `${label}: fillerフラグ`);
-	assert.equal(w.period[1] - w.period[0], 1, `${label}: fillerは1ユニット`);
+	assert.equal(w.period[1] - w.period[0], unitLength, `${label}: fillerのユニット数`);
 	assert.equal(w.surface, kana, `${label}: surfaceが元歌詞のかな`);
 	assert.equal(w.pronunciation, kana, `${label}: pronunciationが元歌詞のかな`);
 	assert.equal(w.kana, kana, `${label}: kanaが元歌詞のかな`);
@@ -145,6 +145,19 @@ print("[ok] 重み・ペナルティ最大でもfillerは実単語に勝たな�
 	assert.equal(showLine(same[0]), "[カ]+[カ]", "同じかなのfillerが並ぶ");
 }
 print("[ok] fillerは使用済み(単語重複なし)の対象外で何度でも使える");
+
+// ---- 4b. 複数ユニットの1文字も途中で切らずにfillerで覆う ----
+{
+	const noMatchDb = wordList.parsePlain(["クケコサ"].join("\n"));
+	const phrase = "畑";
+	const phraseUnits = unitsOf(phrase);
+	assert.deepEqual(phraseUnits, ["ハ", "タ", "ケ"], "畑は3ユニット");
+	const r = await generate([phrase], noMatchDb, PARAM);
+	assertCovered(r[0], phraseUnits.length, "複数ユニット文字のfiller");
+	assert.equal(r[0].length, 1, "畑の途中でfillerを分割しない");
+	assertFiller(r[0][0], "ハタケ", "畑 filler", 3);
+}
+print("[ok] 複数ユニットの1文字をfillerで覆う");
 
 // ---- 5. 固定(locks)との共存 ----
 {

@@ -112,7 +112,7 @@ try {
 	const fillers = line0.filter((w) => w.filler);
 	assert(fillers.length > 0, "fillerが1つも出ていない: " + JSON.stringify(line0));
 	assert(line0.some((w) => !w.filler), "実単語が1つも置かれていない");
-	// 行が隙間なく覆われ、fillerは1ユニットで元歌詞のかなそのまま
+	// 行が隙間なく覆われ、fillerは1文字単位で元歌詞のかなそのまま
 	let cursor = 0;
 	for (const w of line0) {
 		assert(w.period[0] === cursor, "periodが連続していない: " + JSON.stringify(line0));
@@ -120,9 +120,9 @@ try {
 	}
 	assert(cursor === units.length, "行末まで覆われていない");
 	for (const f of fillers) {
-		assert(f.period[1] - f.period[0] === 1, "fillerが1ユニットでない");
-		assert(f.surface === units[f.period[0]] && f.kana === units[f.period[0]],
-			`fillerの表記が元歌詞のかなと違う: ${f.surface} != ${units[f.period[0]]}`);
+		const expected = units.slice(f.period[0], f.period[1]).join("");
+		assert(f.surface === expected && f.kana === expected,
+			`fillerの表記が元歌詞のかなと違う: ${f.surface} != ${expected}`);
 		assert(!f.id, "fillerがidを持っている");
 	}
 
@@ -130,18 +130,23 @@ try {
 	const fillerChips = editor.locator(".editor-line[data-line='0'] .chip-word.filler");
 	assert(await fillerChips.count() === fillers.length,
 		"fillerチップの数が結果と一致しない");
-	const first = fillerChips.first();
-	const style = await first.evaluate((el) => {
+	// 候補差し替えの検証には、1モーラ語しかないテスト用リストに合わせて
+	// 1ユニットのfillerを選ぶ（複数ユニット漢字のfiller表示は上で検証済み）。
+	const replaceIndex = fillers.findIndex((f) => f.period[1] - f.period[0] === 1);
+	assert(replaceIndex >= 0, "差し替え可能な1ユニットfillerがない");
+	const replaceFiller = fillers[replaceIndex];
+	const replaceChip = fillerChips.nth(replaceIndex);
+	const style = await replaceChip.evaluate((el) => {
 		const s = getComputedStyle(el);
 		return { borderStyle: s.borderTopStyle, text: el.textContent, locks: el.querySelectorAll(".chip-lock").length };
 	});
 	assert(style.borderStyle === "dashed", "fillerチップが破線になっていない: " + style.borderStyle);
 	assert(style.locks === 0, "fillerチップに🔒が出ている");
-	assert(style.text === fillers[0].surface,
-		`fillerチップの文字が元歌詞のかなでない: ${style.text} != ${fillers[0].surface}`);
+	assert(style.text === replaceFiller.surface,
+		`fillerチップの文字が元歌詞のかなでない: ${style.text} != ${replaceFiller.surface}`);
 
 	// ---- タップすると候補パネルが開き、実単語に差し替えられる ----
-	await first.click();
+	await replaceChip.click();
 	await editor.waitForSelector(CANDIDATE, { timeout: 30000 });
 	const candCount = await editor.locator(CANDIDATE).count();
 	assert(candCount > 0, "fillerをタップしても候補が出ない");
@@ -152,7 +157,8 @@ try {
 
 	const after = await readData(editor);
 	const replaced = after.results[0].find(
-		(w) => w.period[0] === fillers[0].period[0] && w.period[1] === fillers[0].period[1]);
+		(w) => w.period[0] === replaceFiller.period[0]
+			&& w.period[1] === replaceFiller.period[1]);
 	assert(replaced, "差し替えた区間の単語が見つからない");
 	assert(!replaced.filler, "差し替えてもfillerのままになっている");
 	assert(replaced.surface === picked,
