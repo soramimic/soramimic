@@ -222,7 +222,7 @@
       },
       {
        "column": "vertebrate",
-       "label": "脊椎",
+       "label": "脊椎区分",
        "values": [
         { "v": "脊椎動物", "label": "脊椎動物", "default": true },
         { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }

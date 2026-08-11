@@ -11,6 +11,8 @@ assert.equal(marine.text, "海の生き物");
 assert.equal(marine.filepath, "wordlists/marine_life.csv");
 
 const facets = Object.fromEntries(marine.facets.map((facet) => [facet.column, facet]));
+assert.equal(facets.class.label, "分類");
+assert.equal(facets.vertebrate.label, "脊椎区分");
 assert.deepEqual(
   facets.class.values.map(({ v }) => v),
   ["哺乳類", "爬虫類", "魚類", "無脊椎動物"],
