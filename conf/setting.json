@@ -205,6 +205,32 @@
      ]
     },
     {
+     "value": "MARINE_LIFE",
+     "text": "海の生き物",
+     "filepath": "wordlists/marine_life.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "分類",
+       "values": [
+        { "v": "哺乳類", "label": "哺乳類", "default": true },
+        { "v": "爬虫類", "label": "爬虫類", "default": true },
+        { "v": "魚類", "label": "魚類", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
+       ]
+      },
+      {
+       "column": "vertebrate",
+       "label": "脊椎区分",
+       "values": [
+        { "v": "脊椎動物", "label": "脊椎動物", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
+       ]
+      }
+     ]
+    },
+    {
      "value": "PLANT",
      "text": "植物",
      "filepath": "wordlists/plant.csv",
