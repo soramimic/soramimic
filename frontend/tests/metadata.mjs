@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const expected = {
@@ -28,6 +29,9 @@ for (const [file, metadata] of Object.entries(expected)) {
 	assertOnce(html, `<title>${escapeRegExp(metadata.title)}</title>`, `${file} title`);
 	assertOnce(html, `<meta name="description" content="${escapeRegExp(metadata.description)}" ?/?>`, `${file} description`);
 	assertOnce(html, `<link rel="canonical" href="${escapeRegExp(metadata.url)}" ?/?>`, `${file} canonical`);
+	assertOnce(html, '<link rel="icon" type="image/png" href="/logo-soramimic-symbol-v3\\.png" ?/?>', `${file} favicon`);
+	assertOnce(html, '<link rel="apple-touch-icon" href="/logo-soramimic-symbol-v3\\.png" ?/?>', `${file} apple touch icon`);
+	assertOnce(html, '<img class="brand-logo"\\s+src="/logo-soramimic-horizontal-v1\\.png"', `${file} brand logo`);
 	assertOnce(html, `<meta property="og:title" content="${escapeRegExp(metadata.title)}" ?/?>`, `${file} og:title`);
 	assertOnce(html, `<meta property="og:description" content="${escapeRegExp(metadata.description)}" ?/?>`, `${file} og:description`);
 	assertOnce(html, `<meta property="og:url" content="${escapeRegExp(metadata.url)}" ?/?>`, `${file} og:url`);
@@ -40,5 +44,16 @@ const image = await readFile(new URL("../dist/og-image.png", import.meta.url));
 assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], "OG image must be a PNG");
 assert.equal(image.readUInt32BE(16), 1200, "OG image width");
 assert.equal(image.readUInt32BE(20), 630, "OG image height");
+
+for (const [file, width, height, sha256] of [
+	["logo-soramimic-symbol-v3.png", 512, 512, "6652f9e3e6d08b27a86c51e06e68121db0d3db2b99b604ac2ab2425119f5a7aa"],
+	["logo-soramimic-horizontal-v1.png", 1937, 350, "586ef0b2f15bc21f0dbcf9f9a2f068d22f2a2c03b099be09a2413369e7d76477"],
+]) {
+	const logo = await readFile(new URL(`../dist/${file}`, import.meta.url));
+	assert.deepEqual([...logo.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], `${file} must be a PNG`);
+	assert.equal(logo.readUInt32BE(16), width, `${file} width`);
+	assert.equal(logo.readUInt32BE(20), height, `${file} height`);
+	assert.equal(createHash("sha256").update(logo).digest("hex"), sha256, `${file} content`);
+}
 
 console.log("[ok] social metadata test passed");
