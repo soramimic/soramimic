@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prepare-static-assets.mjs",
     "preview": "vite preview",
     "test:smoke": "npm run build && node tests/smoke.mjs",
     "test:editor": "npm run build && node tests/editor-smoke.mjs && node tests/editor-settings.mjs && node tests/editor-wordlist.mjs && node tests/editor-filler.mjs && node tests/editor-setup.mjs && node tests/editor-song.mjs && node tests/editor-lyrics.mjs && node tests/editor-embed.mjs",
@@ -18,6 +18,7 @@
     "test:wordlist": "npm run build && node tests/editor-wordlist.mjs",
     "test:touch": "npm run build && node tests/editor-touch.mjs",
     "test:metadata": "npm run build && node tests/metadata.mjs",
+    "test:assets": "npm run build && node tests/static-assets.mjs",
     "sync-dict": "node -e \"const fs=require('fs');fs.cpSync('node_modules/kuromoji/dict','public/kuromoji/dict',{recursive:true});for(const f of ['LICENSE-2.0.txt','NOTICE.md'])fs.copyFileSync('node_modules/kuromoji/'+f,'public/kuromoji/'+f)\"",
     "predev": "npm run sync-dict",
     "prebuild": "npm run sync-dict"
