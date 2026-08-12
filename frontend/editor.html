@@ -3,12 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Soramimic 編集ツール</title>
+    <title>Soramimic 編集ツール｜空耳歌詞を思いどおりに仕上げる</title>
+    <meta name="description" content="Soramimicで作った空耳歌詞・替え歌を、候補の差し替えや読みの調整で思いどおりに仕上げる編集ツールです。" />
+    <link rel="canonical" href="https://soramimic.com/editor.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:site_name" content="Soramimic" />
+    <meta property="og:title" content="Soramimic 編集ツール｜空耳歌詞を思いどおりに仕上げる" />
+    <meta property="og:description" content="Soramimicで作った空耳歌詞・替え歌を、候補の差し替えや読みの調整で思いどおりに仕上げる編集ツールです。" />
+    <meta property="og:url" content="https://soramimic.com/editor.html" />
+    <meta property="og:image" content="https://soramimic.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="マイクから音符と言葉のタイルが広がるSoramimicのイメージ" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Soramimic 編集ツール｜空耳歌詞を思いどおりに仕上げる" />
+    <meta name="twitter:description" content="Soramimicで作った空耳歌詞・替え歌を、候補の差し替えや読みの調整で思いどおりに仕上げる編集ツールです。" />
+    <meta name="twitter:image" content="https://soramimic.com/og-image.png" />
+    <meta name="twitter:image:alt" content="マイクから音符と言葉のタイルが広がるSoramimicのイメージ" />
   </head>
   <body>
     <div id="app">
       <header class="site-header">
-        <a class="brand" href="./">Soramimic</a>
+        <a id="editor-brand" class="brand" href="./">Soramimic</a>
         <span class="editor-title">編集ツール</span>
       </header>
 
@@ -36,18 +55,6 @@
               <select id="setup-song-select" class="input" aria-label="曲"></select>
             </details>
             <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
-          </div>
-          <!-- 元歌詞(字幕用)。埋め込み元(soramimic-video)は元歌詞を字幕に使うので、
-               曲とセットの情報としてここで入力・確認できるようにする。入力すると
-               行ごとの元歌詞(originalLines)まで作ってホストへ渡す。変換の入力には
-               使わない。ホストがいない単体運用(soramimic.com)では字幕を作らないので
-               セクションごと出さない -->
-          <div class="field" id="setup-lyrics-field" hidden>
-            <h3 class="field-label">元歌詞(字幕用)</h3>
-            <textarea id="setup-lyrics" class="input setup-lyrics" rows="6"
-              aria-label="元歌詞(字幕用)"
-              placeholder="曲の元の歌詞(任意)。字幕に使われます"></textarea>
-            <p id="setup-lyrics-status" class="editor-status setup-lyrics-status" hidden></p>
           </div>
           <div id="setup-settings-slot"></div>
           <div class="setup-actions">
@@ -86,6 +93,7 @@
           <div class="toolbar-group">
             <label class="copy-label" for="copy-format">コピー形式</label>
             <select id="copy-format" class="input">
+              <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
               <option value="1">替え歌/元歌詞</option>
               <option value="2">替え歌読み/元歌詞読み</option>
               <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
@@ -116,22 +124,22 @@
           <div class="field" id="editor-wordlist-field" hidden>
             <h3 class="field-label">単語リスト</h3>
             <select id="editor-wordlist" class="input" aria-label="単語リスト"></select>
-            <textarea id="editor-original-text" class="input editor-original-text" rows="10" hidden
-              aria-label="自作リスト"
-              placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
-            <!-- 貼り付けの代わりにCSV/テキストを選んで流し込む。読み込み先は上の
-                 textarea なので、以降(正規化CSV・localStorage・再変換)は
-                 貼り付けたときとまったく同じ経路を通る -->
-            <div id="editor-original-file" class="editor-original-file" hidden>
-              <button id="btn-original-file" class="btn" type="button">ファイルを読み込む</button>
-              <span id="original-file-status" class="editor-status" hidden></span>
-            </div>
-            <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+            <button id="btn-original-edit" class="btn editor-original-edit" type="button" hidden>自作リストの内容を編集</button>
           </div>
           <div class="field">
             <h3 class="field-label">パラメータ</h3>
             <div id="editor-preset-buttons" class="btn-group-wrap"></div>
             <div id="editor-param-area" class="param-grid"></div>
+          </div>
+          <!-- ノート長は曲データを渡したホストでだけ利用できる。設定と指数計算は
+               soramimic側が担当し、ホストはα=1の生重みだけを渡す。 -->
+          <div class="field" id="editor-note-length-field" hidden>
+            <h3 class="field-label">ノート長重視</h3>
+            <input id="editor-note-length-alpha" class="input" type="number"
+              min="0" max="2" step="0.05" value="0.25"
+              aria-label="ノート長重視 α(0でオフ)" />
+            <p class="field-note">長く伸ばす音符ほど音の一致を優先します。0でオフ、
+              0.25は候補が近いときだけ効く控えめな設定です。</p>
           </div>
           <div class="field">
             <h3 class="field-label">単語重複</h3>
@@ -144,6 +152,55 @@
         </div>
         <div class="dialog-buttons editor-settings-actions">
           <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
+        </div>
+      </dialog>
+
+      <!-- 「自作リスト」を選んだときだけ開く登録画面。通常のリストを選んでいる間は
+           設定画面に貼り付け・ファイル操作を出さず、用途を混同させない。 -->
+      <dialog id="editor-original-dialog" class="editor-original-dialog">
+        <div class="dialog-header">
+          <h2>自作リストを使う</h2>
+          <button id="btn-original-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <p class="field-note">1行に「単語,読み」を入力します。入力欄へ直接貼り付けるか、CSV／テキストファイルを読み込めます。</p>
+        <textarea id="editor-original-text" class="input editor-original-text" rows="12"
+          aria-label="自作リスト"
+          placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
+        <div class="editor-original-file">
+          <button id="btn-original-paste" class="btn" type="button">クリップボードから貼り付け</button>
+          <button id="btn-original-file" class="btn" type="button">ファイルを読み込む</button>
+          <span id="original-file-status" class="editor-status" hidden></span>
+        </div>
+        <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+        <div class="dialog-buttons">
+          <button id="btn-original-cancel" class="btn" type="button">キャンセル</button>
+          <button id="btn-original-register" class="btn btn-primary" type="button">このリストを使う</button>
+        </div>
+      </dialog>
+
+      <!-- 持ち込みMIDI専用の入力画面。サンプル曲では同梱の元歌詞を使うため、
+           字幕用の元歌詞欄を通常のセットアップ画面には常駐させない。 -->
+      <dialog id="editor-midi-dialog" class="editor-midi-dialog">
+        <div class="dialog-header">
+          <h2>自分のMIDIを使う</h2>
+          <button id="btn-setup-midi-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="field">
+          <h3 class="field-label">MIDIファイル</h3>
+          <p id="setup-midi-title" class="setup-song-title"></p>
+          <button id="btn-setup-midi-file" class="btn" type="button">MIDIファイルを選ぶ</button>
+          <p id="setup-midi-status" class="editor-status setup-song-status" hidden></p>
+        </div>
+        <div class="field" id="setup-lyrics-field" hidden>
+          <h3 class="field-label">元歌詞(字幕用)</h3>
+          <p class="field-note">任意です。MIDIの歌詞を漢字かな交じりの字幕に置き換えるときに使います。</p>
+          <textarea id="setup-lyrics" class="input setup-lyrics" rows="8"
+            aria-label="元歌詞(字幕用)"
+            placeholder="曲の元の歌詞(任意)。字幕に使われます"></textarea>
+          <p id="setup-lyrics-status" class="editor-status setup-lyrics-status" hidden></p>
+        </div>
+        <div class="dialog-buttons">
+          <button id="btn-setup-midi-done" class="btn btn-primary" type="button">閉じる</button>
         </div>
       </dialog>
     </div>

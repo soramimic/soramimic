@@ -40,9 +40,17 @@ jobs:
         run: node tests/unit-weights.mjs
       - name: 自作リストの正規化CSV(csvText契約・idの決定性)のテスト
         run: node tests/wordlist-csv.mjs
+      - name: 名前付き自作リスト保存・旧データ移行のテスト
+        run: node tests/custom-wordlists.mjs
+      - name: 自作リストCSV・テキストファイル読み込みのテスト
+        run: node tests/custom-wordlist-file.mjs
       - name: filler(万能候補)のテスト
         run: node tests/filler.mjs
+      - name: 出力形式のテスト
+        run: node tests/convert-output.mjs
       - name: XF MIDI取り込みのテスト
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
         run: node tests/xfalign.mjs
+      - name: 単語リスト設定のテスト
+        run: node tests/setting-wordlists.mjs

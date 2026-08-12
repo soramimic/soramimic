@@ -265,18 +265,46 @@ export function renderFacets(container, entry) {
 		label.className = "facet-label";
 		label.textContent = f.label || f.column || "";
 		group.appendChild(label);
+		const options = document.createElement("div");
+		options.className = "facet-options";
+		group.appendChild(options);
+		const selectAllLabel = document.createElement("label");
+		selectAllLabel.className = "facet-check facet-select-all";
+		const selectAll = document.createElement("input");
+		selectAll.type = "checkbox";
+		selectAll.className = "facet-select-all-input";
+		selectAll.setAttribute("aria-label", `${label.textContent}をすべて選択`);
+		selectAllLabel.append(selectAll, document.createTextNode("(すべて選択)"));
+		options.appendChild(selectAllLabel);
+		const valueCheckboxes = [];
+		const syncSelectAll = () => {
+			const checkedCount = valueCheckboxes.filter((cb) => cb.checked).length;
+			selectAll.checked = checkedCount === valueCheckboxes.length;
+			selectAll.indeterminate = checkedCount > 0 && checkedCount < valueCheckboxes.length;
+		};
+		selectAll.addEventListener("change", () => {
+			for (const cb of valueCheckboxes) cb.checked = selectAll.checked;
+			syncSelectAll();
+		});
+		// default 指定がない facet は未チェックでも全選択扱いになるため、
+		// 同じ意味を保ったまま初期表示だけ分かりやすく全チェックにする。
+		const hasDefault = f.values.some((item) => item.default === true);
 		for (const item of f.values) {
 			const lbl = document.createElement("label");
 			lbl.className = "facet-check";
 			const cb = document.createElement("input");
 			cb.type = "checkbox";
+			cb.className = "facet-value";
 			cb.value = item.v;
-			cb.checked = item.default === true;
+			cb.checked = !hasDefault || item.default === true;
+			cb.addEventListener("change", syncSelectAll);
+			valueCheckboxes.push(cb);
 			// 各選択肢が担う where 断片を要素に持たせる(単一列に限らない)
 			cb.__where = facetClause(f, item);
 			lbl.append(cb, document.createTextNode(item.label || item.v));
-			group.appendChild(lbl);
+			options.appendChild(lbl);
 		}
+		syncSelectAll();
 		container.appendChild(group);
 	}
 }
@@ -290,7 +318,7 @@ export function compileWhere(container, entry) {
 	if (facets.length === 0) return entry ? entry.where : undefined;
 	const clauses = [];
 	for (const group of container.querySelectorAll(".facet-group")) {
-		const frags = [...group.querySelectorAll("input:checked")]
+		const frags = [...group.querySelectorAll("input.facet-value:checked")]
 			.map((cb) => cb.__where);
 		if (frags.length === 0) continue; // 制約なし
 		clauses.push("(" + frags.join(" or ") + ")");
@@ -318,7 +346,14 @@ function containsFragment(where, frag) {
 // renderFacets の既定(default:true)のまま何もしない
 export function restoreFacets(container, where) {
 	if (typeof where !== "string") return;
-	for (const cb of container.querySelectorAll("input[type=checkbox]")) {
+	for (const cb of container.querySelectorAll("input.facet-value")) {
 		cb.checked = containsFragment(where, cb.__where);
+	}
+	for (const group of container.querySelectorAll(".facet-group")) {
+		const values = [...group.querySelectorAll("input.facet-value")];
+		const selectAll = group.querySelector("input.facet-select-all-input");
+		const checkedCount = values.filter((cb) => cb.checked).length;
+		selectAll.checked = checkedCount === values.length;
+		selectAll.indeterminate = checkedCount > 0 && checkedCount < values.length;
 	}
 }

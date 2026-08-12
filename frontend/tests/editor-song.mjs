@@ -220,8 +220,12 @@ try {
 		"キャンセルで歌詞が変わった");
 	assert(await isHidden(page, "#setup-song-status"), "キャンセル後も依頼中の表示が残っている");
 
-	// ---- 「自分のMIDIを使う」→ song-upload の依頼 ----
+	// ---- 「自分のMIDIを使う」→ 専用モーダル → song-upload の依頼 ----
 	await page.click("#btn-setup-song-upload");
+	await page.waitForSelector("#editor-midi-dialog[open]", { timeout: 10000 });
+	assert(await page.$eval("#setup-lyrics-field", (el) => !!el.closest("#editor-midi-dialog")),
+		"元歌詞欄が持ち込みMIDI用モーダルの外にある");
+	await page.click("#btn-setup-midi-file");
 	await waitRequest(page, "song-upload");
 	const upReq = (await readData(page)).hostRequest;
 	assert(!("id" in upReq), "MIDI持ち込みの依頼にidが入っている: " + JSON.stringify(upReq));
@@ -238,6 +242,9 @@ try {
 		=== "自分のMIDI", "持ち込んだ曲の名前がselectに出ていない");
 	assert(JSON.stringify((await readData(page)).phrases) === JSON.stringify(NEXT_PHRASES),
 		"持ち込んだ曲の歌詞に差し替わっていない");
+	assert(await page.$eval("#editor-midi-dialog", (el) => el.open),
+		"MIDI選択後に元歌詞を入力する前にモーダルが閉じている");
+	await page.click("#btn-setup-midi-done");
 
 	// ---- host 無しのシード → 従来どおり読み取り専用の曲名表示 ----
 	await seed(page, { phrases: PHRASES, song: { title: "ふるさと" } });

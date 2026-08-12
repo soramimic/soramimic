@@ -151,7 +151,9 @@ function WordList(textAnalyzer){
 		let header = lines[0].split(",");
 		let df = [];
 		for(let i=1;i<lines.length;i++){
-			df.push(lines[i].split(","));
+			let row = lines[i].split(",");
+			// 末尾改行や途中の空行はCSVレコードとして扱わない
+			if(row.some(v=>v.trim() !== "")) df.push(row);
 		}
 		
 		let parser = Parser();

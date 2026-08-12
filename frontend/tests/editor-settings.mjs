@@ -156,6 +156,9 @@ try {
 		`単語の長さの初期値がparamと違う: ${initialValues[2]}`);
 	assert(await activePreset(editor) === "バランス",
 		"生成画面の既定(バランス)がプリセットに反映されていない");
+	const editorSelectAll = editor.getByRole("checkbox", { name: "種類をすべて選択" });
+	assert(await editorSelectAll.evaluate((el) => el.indeterminate),
+		"生成時の部分選択を復元しても、すべて選択が中間状態にならない");
 
 	// ---- パラメータ変更 → 再変換で結果が変わる ----
 	const wordsBefore = await wordsOf(editor);
@@ -250,13 +253,14 @@ try {
 	assert(lockedAfter.includes(lockedSurface),
 		`絞り込みの変更で固定単語が失われた: ${lockedSurface}`);
 
-	// ---- weightsList: 渡した重みがエンジン(generateFromTokens/getCandidates)まで届く ----
-	// 行0だけ不正な重み(-1)にすると、エンジンの検証が行番号つきで警告を出す。
-	// 長さチェックを通ったあとの値チェックなので、「その行のユニット数と同じ長さの
-	// 配列が届いた」ことまで確認できる
+	// ---- ノート長α: 生重みからsoramimic側で導出し、設定・候補・書き出しへ通す ----
+	// 行0だけ不正な生重み(-1)、行1は正常にして、導出した重みがエンジンまで届くことを
+	// 行番号つきの検証警告で確認する。
 	await editor.evaluate((k) => {
 		const d = JSON.parse(sessionStorage.getItem(k));
-		d.weightsList = d.unitsList.map((units, line) => units.map(() => (line === 0 ? -1 : 1)));
+		d.noteLengthRawList =
+			d.unitsList.map((units, line) => units.map(() => (line === 0 ? -1 : 1)));
+		d.noteLengthAlpha = 0.25;
 		d.history = [];
 		d.future = [];
 		sessionStorage.setItem(k, JSON.stringify(d));
@@ -265,29 +269,42 @@ try {
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
 	await openSettings(editor);
+	assert(await editor.isVisible("#editor-note-length-field"),
+		"生重みがあるのにノート長設定が表示されない");
+	assert(await editor.inputValue("#editor-note-length-alpha") === "0.25",
+		"ノート長αの初期値が復元されていない");
+	await editor.fill("#editor-note-length-alpha", "1");
 	warnings.length = 0;
 	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
+	const weighted = await editor.evaluate((k) =>
+		JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
+	assert(weighted.noteLengthAlpha === 1, "変更したノート長αが保存されていない");
 	assert(warnings.some((w) => w.includes("重みに非負の有限数でない値") && w.includes("行0")),
-		"再変換で weightsList がエンジンに届いていない: " + warnings.join(" / "));
+		"再変換で導出したノート長重みがエンジンに届いていない: " + warnings.join(" / "));
 	assert(!warnings.some((w) => w.includes("行1")),
-		"正しい長さの重みなのに行1で警告が出た: " + warnings.join(" / "));
+		"正しいノート長重みなのに行1で警告が出た: " + warnings.join(" / "));
 
-	// 候補計算(getCandidates)にも選択範囲ぶんの重みが渡ること
+	// 候補計算(getCandidates)にも選択範囲ぶんの導出重みが渡ること
 	warnings.length = 0;
 	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
 	await editor.waitForSelector(".panel-candidates, .panel-note", { timeout: 30000 });
 	assert(warnings.some((w) => w.includes("getCandidates")),
-		"候補計算に weightsList が届いていない: " + warnings.join(" / "));
+		"候補計算にノート長重みが届いていない: " + warnings.join(" / "));
 
-	// ---- 書き出し: weightsList がラウンドトリップで消えない ----
+	// ---- 書き出し: 生重みとαがラウンドトリップで消えない ----
 	const [download] = await Promise.all([
 		editor.waitForEvent("download"),
 		editor.click("#btn-export"),
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
+	assert(Array.isArray(exported.noteLengthRawList)
+		&& exported.noteLengthRawList[0][0] === -1,
+		"書き出しJSONにnoteLengthRawListが含まれていない");
+	assert(exported.noteLengthAlpha === 1,
+		"書き出しJSONにnoteLengthAlphaが含まれていない");
 	assert(Array.isArray(exported.weightsList) && exported.weightsList[0][0] === -1,
-		"書き出しJSONに weightsList が含まれていない");
+		"旧版互換weightsListが現在のαで書き出されていない");
 	assert(exported.param && typeof exported.where === "string",
 		"書き出しJSONに param/where が含まれていない");
 

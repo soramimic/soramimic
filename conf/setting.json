@@ -44,6 +44,15 @@
       { "v": "manager", "label": "監督" },
       { "v": "mascot", "label": "マスコット" }
      ]
+    },
+    {
+     "column": "scope",
+     "label": "収録範囲",
+     "values": [
+      { "v": "jleague", "label": "Jリーグ経験者", "default": true },
+      { "v": "world", "label": "世界的著名選手" },
+      { "v": "overseas_japanese", "label": "海外のみの日本人" }
+     ]
     }
    ]
   },
@@ -191,6 +200,32 @@
        "values": [
         { "v": "no", "label": "現生", "default": true },
         { "v": "yes", "label": "絶滅種", "default": true }
+       ]
+      }
+     ]
+    },
+    {
+     "value": "MARINE_LIFE",
+     "text": "海の生き物",
+     "filepath": "wordlists/marine_life.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "分類",
+       "values": [
+        { "v": "哺乳類", "label": "哺乳類", "default": true },
+        { "v": "爬虫類", "label": "爬虫類", "default": true },
+        { "v": "魚類", "label": "魚類", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
+       ]
+      },
+      {
+       "column": "vertebrate",
+       "label": "脊椎区分",
+       "values": [
+        { "v": "脊椎動物", "label": "脊椎動物", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
        ]
       }
      ]
@@ -387,7 +422,7 @@
   },
   {
    "value": "GIMUKYOIKU",
-   "text": "義務教育＋高校",
+   "text": "義務教育",
    "filepath": "wordlists/gimukyoiku.csv",
    "dbtype": "tidy",
    "facets": [
@@ -410,8 +445,8 @@
      "column": "level",
      "label": "学校段階",
      "values": [
-      { "v": "小学校", "label": "小学校", "where": "level~=小学校" },
-      { "v": "中学校", "label": "中学校", "where": "level~=中学校" },
+      { "v": "小学校", "label": "小学校", "where": "level~=小学校", "default": true },
+      { "v": "中学校", "label": "中学校", "where": "level~=中学校", "default": true },
       { "v": "高等学校", "label": "高校", "where": "level~=高等学校" }
      ]
     }

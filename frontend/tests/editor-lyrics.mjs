@@ -111,15 +111,19 @@ try {
 		lyrics: LYRICS,
 	});
 	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
-	assert(!(await isHidden(page, "#setup-lyrics-field")), "元歌詞の欄が出ていない");
+	assert(await isHidden(page, "#setup-lyrics-field"),
+		"サンプル曲なのに元歌詞の欄がセットアップ画面へ常駐している");
+	await page.click("#btn-setup-song-upload");
+	await page.waitForSelector("#editor-midi-dialog[open]", { timeout: 10000 });
+	assert(!(await isHidden(page, "#setup-lyrics-field")),
+		"持ち込みMIDI用モーダルに元歌詞の欄が出ていない");
 	assert(await page.inputValue("#setup-lyrics") === LYRICS,
 		"シードの元歌詞が初期表示されていない: " + await page.inputValue("#setup-lyrics"));
-	// 曲の下に置く(埋め込み元の並びに合わせる)
+	// 元歌詞は持ち込みMIDI専用モーダルの中にだけ置く
 	assert(await page.evaluate(() => {
-		const song = document.getElementById("setup-song-field");
 		const lyrics = document.getElementById("setup-lyrics-field");
-		return !!(song.compareDocumentPosition(lyrics) & Node.DOCUMENT_POSITION_FOLLOWING);
-	}), "元歌詞の欄が曲セクションより上にある");
+		return !!lyrics.closest("#editor-midi-dialog");
+	}), "元歌詞の欄が持ち込みMIDI用モーダルの外にある");
 
 	await waitOriginalLines(page, ["夢は今も めぐりて", "忘れがたき ふるさと", ""]);
 	const seeded = await readData(page);
@@ -144,6 +148,7 @@ try {
 		"元歌詞が空なのに対応づけの表示が残っている");
 	await page.fill("#setup-lyrics", LYRICS);
 	await waitOriginalLines(page, ["夢は今も めぐりて", "忘れがたき ふるさと", ""]);
+	await page.click("#btn-setup-midi-done");
 
 	// ---- 曲が変わったら(ホストの応答)新しい phrases で対応づけし直す ----
 	await page.click("#setup-song-samples > summary");
@@ -162,11 +167,14 @@ try {
 		delete d.results; delete d.tokensList; delete d.unitsList;
 	`);
 	await waitIdleSetup(page);
+	await page.click("#btn-setup-song-upload");
+	await page.waitForSelector("#editor-midi-dialog[open]", { timeout: 10000 });
 	assert(await page.inputValue("#setup-lyrics") === NEXT_LYRICS,
 		"新しい曲の元歌詞が欄に反映されていない");
 	await waitOriginalLines(page, ["でんでんむしむし", "かたつむり"]);
 	assert((await page.textContent("#setup-lyrics-status")).includes("2/2"),
 		"曲の切替後に対応づけの表示が更新されていない");
+	await page.click("#btn-setup-midi-done");
 
 	// ---- 変換しても保持され、書き出しJSONにも載る ----
 	await waitSetupReady(page);
@@ -196,9 +204,11 @@ try {
 	assert(!("originalLines" in await readData(page)),
 		"元歌詞が無いのに originalLines が書かれている");
 
-	// ---- lyrics だけ渡された(ホスト無し)ときも従来の欄として使える ----
+	// ---- lyrics だけ渡された(ホスト無し)ときは値を保持するが入力欄は常駐させない ----
 	await seed(page, { phrases: PHRASES, lyrics: LYRICS });
-	await page.waitForSelector("#setup-lyrics-field:not([hidden])", { timeout: 30000 });
+	await page.waitForSelector("#editor-setup:not([hidden])", { timeout: 30000 });
+	assert(await isHidden(page, "#setup-lyrics-field"),
+		"持ち込みMIDIの導線が無い単体画面に元歌詞欄が出ている");
 	await waitOriginalLines(page, ["夢は今も めぐりて", "忘れがたき ふるさと", ""]);
 
 	if (pageErrors.length > 0) {

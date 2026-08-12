@@ -6,8 +6,9 @@ import { createSoramimic } from "./lib/index.js";
 import { KuromojiTokenizer } from "./lib/kuromojiTokenizer.js";
 import { fetchText, fetchJson } from "./api.js";
 import { originalTextToCsv } from "./wordlistInput.js";
+import { customWordlistId, LEGACY_ORIGINAL_STORAGE_KEY } from "./customWordlists.js";
 
-export const ORIGINAL_STORAGE_KEY = "originalWordlist";
+export const ORIGINAL_STORAGE_KEY = LEGACY_ORIGINAL_STORAGE_KEY;
 
 // 重いリソース(データJSON約5MB + kuromoji辞書約18MB)を並列ロードして
 // 生成エンジンを組み立てる。UI側は設定だけで先に起動できるよう分離してある
@@ -93,6 +94,13 @@ export function unitsListFromTokens(app, tokensList) {
 export async function buildDatabase(app, entry, where, maxUnits) {
 	// maxUnits は歌詞側が取りうる発音ユニット数の上限。これを超える単語側の
 	// バリエーションはDB構築時に捨てて、巨大リストの展開量を抑える。
+	if (customWordlistId(entry.value)) {
+		if (typeof entry.csvText === "string") {
+			return app.wordList.parseTidy(entry.csvText, "", maxUnits);
+		}
+		return app.wordList.parseTidy(
+			originalTextToCsv(entry.originalText || "", app), "", maxUnits);
+	}
 	if (entry.value === "ORIGINAL") {
 		// entry.csvText は自作リストの正規化済み tidy CSV(plainToCsv の出力)。
 		// 編集ツールの書き出しJSONはこれを同梱するので、別環境・別ブラウザで
