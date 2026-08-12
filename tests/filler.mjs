@@ -73,7 +73,7 @@ function assertFiller(w, kana, label, unitLength = 1) {
 }
 
 // ---- 1. 単語を使い切っても行が空にならない ----
-const twoWordDb = wordList.parsePlain(["カキ", "キカ"].join("\n"));
+const twoWordDb = await wordList.parsePlain(["カキ", "キカ"].join("\n"));
 const phrase = "カキ";
 const units = unitsOf(phrase);
 assert.deepEqual(units, ["カ", "キ"], "「カキ」は2ユニット");
@@ -90,7 +90,7 @@ shortage[2].forEach((w, i) => assertFiller(w, units[i], `3行目 filler${i}`));
 print(`[ok] 単語不足でも空行なし: ${shortage.map(showLine).join(" / ")}`);
 
 // ---- 2. 埋まる区間は実単語・埋まらない区間だけ1ユニットずつfiller ----
-const oneWordDb = wordList.parsePlain(["カキ"].join("\n"));
+const oneWordDb = await wordList.parsePlain(["カキ"].join("\n"));
 const mixedPhrase = "カキクケ";
 const mixedUnits = unitsOf(mixedPhrase);
 assert.deepEqual(mixedUnits, ["カ", "キ", "ク", "ケ"], "「カキクケ」は4ユニット");
@@ -132,7 +132,7 @@ print("[ok] 重み・ペナルティ最大でもfillerは実単語に勝たな�
 	// DUPLICATE=false の使用済み集合に入らない)。
 	// 3ユニットの語しかないリストは2ユニットの行のどこにも置けない(長さが違う語は
 	// 候補にすらならない)ので、行全体がfillerになる
-	const noMatchDb = wordList.parsePlain(["クケコ"].join("\n"));
+	const noMatchDb = await wordList.parsePlain(["クケコ"].join("\n"));
 	const r = await generate(["カキ", "カキ", "カキ"], noMatchDb, PARAM);
 	assert.equal(r.length, 3, "3行返ること");
 	for (const [i, words] of r.entries()) {
@@ -148,7 +148,7 @@ print("[ok] fillerは使用済み(単語重複なし)の対象外で何度でも
 
 // ---- 4b. 複数ユニットの1文字も途中で切らずにfillerで覆う ----
 {
-	const noMatchDb = wordList.parsePlain(["クケコサ"].join("\n"));
+	const noMatchDb = await wordList.parsePlain(["クケコサ"].join("\n"));
 	const phrase = "畑";
 	const phraseUnits = unitsOf(phrase);
 	assert.deepEqual(phraseUnits, ["ハ", "タ", "ケ"], "畑は3ユニット");

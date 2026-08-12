@@ -155,7 +155,7 @@ for (const [input, surface, reading] of [
 
 // 5. 生成まで通る(DPが強制トークンの読みを使う)
 {
-	const db = harness.buildWordlist({
+	const db = await harness.buildWordlist({
 		file: "tests/golden/fixtures/wordlists/nations.csv", dbtype: "tidy", where: "",
 	});
 	const results = await harness.generate(["｜邪悪《ダークネス》"], db, { VOWEL_RATIO: 0.8 });

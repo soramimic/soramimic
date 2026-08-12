@@ -45,19 +45,25 @@ assert.ok(shifted.includes("1,カレーライス,カレーライス,カレー"),
 	"行を足したらidがずれること(前提の確認):\n" + shifted);
 
 // ---- 2. parseTidy(csv, "") == parsePlain(text) ----
-const fromPlain = wordList.parsePlain(PLAIN);
-const fromCsv = wordList.parseTidy(csv, "");
+const fromPlain = await wordList.parsePlain(PLAIN);
+const fromCsv = await wordList.parseTidy(csv, "");
 assert.deepStrictEqual(fromCsv, fromPlain,
 	"CSV経由のDBがplain経由のDBと一致しないと、書き出しJSONのidが合わなくなる");
-assert.deepStrictEqual(wordList.parseTidy(csv + "\n", ""), fromPlain,
+assert.deepStrictEqual(await wordList.parseTidy(csv + "\n", ""), fromPlain,
 	"末尾改行付きCSVを読み込めない");
-assert.deepStrictEqual(wordList.parseTidy(csv + "\r\n\r\n", ""), fromPlain,
+assert.deepStrictEqual(await wordList.parseTidy(csv + "\r\n\r\n", ""), fromPlain,
 	"末尾に複数の空行があるCSVを読み込めない");
-assert.deepStrictEqual(wordList.parseTidy(
+assert.deepStrictEqual(await wordList.parseTidy(
 	rows.slice(0, 2).concat(["", ",,,", " \t ", ...rows.slice(2)]).join("\n"), ""), fromPlain,
 	"途中に空行があるCSVを読み込めない");
 // 実データが入っていることも確認(空同士の一致でごまかされないように)
 assert.ok(Object.keys(fromPlain).length > 0, "DBが空");
+
+// 歌詞の最大ユニット数を渡した場合、それより長い候補はDBへ展開しない。
+const pruned = await wordList.parsePlain(["カキ", "カキク"].join("\n"), 2);
+assert.ok(Object.keys(pruned).length > 0, "上限以内の候補まで消えている");
+assert.ok(Object.keys(pruned).every((length) => Number(length) <= 2),
+	"maxUnitsを超える候補が残っている: " + Object.keys(pruned).join(","));
 
 // ---- 2.5 読みを書いても表示は見出し語 ----
 // 「カレーライス,カレー,ライス」の読みで当たった単語も、チップ・書き出し・字幕には
@@ -156,7 +162,7 @@ assert.strictEqual(tidyCsv, [
 assert.ok(!tidyCsv.includes("foo.png"), "image列が残っている:\n" + tidyCsv);
 
 // idはそのままDBに入る(書き出しJSONの results とのid一致がこれで保たれる)
-const tidyDb = wordList.parseTidy(tidyCsv, "");
+const tidyDb = await wordList.parseTidy(tidyCsv, "");
 const tidyIds = [...new Set(Object.values(tidyDb).flat().map((e) => e.id))].sort();
 assert.deepStrictEqual(tidyIds, ["12", "7", "9"], "ユーザーの書いたidが尊重されていない: " + tidyIds);
 
@@ -164,7 +170,7 @@ assert.deepStrictEqual(tidyIds, ["12", "7", "9"], "ユーザーの書いたidが
 const tidyNoYomi = originalTextToCsv(TIDY, noYomiApp);
 assert.ok(tidyNoYomi.split("\n")[1] === "林檎,7,,林檎",
 	"推定できないtidy行のフォールバックが想定と違う:\n" + tidyNoYomi);
-assert.ok(Object.values(wordList.parseTidy(tidyNoYomi, "")).flat().length > 0,
+assert.ok(Object.values(await wordList.parseTidy(tidyNoYomi, "")).flat().length > 0,
 	"読み空のtidyからDBが組めない");
 
 // id列が無いCSVは行番号を振る(plainと同じ0始まり)

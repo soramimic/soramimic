@@ -578,17 +578,17 @@ export async function startApp() {
 		btnConvert.click();
 	});
 
-	async function getDatabase(entry, where) {
+	async function getDatabase(entry, where, maxUnits) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
 		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
 		if (customWordlistId(entry.value)) {
-			const key = [entry.value, entry.csvText || entry.originalText || ""].join("|");
-			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry));
+			const key = [entry.value, entry.csvText || entry.originalText || "", maxUnits].join("|");
+			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry, undefined, maxUnits));
 			return dbCache.get(key);
 		}
-		const key = [entry.filepath, entry.dbtype, where].join("|");
+		const key = [entry.filepath, entry.dbtype, where, maxUnits].join("|");
 		if (!dbCache.has(key)) {
-			dbCache.set(key, await buildDatabase(app, entry, where));
+			dbCache.set(key, await buildDatabase(app, entry, where, maxUnits));
 		}
 		return dbCache.get(key);
 	}
@@ -811,8 +811,14 @@ export async function startApp() {
 					};
 				}
 				const where = compileWhere(entry);
-				const db = await getDatabase(entry, where);
 				const tokensList = await tokenizePhrases(phrases);
+				// 単語DBのキー長は getYomiAndPhraseBreak が返す発音ユニット数と
+				// 同じ。歌詞側の最大値を先に求め、不要に長いバリエーションを
+				// DBへ展開しない。
+				const maxUnits = tokensList.reduce((max, tokens) =>
+					Math.max(max, app.textAnalyzer.getYomiAndPhraseBreak(tokens).length), 0);
+				progressText.textContent = "単語リストを準備中...";
+				const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された
 				lastConversion = {
 					phrases, tokensList, param, wordlist: entry, where,

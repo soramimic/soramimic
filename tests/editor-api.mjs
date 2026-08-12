@@ -20,7 +20,7 @@ const PARAM = {
 };
 
 const h = await buildApp({ tokenizer: "kuromoji" });
-const db = h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
+const db = await h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
 const { soramimiMaker, textAnalyzer } = h.app;
 
 // ---- getCandidates: 「カナダ」の候補上位が妥当か ----
@@ -80,7 +80,7 @@ print("[ok] 固定つき再生成: " +
 // ---- 自動生成の単語境界は文字の途中に入らない ----
 // 「赤とんぼ × 駅名」で実際に発生した回帰: 畑=ハ・タ・ケの途中で
 // 山の畑(ヤマノハ) / の、(タケノ) と分かれ、元歌詞読みが「は／のけ」に崩れていた。
-const stationDb = h.buildWordlist({
+const stationDb = await h.buildWordlist({
 	file: "wordlists/stations.csv", dbtype: "tidy", where: "status=current",
 });
 const akatomboTokens = textAnalyzer.tokenizeTogether(["山の畑の、桑の実を"]);
