@@ -2,9 +2,8 @@
 # 生成画面と編集ツール(editor.html)は同じ dist に含まれるので両方が反映される。
 #
 # 起動経路:
-# - 通常は automerge がマージ成功後に workflow_call で呼ぶ(再利用可能ワークフロー)。
-#   GITHUB_TOKEN によるマージpushは push トリガーを起動しないため、call で確実に回す
-# - 直接 main に push したとき(手動運用)は push トリガーでも起動する
+# - 通常は preview→main のrelease PRを人間がマージしたpushで起動する
+# - workflow_dispatchでmainの再デプロイもできる
 #
 # 必要な GitHub Secrets(Settings → Secrets and variables → Actions):
 #   CLOUDFLARE_API_TOKEN  … Account / Cloudflare Pages / Edit 権限のトークン
@@ -47,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.guard.outputs.run == 'true'
         with:
-          ref: main # 常に main の最新(マージ後の状態)をデプロイする
+          ref: main # 常にmainの最新(承認済みの本番状態)をデプロイする
           submodules: true
       - uses: actions/setup-node@v4
         if: steps.guard.outputs.run == 'true'

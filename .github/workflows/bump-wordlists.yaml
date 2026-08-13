@@ -5,9 +5,8 @@
 # このワークフローがその伝播を担う。
 #
 # - 週次 + 手動(workflow_dispatch)で実行する
-# - main はブランチ保護不可(Free private)なので github.token で main に直 push する
-# - 変更があったときだけ、既存の deploy.yaml を workflow_call で呼んで
-#   Cloudflare Pages(soramimic.pages.dev)へ反映する(automerge.yaml と同じ流儀)
+# - 未承認の更新が本番へ直行しないよう、pin は開発ブランチ dev だけを更新する
+# - 変更があったときだけ preview.yaml を workflow_call で呼び、dev環境へ反映する
 name: bump-wordlists
 on:
   workflow_dispatch: {}
@@ -22,18 +21,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
       bumped: ${{ steps.b.outputs.bumped }}
+      candidate_sha: ${{ steps.b.outputs.candidate_sha }}
+      old_dev_sha: ${{ steps.b.outputs.old_dev_sha }}
+      candidate_branch: ${{ steps.b.outputs.candidate_branch }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: dev
           submodules: true
       - name: wordlists を最新の main に更新
         id: b
+        env:
+          CANDIDATE_BRANCH: automation/bump-wordlists-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
+          old_dev_sha=$(git rev-parse HEAD)
           git -C wordlists fetch --quiet origin main
           git -C wordlists checkout --quiet FETCH_HEAD
           if git diff --quiet -- wordlists; then
@@ -46,14 +51,77 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add wordlists
           git commit -m "wordlists submodule を ${new} に更新"
-          git push origin HEAD:main
-          echo "wordlists を ${new} に更新して push"
+          candidate_sha=$(git rev-parse HEAD)
+          git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          echo "wordlists を ${new} に更新した候補 $candidate_sha を検証します"
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "old_dev_sha=$old_dev_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_branch=$CANDIDATE_BRANCH" >> "$GITHUB_OUTPUT"
+
+  golden:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.bumped == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/golden-test.yaml
+    with:
+      ref: ${{ needs.prepare.outputs.candidate_sha }}
+
+  smoke:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.bumped == 'true' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/frontend-smoke.yaml
+    with:
+      ref: ${{ needs.prepare.outputs.candidate_sha }}
+
+  promote:
+    needs: [prepare, golden, smoke]
+    if: ${{ needs.prepare.outputs.bumped == 'true' && needs.golden.result == 'success' && needs.smoke.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.promote.outputs.bumped }}
+    env:
+      CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+      OLD_DEV_SHA: ${{ needs.prepare.outputs.old_dev_sha }}
+      CANDIDATE_BRANCH: ${{ needs.prepare.outputs.candidate_branch }}
+    steps:
+      - name: 検証済み候補をdevへ進める
+        id: promote
+        run: |
+          git init repo
+          cd repo
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --no-tags origin "$CANDIDATE_SHA"
+          git push --force-with-lease="refs/heads/dev:$OLD_DEV_SHA" origin "$CANDIDATE_SHA:refs/heads/dev"
+          git push origin --delete "$CANDIDATE_BRANCH" || true
           echo "bumped=true" >> "$GITHUB_OUTPUT"
 
-  # 更新があったときだけデプロイ(GITHUB_TOKEN の push は deploy の push トリガーを
+  # 更新があったときだけdevへデプロイ(GITHUB_TOKEN の push は push トリガーを
   # 起動しないため、automerge.yaml と同様に workflow_call で確実に回す)
-  deploy:
-    needs: bump
-    if: ${{ needs.bump.outputs.bumped == 'true' }}
-    uses: ./.github/workflows/deploy.yaml
+  deploy-dev:
+    needs: promote
+    if: ${{ needs.promote.outputs.bumped == 'true' }}
+    uses: ./.github/workflows/preview.yaml
+    with:
+      ref: dev
     secrets: inherit
+
+  cleanup:
+    needs: [prepare, golden, smoke, promote, deploy-dev]
+    if: ${{ always() && needs.prepare.outputs.candidate_branch != '' }}
+    runs-on: ubuntu-latest
+    env:
+      CANDIDATE_BRANCH: ${{ needs.prepare.outputs.candidate_branch }}
+    steps:
+      - name: 一時候補ブランチを削除
+        run: |
+          case "$CANDIDATE_BRANCH" in
+            automation/bump-wordlists-*) ;;
+            *) echo "削除対象外のブランチです: $CANDIDATE_BRANCH" >&2; exit 1 ;;
+          esac
+          gh api --method DELETE "repos/${{ github.repository }}/git/refs/heads/$CANDIDATE_BRANCH" || true
+        env:
+          GH_TOKEN: ${{ github.token }}

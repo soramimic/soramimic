@@ -1,7 +1,8 @@
 # dev 向けPRの自動マージ。CI(golden / smoke など、このPRに付く全チェック)が
 # すべて成功したら、確認したコミットSHAを指定してマージする。
-# - 開発PRは base=dev。マージ後は preview.soramimic.pages.dev を更新する
-# - main 向けPRは自動マージの対象外(retarget-main-pr.yaml が dev へ自動で向け直す)。
+# - 開発PRは base=dev。マージ後は dev.soramimic.pages.dev を更新する
+# - preview / main 向けPRは自動マージしない。開発者の明示承認でのみ昇格する
+# - main 向けの通常PRは retarget-main-pr.yaml が dev へ自動で向け直す。
 #   emergency ラベル付きの緊急修正だけが main 宛てのまま残り、人間が手動でマージする。
 #   人間による手動マージの push は deploy.yaml の push トリガーで本番デプロイされる
 # - 除外したいPRには `no-automerge` ラベルを付ける(ドラフトPRも対象外)
@@ -61,7 +62,7 @@ jobs:
               echo "全チェック成功。マージします"
               gh api -X PUT "repos/$REPO/pulls/$PR/merge" \
                 -f merge_method=merge -f sha="$SHA"
-              # dev はリリース待ちの常設ブランチなので削除しない(dev→main の手動PR対策)
+              # dev は開発用の常設ブランチなので削除しない
               if [ "$BRANCH" != "dev" ]; then
                 gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" || true
               fi
@@ -75,11 +76,10 @@ jobs:
 
   # マージ成功時の後続処理(GITHUB_TOKEN によるマージpushは push トリガーを
   # 起動しないため、workflow_call で確実に回す)
-  preview:
+  deploy-dev:
     needs: automerge
     if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'dev' }}
     uses: ./.github/workflows/preview.yaml
     with:
       ref: dev
-      alias: preview
     secrets: inherit

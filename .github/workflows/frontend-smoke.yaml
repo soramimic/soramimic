@@ -9,7 +9,7 @@ on:
       - 'conf/**'
       - 'words**'
       - '.github/workflows/frontend-smoke.yaml'
-  # release.yaml がリリース前の dev を再検証するために呼ぶ
+  # release.yaml が固定したpreview SHAとrelease PRのheadを再検証するために呼ぶ
   workflow_call:
     inputs:
       ref:
