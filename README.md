@@ -46,14 +46,19 @@ cd frontend && npm run test:smoke            # UIスモークテスト(実ブラ
 
 - **dev（開発・動作確認）**: 開発PRを集約し、未承認のワードリストも含めて
   [dev.soramimic.pages.dev](https://dev.soramimic.pages.dev) で確認する
-- **preview（次回公開候補）**: 最新previewからpromotionブランチを作り、承認したdevの
-  コミットだけをcherry-pickしたPRを人間が確認・マージする。
+- **preview（次回公開候補）**: 通常は最新previewからpromotionブランチを作り、公開するdevの
+  コミットだけをcherry-pickしてPRにする。devの全変更を公開候補にするときはdevから直接PRしてもよい。
+  非ドラフトの同一repository PRは必須チェック成功後に自動マージされ、
   [preview.soramimic.pages.dev](https://preview.soramimic.pages.dev) に自動反映される
-- **main（本番）**: preview→mainのrelease PRだけを、固定SHAの再テストと人間の明示承認後に
-  マージする。mainの内容がそのまま
+- **main（本番）**: 同一repositoryのpreview→main release PRを作成すること自体を明示的な
+  リリース承認とする。必須チェック成功後にautomerge workflowが自動マージし、deploy workflowを
+  直接呼び出す。mainの内容が
   [soramimic.pages.dev](https://soramimic.pages.dev)（soramimic.com）へデプロイされる
 
-通常の開発PRはdev向けで、CI成功後に自動マージされる。previewとmainは自動マージしない。
+devまたはpreview向けの非ドラフト・同一repository PRは、必須チェック成功後に自動マージされ、
+それぞれの固定環境へ自動デプロイされる。forkからのPR、`no-automerge`または`emergency`ラベル付き
+PRは対象外。main向けでは、同一repositoryのpreview→main PRだけが必須チェック成功後に自動マージ
+され、それ以外のPRは自動マージされない。
 名字・学校名・市区町村・流行など品質確認中のリストはdevで試し、承認するまでpromotionへ
 含めない。
 
@@ -64,12 +69,14 @@ git fetch origin dev preview
 git switch -c promote/example origin/preview
 git cherry-pick <dev PRで取り込んだcommit>
 git push -u origin promote/example
-# promote/example → preview のPRを作り、確認後に手動マージ
+# promote/example → preview のPRを作る（必須チェック成功後に自動マージ・デプロイ）
+# devの全変更を昇格する場合は dev → preview のPRでもよい
 ```
 
 週次または手動の`release` workflowはpreviewのSHAを固定して再テストし、成功時に
-preview→main PRの作成リンクをjob summaryへ出す。release PRも自動マージせず、現在のhead
-SHAのチェックとpreview環境を確認してから人間が手動マージする。
+preview→main PRの作成リンクをjob summaryへ出す。preview環境と公開内容を確認したうえで
+このPRを作成するとリリース承認となり、現在のhead SHAに対する必須チェック成功後に自動マージ
+され、automerge workflowがdeploy workflowを直接呼び出して本番デプロイを自動実行する。
 
 3ブランチ方式へ初めて移行するときは、次の順序でbootstrapする。
 
@@ -89,8 +96,8 @@ devの順に同期PRをマージする。main自体をheadとして直接pushせ
 ### 更新
 
 - devからfeatureブランチを切り、pushしてプルリク(baseはdev)。CIが全通過すると automerge が自動でマージされ、dev環境が更新される
-- 公開する変更だけをpreviewへpromotionし、preview確認後にActionsのreleaseを実行する（または週次実行を待つ）
-- releaseが検証したSHAと現在のpreviewが一致することを確認してpreview→main PRを作り、人間が手動マージする
+- 公開する変更をpreview向けPRにし、必須チェック後の自動マージ・自動デプロイを待つ。全変更を昇格するときはdev→previewのPRでもよい。preview確認後にActionsのreleaseを実行する（または週次実行を待つ）
+- releaseが検証したSHAと現在のpreviewが一致することを確認してpreview→main PRを作る。PR作成をリリース承認として、automerge workflowが必須チェック後のマージと、deploy workflowを直接呼び出す本番デプロイを自動実行する
 - github actionsからtag更新(セマンティックバージョニング)
 - 更新履歴は [frontend/index.html](./frontend/index.html) の「更新履歴」セクション(サイトの「サイトについて」タブ)で管理する
 
