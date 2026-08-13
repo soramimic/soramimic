@@ -101,6 +101,23 @@ function assetPath(dist, filepath) {
 	return path;
 }
 
+// public/wordlists はsubmodule全体へのsymlinkなので、Viteは設定で使わないCSVも
+// distへコピーする。公開候補から外したリストが直URLで残らないよう、設定が参照する
+// CSVだけを成果物に残す。
+export async function pruneUnconfiguredWordlists(dist, plans) {
+	const allowed = new Set(plans.map((plan) => assetPath(dist, plan.filepath)));
+	const directory = resolve(dist, "wordlists");
+	const removed = [];
+	for (const entry of await readdir(directory, { withFileTypes: true })) {
+		if (!entry.isFile() || !entry.name.endsWith(".csv")) continue;
+		const path = resolve(directory, entry.name);
+		if (allowed.has(path)) continue;
+		await unlink(path);
+		removed.push(entry.name);
+	}
+	return removed.sort();
+}
+
 export async function findOversizedFiles(root, limit = CLOUDFLARE_PAGES_FILE_LIMIT) {
 	const oversized = [];
 	async function visit(directory) {
@@ -120,8 +137,10 @@ export async function findOversizedFiles(root, limit = CLOUDFLARE_PAGES_FILE_LIM
 export async function prepareStaticAssets(distDirectory) {
 	const dist = resolve(distDirectory);
 	const config = JSON.parse(await readFile(resolve(dist, "conf/setting.json"), "utf8"));
+	const plans = wordlistProjectionPlans(config);
+	await pruneUnconfiguredWordlists(dist, plans);
 	const projections = [];
-	for (const plan of wordlistProjectionPlans(config)) {
+	for (const plan of plans) {
 		const path = assetPath(dist, plan.filepath);
 		const result = await projectWordlistCsv(path, path, plan.columns, plan.filepath);
 		projections.push({ values: plan.values, filepath: plan.filepath, ...result });
