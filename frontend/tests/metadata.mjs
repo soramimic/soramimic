@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const expected = {
 	"index.html": {
-		title: "Soramimic（ソラミミック）｜空耳歌詞を自動生成",
+		title: "Soramimic | 空耳歌詞メーカー",
 		description: "好きな歌詞を、野球選手名・ポケモン・駅名などの言葉で再現。「○○で歌ってみた」風の空耳歌詞・替え歌を自動生成できるWebツールです。",
 		url: "https://soramimic.com/",
 	},
