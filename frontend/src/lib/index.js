@@ -26,7 +26,7 @@ export function createSoramimic({
 	const english = English(englishDict, romanTree);
 	const textAnalyzer = TextAnalyzer(character, k2s, english, tokenizeSentenses, getYomi);
 	const kanaSimilarity = KanaSimilarity(vowelSimilarity, consonantSimilarity, kana2phonon);
-	const soramimiMaker = SoramimiMaker(kanaSimilarity, textAnalyzer);
+	const soramimiMaker = SoramimiMaker(kanaSimilarity, textAnalyzer, kana2phonon);
 	const wordList = WordList(textAnalyzer);
 	return { textAnalyzer, kanaSimilarity, soramimiMaker, wordList };
 }

@@ -31,13 +31,109 @@ Copyright © 2019 Jiro Shimaya. All rights reserved.
 //経路は必ず安い」が成り立ち、かつ 1e6×ユニット数 でも倍精度の整数精度(2^53)には
 //遠く届かないため、スコアの丸めで順序が壊れることもない
 const FILLER_COST = 1e6;
+const DEFAULT_APPROXIMATE_CANDIDATES = 512;
 
-const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
+const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
+	//近似候補検索用の署名。正確距離は位置ごとの母音・子音距離を浮動小数点で
+	//足すが、粗検索では各ユニットを「母音code + 子音code」の1文字に圧縮し、
+	//一致/不一致だけを数える。拗音・長音はkana2phononから取ることで
+	//「ピョー」の母音を誤って小書きョとして扱わないようにする。
+	const vowelCodes = new Map();
+	const consonantCodes = new Map();
+	const unitFeatureCache = new Map();
+	const signatureCache = new WeakMap();
+	const featureCode = (map, value) => {
+		if(!map.has(value))map.set(value,map.size);
+		return map.get(value);
+	};
+	const unitPhoneme = (unit) => kana2phonon[unit] || kana2phonon[unit.replace(/ー+$/g,"")];
+	const unitFeature = (unit) => {
+		if(unitFeatureCache.has(unit))return unitFeatureCache.get(unit);
+		const phoneme = unitPhoneme(unit);
+		const vowel = featureCode(vowelCodes, phoneme ? phoneme[1].slice(-1) : unit);
+		const consonant = featureCode(consonantCodes, phoneme ? phoneme[0].split("+")[0] : unit);
+		//上位8bitに母音、下位8bitに子音を置く。未知ユニットが増えても、
+		//現行の音素種類数を前提にしたbit衝突を起こさないよう余裕を持たせる。
+		const feature = (vowel << 8) | consonant;
+		unitFeatureCache.set(unit,feature);
+		return feature;
+	};
+	const coarseSignature = (units) => {
+		if(signatureCache.has(units))return signatureCache.get(units);
+		const signature = String.fromCharCode(...units.map(unitFeature));
+		signatureCache.set(units,signature);
+		return signature;
+	};
+	//candidateWeightsは変種の出力位置から元歌詞位置へsrcIndexで写した重み。
+	//正確距離と同じくユニット距離だけへ掛け、VARIATION_COSTは無重みのままにする。
+	const coarseDistance = (targets, word, vowelRatio=0.8, variationWeight=1,
+		candidateWeights=null) => {
+		const wordSignature = coarseSignature(word.pronunciation);
+		let best = Infinity;
+		for(const target of targets){
+			const targetSignature = coarseSignature(target);
+			const weights = candidateWeights ? candidateWeights.get(target) : null;
+			let score = ((target.vcost||0)+(word.vcost||0))*variationWeight;
+			for(let i=0;i<target.length;i++){
+				const targetFeature = targetSignature.charCodeAt(i);
+				const wordFeature = wordSignature.charCodeAt(i);
+				const weight = weights ? weights[i] : 1;
+				if((targetFeature>>>8)!==(wordFeature>>>8))score += 5*vowelRatio*weight;
+				if((targetFeature&255)!==(wordFeature&255))score += 5*(1-vowelRatio)*weight;
+			}
+			if(score<best)best=score;
+		}
+		return best;
+	};
+
+	//安定順序を保って上位limit件だけを最大ヒープに残す。全件sortに比べ、
+	//大規模単語リストの一時配列・比較回数を抑える。
+	const takeBestBy = (values, limit, getScore) => {
+		if(!(limit>0))return [];
+		if(values.length<=limit){
+			return values.map((value,index)=>({value,index,score:getScore(value)}))
+				.sort((a,b)=>a.score-b.score || a.index-b.index).map(v=>v.value);
+		}
+		const heap=[];
+		const worse=(a,b)=>a.score>b.score || (a.score===b.score && a.index>b.index);
+		const siftDown=(index)=>{
+			while(true){
+				let worst=index;
+				const left=index*2+1;
+				const right=left+1;
+				if(left<heap.length && worse(heap[left],heap[worst]))worst=left;
+				if(right<heap.length && worse(heap[right],heap[worst]))worst=right;
+				if(worst===index)break;
+				[heap[index],heap[worst]]=[heap[worst],heap[index]];
+				index=worst;
+			}
+		};
+		for(let index=0;index<values.length;index++){
+			const entry={value:values[index],index,score:getScore(values[index])};
+			if(heap.length<limit){
+				heap.push(entry);
+				let child=heap.length-1;
+				while(child>0){
+					const parent=(child-1)>>1;
+					if(!worse(heap[child],heap[parent]))break;
+					[heap[child],heap[parent]]=[heap[parent],heap[child]];
+					child=parent;
+				}
+			}else if(worse(heap[0],entry)){
+				heap[0]=entry;
+				siftDown(0);
+			}
+		}
+		heap.sort((a,b)=>a.score-b.score || a.index-b.index);
+		return heap.map(v=>v.value);
+	};
 	const assignDefaultParameter = (parameters) => {
 		const DEFAULT_PARAMETER_VALUES_ = {
 				REPEAT: "100",
 				SPLITTER: "/",
 				DUPLICATE: true,
+				//0で正確全件検索。既定は粗上位512件だけ正確距離で再採点する。
+				APPROX_CANDIDATES: DEFAULT_APPROXIMATE_CANDIDATES,
 				SAME_PHRASE_BREAK_REWARD: 1,//文節が一致しているとき掛け算する
 				MID_PHRASE_BREAK_PENALTY: 0, //文節の途中で単語が切れることへのペナルティ(0で従来と同一) #98
 				WORD_NUMBER_PENALTY: 1, //単語数に対するペナルティ
@@ -88,7 +184,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	//weights(省略可): targetのユニット位置ごとの重み(平均1に正規化済み・targetと同じ長さ)。
 	//省略時は従来と完全同一。変種でユニット数が変わる場合は変種側の由来index(srcIndex)を
 	//たどって元音節の重みを引く
-	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null) => {
+	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null,
+		approximateLimit=0,approximateVowelRatio=0.8) => {
 		//console.log(kanaDist);
 		const orglen = target.length;
 			//Object.keysでは文字列配列が取得できるので、v.lengthも文字列に直してからfilterする
@@ -116,9 +213,37 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 			}
 		}
 		//console.timeLog("in gs");
+		//粗検索は発音entryではなく単語ID単位でK件を選ぶ。同じIDに複数の読み・
+		//変種があってもK枠を重複消費させず、選ばれたIDの全entryを正確再採点する。
+		let approximateIds = null;
+		if(approximateLimit>0){
+			const relevantWords = Object.keys(candidates).reduce((sum,i)=>sum+wordlist[i].length,0);
+			//小辞書では粗検索の固定費の方が高い。raw entry数だけならSetも作らず判定し、
+			//rawが多い場合だけunique ID数を調べる。
+			let useApproximation = relevantWords>approximateLimit*2;
+			if(useApproximation){
+				const uniqueIds = new Set();
+				for(const i in candidates)for(const word of wordlist[i])uniqueIds.add(word.id);
+				useApproximation = uniqueIds.size>approximateLimit*2;
+			}
+			if(useApproximation){
+				const bestById = new Map();
+				for(const i in candidates){
+					for(const word of wordlist[i]){
+						const score = coarseDistance(candidates[i],word,approximateVowelRatio,
+							variationCost/16,candidateWeights);
+						const previous = bestById.get(word.id);
+						if(!previous || score<previous.score)bestById.set(word.id,{id:word.id,score});
+					}
+				}
+				const selected = takeBestBy([...bestById.values()],approximateLimit,v=>v.score);
+				approximateIds = new Set(selected.map(v=>v.id));
+			}
+		}
 		let words = {}
 		for(let i in candidates){
 			for(let w of wordlist[i]){
+				if(approximateIds && !approximateIds.has(w.id))continue;
 				//共有オブジェクトを直接書き換えるとDPの再帰中に別セグメントの
 				//クエリがsimを上書きし、スコア計算が汚染される(#99)。コピーに載せる
 				let sim = Infinity;
@@ -141,9 +266,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 		for(let id in words){
 			words2.push(words[id]);
 		}
-		words2.sort((a,b)=>a.sim-b.sim);
 		//console.timeEnd("in gs");
-		return words2;
+		return takeBestBy(words2,length,w=>w.sim);
 	}
 
 	function getMin(array, getValue){
@@ -390,7 +514,11 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
 		const w = normalizeWeights(weights, (target||[]).length, "getCandidates");
-		const words = getSimilarWord(wordlist, target, kanaDist, length, param.VARIATION_COST, w) || [];
+		const configuredLimit = Number(param.APPROX_CANDIDATES);
+		const approximateLimit = Number.isFinite(configuredLimit) && configuredLimit>0
+			? Math.max(Math.floor(configuredLimit),length) : 0;
+		const words = getSimilarWord(wordlist,target,kanaDist,length,param.VARIATION_COST,w,
+			approximateLimit,param.VOWEL_RATIO??0.8) || [];
 		return words.slice(0, length).map(w=>Object.assign({}, w));
 	}
 
@@ -410,13 +538,25 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	function generateFromTokens(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null){
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
+		const tokenized_phrases = tokens_list.map(v=>textAnalyzer.getYomiAndPhraseBreak(v));
+		const totalUnits = tokenized_phrases.reduce((sum,tokens)=>sum+tokens.length,0);
+		//重複なしでは、それ以前と現在の経路で使われ得る実単語数は全ユニット数以下。
+		//その数+1件を正確候補として保持すれば、未使用候補がある限り到達できる。
+		//粗候補Kも歌詞が長いときは同じ下限まで広げ、後半行の候補切れを防ぐ。
+		const candidateLimit = param.DUPLICATE ? 1 : totalUnits+1;
+		const configuredValue = Number(param.APPROX_CANDIDATES);
+		const configuredApproximateLimit = Number.isFinite(configuredValue) && configuredValue>0
+			? Math.floor(configuredValue) : 0;
+		const approximateLimit = configuredApproximateLimit>0
+			? Math.max(configuredApproximateLimit,candidateLimit) : 0;
 		//重みなしの行で使う共有メモ(従来どおりカナ文字列キー。行をまたいで使い回せる)
 		const gs = (function(){
 			const gsmemo = {}
 			return function(target){
 				const joined_target = target.join("");
 				if(joined_target in gsmemo)return gsmemo[joined_target];
-				const result = getSimilarWord(wordlist, target, kanaDist, 100, param.VARIATION_COST);
+				const result = getSimilarWord(wordlist,target,kanaDist,candidateLimit,
+					param.VARIATION_COST,null,approximateLimit,param.VOWEL_RATIO??0.8);
 				gsmemo[joined_target] = result;
 				return result;
 			}
@@ -428,16 +568,15 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 			return function(target, start, end){
 				const key = start + ":" + end;
 				if(key in gsmemo)return gsmemo[key];
-				const result = getSimilarWord(wordlist, target, kanaDist, 100, param.VARIATION_COST,
-					lineWeights.slice(start, end));
+				const result = getSimilarWord(wordlist,target,kanaDist,candidateLimit,
+					param.VARIATION_COST,lineWeights.slice(start,end),approximateLimit,
+					param.VOWEL_RATIO??0.8);
 				gsmemo[key] = result;
 				return result;
 			}
 		};
 		console.log("tokens_list",tokens_list);
-		const tokenized_phrases = tokens_list.map(v=>textAnalyzer.getYomiAndPhraseBreak(v));
-		
-		
+
 		let used_words = [];
 		const results = [];
 		//cancel()で以降の行処理とendFuncを止める。出力自体は変えない追加API(#116)
