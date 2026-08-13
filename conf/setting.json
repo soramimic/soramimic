@@ -162,16 +162,7 @@
    "text": "名字",
    "filepath": "wordlists/myoji.csv",
    "dbtype": "tidy",
-   "facets": [
-    {
-     "column": "verified",
-     "label": "読みの裏付け",
-     "values": [
-      { "v": "yes", "label": "確認済み", "default": true },
-      { "v": "no", "label": "未確認" }
-     ]
-    }
-   ]
+   "where": "verified=yes"
   },
   {
    "label": "生物",
