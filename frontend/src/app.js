@@ -12,12 +12,14 @@ import {
 	CUSTOM_WORDLISTS_STORAGE_KEY,
 } from "./customWordlists.js";
 import { readCustomWordlistFile } from "./customWordlistFile.js";
+import { createLruCache } from "./lib/lruCache.js";
 import {
 	setupButtonGroup, createParamControls,
 	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
 } from "./convertControls.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
+const DATABASE_CACHE_LIMIT = 2;
 
 // GA4カスタムイベント送信(本番以外・広告ブロック時はgtag未定義なので何もしない)
 function track(name, params) {
@@ -220,7 +222,9 @@ export async function startApp() {
 
 	// ---- 単語リスト ----
 	let selectedWordlist = null;
-	const dbCache = new Map();
+	// 現在と直前のDBだけを残す。ファセット・歌詞長・自作リスト内容が変わるたびに
+	// 巨大DBがMapへ蓄積し続けるのを防ぎつつ、設定を戻したときの再利用は効かせる。
+	const dbCache = createLruCache(DATABASE_CACHE_LIMIT);
 
 	// 設定の wordlist は「エントリ(=ボタン)」と「グループ {label, items}(=プルダウン)」の混在。
 	// 表示順・グループ分け・ラベルはすべて設定ファイル側で決める。
@@ -583,14 +587,12 @@ export async function startApp() {
 		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
 		if (customWordlistId(entry.value)) {
 			const key = [entry.value, entry.csvText || entry.originalText || "", maxUnits].join("|");
-			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry, undefined, maxUnits));
-			return dbCache.get(key);
+			return dbCache.getOrCreate(key,
+				() => buildDatabase(app, entry, undefined, maxUnits));
 		}
 		const key = [entry.filepath, entry.dbtype, where, maxUnits].join("|");
-		if (!dbCache.has(key)) {
-			dbCache.set(key, await buildDatabase(app, entry, where, maxUnits));
-		}
-		return dbCache.get(key);
+		return dbCache.getOrCreate(key,
+			() => buildDatabase(app, entry, where, maxUnits));
 	}
 
 	// ---- 変換 ----

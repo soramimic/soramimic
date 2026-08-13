@@ -186,8 +186,6 @@ function WordList(textAnalyzer){
 				kanji_pronunciation_id.push(i);
 			}
 		}
-		console.log("kanji_pronunciation",kanji_pronunciation);
-		
 		if(kanji_pronunciation.length > 0){
 			for(let start=0;start<kanji_pronunciation.length;start+=YIELD_BATCH_SIZE){
 				let end = Math.min(start + YIELD_BATCH_SIZE, kanji_pronunciation.length);
