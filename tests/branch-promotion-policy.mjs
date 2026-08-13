@@ -63,6 +63,8 @@ assert.match(automerge,
 assert.match(automerge,
 	/result=\$\(gh api -X PUT[^]*?jq -r '\.merged'\)" != "true"[^]*?echo "merged=true" >> "\$GITHUB_OUTPUT"/,
 	"APIが実際のマージ成功を返した場合だけdeployを有効にする");
+assert.match(automerge, /for attempt in 1 2 3; do[^]*?\.merged_at \/\/ empty[^]*?sleep 10/,
+	"一時的なマージAPI障害を再試行し、応答消失時もlive状態で完了を確認する");
 assert.match(automerge, /uses: \.\/\.github\/workflows\/deploy\.yaml/,
 	"preview→mainの自動マージ成功後に本番deployを確実に起動する");
 assert.match(automerge,
