@@ -42,27 +42,63 @@ cd frontend && npm run test:smoke            # UIスモークテスト(実ブラ
 
 ## デプロイ
 
-リリーストレイン方式の2段構え:
+開発・公開候補・本番を分けた3段構え:
 
-- **dev(プレビュー)**: dev へのマージで [preview.soramimic.pages.dev](https://preview.soramimic.pages.dev) が
-  自動更新される(`.github/workflows/preview.yaml`)。ここで動作確認する
-- **main(本番)**: `.github/workflows/release.yaml` が週次(月曜朝)+ 手動で dev→main を
-  マージし、Cloudflare Pages([soramimic.pages.dev](https://soramimic.pages.dev) = soramimic.com)へ
-  デプロイする(`.github/workflows/deploy.yaml`)。main宛てPR(緊急修正)はマージで即デプロイ
+- **dev（開発・動作確認）**: 開発PRを集約し、未承認のワードリストも含めて
+  [dev.soramimic.pages.dev](https://dev.soramimic.pages.dev) で確認する
+- **preview（次回公開候補）**: 最新previewからpromotionブランチを作り、承認したdevの
+  コミットだけをcherry-pickしたPRを人間が確認・マージする。
+  [preview.soramimic.pages.dev](https://preview.soramimic.pages.dev) に自動反映される
+- **main（本番）**: preview→mainのrelease PRだけを、固定SHAの再テストと人間の明示承認後に
+  マージする。mainの内容がそのまま
+  [soramimic.pages.dev](https://soramimic.pages.dev)（soramimic.com）へデプロイされる
+
+通常の開発PRはdev向けで、CI成功後に自動マージされる。previewとmainは自動マージしない。
+名字・学校名・市区町村・流行など品質確認中のリストはdevで試し、承認するまでpromotionへ
+含めない。
+
+promotion例:
+
+```sh
+git fetch origin dev preview
+git switch -c promote/example origin/preview
+git cherry-pick <dev PRで取り込んだcommit>
+git push -u origin promote/example
+# promote/example → preview のPRを作り、確認後に手動マージ
+```
+
+週次または手動の`release` workflowはpreviewのSHAを固定して再テストし、成功時に
+preview→main PRの作成リンクをjob summaryへ出す。release PRも自動マージせず、現在のhead
+SHAのチェックとpreview環境を確認してから人間が手動マージする。
+
+3ブランチ方式へ初めて移行するときは、次の順序でbootstrapする。
+
+1. 旧release workflowを停止し、現在のmainからpreviewを作る
+2. main/previewのrulesetでPR必須、削除・force-push禁止、bypassなしを設定する
+3. 新workflowをdevへ入れ、そのworkflow変更だけをpreviewへpromotionする
+4. 初回だけ安全に新workflowをmainへ入れ、以後はpreview→main release PRだけを使う
+5. preview workflowを`ref=preview`で手動実行し、旧dev成果物が残る固定aliasを上書きする
+6. devの設定に品質確認中の4リストがあり、preview/mainにはないことを実URLで確認する
+
+mainへ緊急修正を直接入れた場合は、公開後すぐに最新mainから同期ブランチを作り、preview、
+devの順に同期PRをマージする。main自体をheadとして直接pushせず、次回release候補から修正が
+欠落しないようにする。
 
 ## メンテナンス
 
 ### 更新
 
-- devからfeatureブランチを切り、pushしてプルリク(baseはdev)。CIが全通過すると automerge が自動でマージし、プレビューが更新される
-- 本番に出すときは Actions の release を手動実行する(または週次の自動実行を待つ)
+- devからfeatureブランチを切り、pushしてプルリク(baseはdev)。CIが全通過すると automerge が自動でマージされ、dev環境が更新される
+- 公開する変更だけをpreviewへpromotionし、preview確認後にActionsのreleaseを実行する（または週次実行を待つ）
+- releaseが検証したSHAと現在のpreviewが一致することを確認してpreview→main PRを作り、人間が手動マージする
 - github actionsからtag更新(セマンティックバージョニング)
 - 更新履歴は [frontend/index.html](./frontend/index.html) の「更新履歴」セクション(サイトの「サイトについて」タブ)で管理する
 
 ### 単語リストの更新
 [soramimic-wordlists](https://github.com/soramimic/soramimic-wordlists) 側で更新する(手順は同リポジトリのREADME参照)。
 本リポジトリのsubmodule pinは bump-wordlists ワークフロー(週次月曜朝+Actionsから手動実行可)が
-自動で追従させてデプロイするため、手動で進める必要は通常ない。
+devだけを自動追従させる。更新内容をpreview/mainへ出すときは、他の変更と同じpromotionで
+submodule pinのコミットを明示的に昇格する。
 
 ## ライセンス
 

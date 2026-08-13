@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # release.yaml がリリース前の dev を再検証するために呼ぶ
+  # release.yaml が固定したpreview SHAとrelease PRのheadを再検証するために呼ぶ
   workflow_call:
     inputs:
       ref:
@@ -58,3 +58,5 @@ jobs:
         run: node tests/xfalign.mjs
       - name: 単語リスト設定のテスト
         run: node tests/setting-wordlists.mjs
+      - name: dev・preview・main昇格ポリシーのテスト
+        run: node tests/branch-promotion-policy.mjs
