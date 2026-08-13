@@ -1,104 +1,24 @@
-import { createReadStream, createWriteStream } from "node:fs";
-import { readFile, readdir, rename, stat, unlink } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createInterface } from "node:readline";
-import { once } from "node:events";
-import { finished } from "node:stream/promises";
 
 export const CLOUDFLARE_PAGES_FILE_LIMIT = 25 * 1024 * 1024;
-export const SCHOOL_DELIVERY_COLUMNS = [
-	"id",
-	"original",
-	"surface",
-	"pronunciation",
-	"type",
-	"school_type",
-	"status",
-];
+export const REQUIRED_WORDLIST_COLUMNS = ["id", "original", "surface", "pronunciation"];
+export const OMITTED_WORDLIST_COLUMNS = new Set(["image", "image_page", "description", "wikidata"]);
 
-async function writeRow(output, completion, line, first) {
-	if (!output.write(`${first ? "" : "\n"}${line}`)) {
-		await Promise.race([once(output, "drain"), completion]);
-	}
-}
-
-// school.csvには変換で使わない画像URLなどの列があり、Cloudflare Pagesの
-// 1ファイル25 MiB上限を超える。原本は維持し、配信物だけを必要列へ射影する。
-export async function projectSchoolCsv(inputPath, outputPath) {
-	const temporaryPath = `${outputPath}.tmp`;
-	const input = createReadStream(inputPath, { encoding: "utf8" });
-	const lines = createInterface({ input, crlfDelay: Infinity });
-	const output = createWriteStream(temporaryPath, { encoding: "utf8" });
-	const outputFinished = finished(output);
-	let indexes;
-	let sourceColumnCount = 0;
-	let rowCount = 0;
-	let outputRowCount = 0;
-
-	try {
-		for await (const line of lines) {
-			if (line.includes('"')) {
-				throw new Error(`school.csvの${rowCount + 1}行目に未対応の文字があります`);
-			}
-			if (!indexes) {
-				const header = line.split(",");
-				if (new Set(header).size !== header.length) {
-					throw new Error("school.csvのヘッダーに重複列があります");
-				}
-				sourceColumnCount = header.length;
-				indexes = SCHOOL_DELIVERY_COLUMNS.map((column) => {
-					const index = header.indexOf(column);
-					if (index === -1) throw new Error(`school.csvに必要な列がありません: ${column}`);
-					return index;
-				});
-				await writeRow(output, outputFinished, SCHOOL_DELIVERY_COLUMNS.join(","), outputRowCount === 0);
-				outputRowCount += 1;
-				continue;
-			}
-
-			if (line === "") throw new Error(`school.csvの${rowCount + 2}行目が空です`);
-			const row = line.split(",");
-			if (row.length !== sourceColumnCount) {
-				throw new Error(`school.csvの${rowCount + 2}行目の列数が不正です`);
-			}
-			for (const column of ["id", "original", "surface"]) {
-				if (row[headerIndex(indexes, column)] === "") {
-					throw new Error(`school.csvの${rowCount + 2}行目の${column}が空です`);
-				}
-			}
-			await writeRow(output, outputFinished,
-				indexes.map((index) => row[index]).join(","), outputRowCount === 0);
-			outputRowCount += 1;
-			rowCount += 1;
-		}
-		if (!indexes) throw new Error("school.csvが空です");
-		output.end();
-		await outputFinished;
-		await rename(temporaryPath, outputPath);
-		return { rowCount, columns: SCHOOL_DELIVERY_COLUMNS };
-	} catch (error) {
-		output.destroy();
-		await outputFinished.catch(() => {});
-		await unlink(temporaryPath).catch(() => {});
-		throw error;
-	}
-}
-
-function headerIndex(indexes, column) {
-	return indexes[SCHOOL_DELIVERY_COLUMNS.indexOf(column)];
-}
-
-export function schoolConfigColumns(school) {
-	const columns = new Set(["id", "original", "surface", "pronunciation"]);
+// 変換で必須の列と、設定の絞り込みが参照する列を導出する。
+// 外部ホストは設定にない属性列をwhereで参照できるため、実際の射影ではこれらに
+// 加えて画像URL・説明文等の明示的な除外列以外をすべて残す。
+export function wordlistConfigColumns(entry) {
+	const columns = new Set(REQUIRED_WORDLIST_COLUMNS);
 	const addWhereColumns = (where) => {
 		if (!where) return;
 		for (const match of where.matchAll(/([^\s()=!~]+)\s*(?:!~=|~=|!=|=)/g)) {
 			columns.add(match[1]);
 		}
 	};
-	addWhereColumns(school.where);
-	for (const facet of school.facets || []) {
+	addWhereColumns(entry.where);
+	for (const facet of entry.facets || []) {
 		for (const column of facet.columns || [facet.column]) {
 			if (column) columns.add(column);
 		}
@@ -107,16 +27,78 @@ export function schoolConfigColumns(school) {
 	return columns;
 }
 
-async function assertSchoolFacetColumns(dist) {
-	const config = JSON.parse(await readFile(resolve(dist, "conf/setting.json"), "utf8"));
-	const entries = config.wordlist.flatMap((entry) => entry.items || [entry]);
-	const school = entries.find((entry) => entry.value === "SCHOOL");
-	if (!school) throw new Error("conf/setting.jsonにSCHOOL設定がありません");
-	for (const column of schoolConfigColumns(school)) {
-		if (!SCHOOL_DELIVERY_COLUMNS.includes(column)) {
-			throw new Error(`学校リストの利用列が配信対象にありません: ${column}`);
+// 現行wordlist CSVは引用符・埋め込み改行を使わない契約。ビルド時だけの処理なので
+// 全量を読み、検証完了後に一時ファイルへ書いてから置換する。readlineの非同期反復は
+// 大きな出力のbackpressure時にNode 24でERR_USE_AFTER_CLOSEになり得るため使わない。
+export async function projectWordlistCsv(inputPath, outputPath, requiredColumns, label = inputPath) {
+	const temporaryPath = `${outputPath}.tmp`;
+
+	try {
+		const text = await readFile(inputPath, "utf8");
+		const lines = text.split(/\r\n|\n|\r/);
+		if (lines.at(-1) === "") lines.pop();
+		if (lines.length === 0 || lines[0] === "") throw new Error(`${label}が空です`);
+		if (lines[0].includes('"')) throw new Error(`${label}の1行目に未対応の文字があります`);
+		const header = lines[0].split(",");
+		if (new Set(header).size !== header.length) {
+			throw new Error(`${label}のヘッダーに重複列があります`);
 		}
+		const columns = header.filter((column) => !OMITTED_WORDLIST_COLUMNS.has(column));
+		for (const column of requiredColumns) {
+			if (!columns.includes(column)) throw new Error(`${label}に必要な列がありません: ${column}`);
+		}
+		const indexes = columns.map((column) => header.indexOf(column));
+		const outputLines = [columns.join(",")];
+		for (let index = 1; index < lines.length; index += 1) {
+			const line = lines[index];
+			if (line.includes('"')) throw new Error(`${label}の${index + 1}行目に未対応の文字があります`);
+			if (line === "") throw new Error(`${label}の${index + 1}行目が空です`);
+			const row = line.split(",");
+			if (row.length !== header.length) {
+				throw new Error(`${label}の${index + 1}行目の列数が不正です`);
+			}
+			for (const column of ["id", "original", "surface"]) {
+				if (row[indexes[columns.indexOf(column)]] === "") {
+					throw new Error(`${label}の${index + 1}行目の${column}が空です`);
+				}
+			}
+			outputLines.push(indexes.map((columnIndex) => row[columnIndex]).join(","));
+		}
+		await writeFile(temporaryPath, outputLines.join("\n"), "utf8");
+		await rename(temporaryPath, outputPath);
+		return { rowCount: lines.length - 1, columns };
+	} catch (error) {
+		await unlink(temporaryPath).catch(() => {});
+		throw error;
 	}
+}
+
+function configuredWordlists(config) {
+	return config.wordlist.flatMap((entry) => entry.items || [entry])
+		.filter((entry) => entry.dbtype === "tidy" && entry.filepath);
+}
+
+// 同じCSVを複数の設定エントリが共有しても、どちらかが使う列を落とさない。
+export function wordlistProjectionPlans(config) {
+	const byPath = new Map();
+	for (const entry of configuredWordlists(config)) {
+		let plan = byPath.get(entry.filepath);
+		if (!plan) {
+			plan = { filepath: entry.filepath, values: [], columns: new Set() };
+			byPath.set(entry.filepath, plan);
+		}
+		plan.values.push(entry.value);
+		for (const column of wordlistConfigColumns(entry)) plan.columns.add(column);
+	}
+	return [...byPath.values()].map((plan) => ({ ...plan, columns: [...plan.columns] }));
+}
+
+function assetPath(dist, filepath) {
+	const path = resolve(dist, filepath);
+	if (path !== dist && !path.startsWith(`${dist}${sep}`)) {
+		throw new Error(`単語リストのパスが配信ディレクトリ外です: ${filepath}`);
+	}
+	return path;
 }
 
 export async function findOversizedFiles(root, limit = CLOUDFLARE_PAGES_FILE_LIMIT) {
@@ -137,9 +119,13 @@ export async function findOversizedFiles(root, limit = CLOUDFLARE_PAGES_FILE_LIM
 
 export async function prepareStaticAssets(distDirectory) {
 	const dist = resolve(distDirectory);
-	const schoolCsv = resolve(dist, "wordlists/school.csv");
-	await assertSchoolFacetColumns(dist);
-	const projected = await projectSchoolCsv(schoolCsv, schoolCsv);
+	const config = JSON.parse(await readFile(resolve(dist, "conf/setting.json"), "utf8"));
+	const projections = [];
+	for (const plan of wordlistProjectionPlans(config)) {
+		const path = assetPath(dist, plan.filepath);
+		const result = await projectWordlistCsv(path, path, plan.columns, plan.filepath);
+		projections.push({ values: plan.values, filepath: plan.filepath, ...result });
+	}
 	const oversized = await findOversizedFiles(dist);
 	if (oversized.length > 0) {
 		const details = oversized
@@ -147,12 +133,13 @@ export async function prepareStaticAssets(distDirectory) {
 			.join(", ");
 		throw new Error(`Cloudflare Pagesの25 MiB上限を超えるファイルがあります: ${details}`);
 	}
-	return projected;
+	return projections;
 }
 
 const invokedPath = process.argv[1] && resolve(process.argv[1]);
 if (invokedPath === fileURLToPath(import.meta.url)) {
 	const dist = resolve(dirname(fileURLToPath(import.meta.url)), "../dist");
-	const result = await prepareStaticAssets(dist);
-	console.log(`[assets] school.csvを${result.rowCount.toLocaleString()}行・${result.columns.length}列へ縮小しました`);
+	const results = await prepareStaticAssets(dist);
+	const rows = results.reduce((sum, result) => sum + result.rowCount, 0);
+	console.log(`[assets] 単語リスト${results.length}件を計${rows.toLocaleString()}行へ射影しました`);
 }

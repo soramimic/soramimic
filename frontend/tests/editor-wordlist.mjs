@@ -337,29 +337,31 @@ try {
 	assert(notMineFile.length === 0,
 		"ファイル読み込み後に自作リスト以外の単語が出ている: " + notMineFile.join(","));
 
-	// ---- 従来の2MBを超えるstations.csvも読み込める ----
+	// ---- 従来の2MBを超える有効なCSVも読み込める ----
+	// 配信wordlistはビルド時の列射影で2MB未満になり得るため、サイズ上限の
+	// 回帰テストは配信データ量に依存しない合成CSVで行う。
 	await openSettings(editor);
 	await editor.click("#btn-original-edit");
 	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
-	const stationsCsv = await readFile(
-		new URL("../dist/wordlists/stations.csv", import.meta.url));
-	assert(stationsCsv.byteLength > 2 * 1024 * 1024,
-		"stations.csvが旧上限を超えていないため回帰テストにならない");
-	const [stationsChooser] = await Promise.all([
+	const largeCsv = Buffer.from("id,original,surface,pronunciation\n"
+		+ "1,駅,駅,エキ\n".repeat(180000), "utf8");
+	assert(largeCsv.byteLength > 2 * 1024 * 1024,
+		"合成CSVが旧上限を超えていないため回帰テストにならない");
+	const [largeChooser] = await Promise.all([
 		editor.waitForEvent("filechooser"),
 		editor.click("#btn-original-file"),
 	]);
-	await stationsChooser.setFiles({
-		name: "stations.csv",
+	await largeChooser.setFiles({
+		name: "large-valid.csv",
 		mimeType: "text/csv",
-		buffer: stationsCsv,
+		buffer: largeCsv,
 	});
 	await editor.waitForFunction(
 		() => document.getElementById("original-file-status").textContent
-			.includes("stations.csv"),
+			.includes("large-valid.csv"),
 		undefined, { timeout: 10000 });
 	assert((await editor.inputValue("#editor-original-text")).startsWith("id,"),
-		"stations.csvが自作リスト欄に読み込まれていない");
+		"2MB超の有効CSVが自作リスト欄に読み込まれていない");
 	// 後続の拒否テストでは「入力欄が書き換わらない」ことを小さい値で比較する
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
 
