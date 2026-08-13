@@ -23,4 +23,9 @@ assert.deepEqual(
 );
 assert.ok(marine.facets.every((facet) => facet.values.every((value) => value.default)));
 
+const myoji = setting.wordlist.find((entry) => entry.value === "MYOJI");
+assert.ok(myoji, "名字リストが存在する");
+assert.equal(myoji.where, "verified=yes");
+assert.ok(!myoji.facets || myoji.facets.length === 0, "名字に絞り込みUIを表示しない");
+
 console.log("setting wordlists: OK");
