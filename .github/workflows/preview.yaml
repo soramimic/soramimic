@@ -7,15 +7,12 @@
 # - automerge が dev へのマージ成功後に workflow_call で呼ぶ(alias=dev 固定)。
 #   GITHUB_TOKEN によるマージpushは push トリガーを起動しないため、call で確実に回す
 # - dev / preview へ直接pushされたとき(常設ブランチと同名のaliasになる)
-# - preview / main 宛ての Pull Requestごとのブランチ別プレビュー
 # - 手動(workflow_dispatch)
 #
 # 必要な GitHub Secrets は deploy.yaml と同じ(CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)。
 # 未設定の間はスキップして成功終了する。
 name: preview
 on:
-  pull_request:
-    branches: [preview, main]
   push:
     branches: [dev, preview]
   workflow_call:
