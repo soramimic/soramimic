@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import {
 	REQUIRED_WORDLIST_COLUMNS,
 	findOversizedFiles,
 	projectWordlistCsv,
+	pruneUnconfiguredWordlists,
 	wordlistConfigColumns,
 	wordlistProjectionPlans,
 } from "../scripts/prepare-static-assets.mjs";
@@ -89,6 +90,18 @@ try {
 		"射影失敗時に既存ファイルを変更した");
 	await assert.rejects(readFile(`${output}.tmp`, "utf8"), { code: "ENOENT" },
 		"射影失敗時の一時ファイルが残っている");
+
+	const dist = join(temporaryDirectory, "dist");
+	const wordlists = join(dist, "wordlists");
+	await mkdir(wordlists, { recursive: true });
+	await writeFile(join(wordlists, "kept.csv"), "keep", "utf8");
+	await writeFile(join(wordlists, "hidden.csv"), "remove", "utf8");
+	await writeFile(join(wordlists, "NOTICE.md"), "keep metadata", "utf8");
+	assert.deepEqual(await pruneUnconfiguredWordlists(dist, [{
+		filepath: "wordlists/kept.csv",
+	}]), ["hidden.csv"], "設定にないCSVを配信物から除外できない");
+	assert.equal(await readFile(join(wordlists, "kept.csv"), "utf8"), "keep");
+	assert.equal(await readFile(join(wordlists, "NOTICE.md"), "utf8"), "keep metadata");
 
 	await writeFile(input,
 		'id,original,surface,pronunciation,status\n1,"学校",学校,ガッコウ,current', "utf8");
