@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # release.yaml がリリース前の dev を再検証するために呼ぶ
+  # release.yaml が固定したpreview SHAとrelease PRのheadを再検証するために呼ぶ
   workflow_call:
     inputs:
       ref:
@@ -38,3 +38,5 @@ jobs:
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
         run: node tests/xfalign.mjs
+      - name: dev・preview・main昇格ポリシーのテスト
+        run: node tests/branch-promotion-policy.mjs
