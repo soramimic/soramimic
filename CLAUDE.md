@@ -6,8 +6,8 @@
 
 1. **`frontend/src/lib/` のアルゴリズムロジックを変更しない**(旧実装から出力一致保証付きで移植)。必要ならIssueで相談し、ゴールデンテストで出力不変を証明する
 2. `tests/golden/expected*/` の期待値変更は「意図した挙動変更」のときだけ(`--record` で再記録)
-3. ブランチは dev から feature/* 、**PRのbaseは dev**。main へは release ワークフロー経由のみ(直接コミット・直接PRは緊急修正だけ。その場合は即本番デプロイされる)
-4. dev向けPRは**CI全通過で automerge が自動マージ**され、[preview.soramimic.pages.dev](https://preview.soramimic.pages.dev) が更新される。本番(soramimic.com)へは release ワークフロー(週次月曜朝 + 手動)が dev→main をマージしてデプロイ。automerge を止めたいときは `no-automerge` ラベルかドラフト。コミットメッセージは日本語
+3. ブランチは dev から feature/* 、**開発PRのbaseは dev**。公開する変更だけをpreviewへ選択昇格し、mainへはpreviewからのみ昇格する(直接コミット・直接PRは緊急修正だけ)
+4. dev向けPRは**CI全通過で automerge が自動マージ**され、[dev.soramimic.pages.dev](https://dev.soramimic.pages.dev) が更新される。preview/main向けPRは自動マージせず、開発者の明示承認後に手動マージする。previewは[preview.soramimic.pages.dev](https://preview.soramimic.pages.dev)、mainは本番(soramimic.com)へ対応する。コミットメッセージは日本語
 
 ## テスト
 
