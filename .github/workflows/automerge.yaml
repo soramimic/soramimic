@@ -1,12 +1,10 @@
-# dev / preview 向けPRと preview→main のrelease PRの自動マージ。
+# dev / preview 向けPRの自動マージ。
 # CI(golden / smoke など、このPRに付く全チェック)が
 # すべて成功したら、確認したコミットSHAを指定してマージする。
 # - 開発PRは base=dev。マージ後は dev.soramimic.pages.dev を更新する
 # - 公開候補PRは base=preview。選択的promotionでもdev全体でも、マージ後は
 #   preview.soramimic.pages.dev を更新する
-# - 同一repositoryの preview→main PRは、PR作成をリリース承認として自動マージし、
-#   マージ後に本番(soramimic.pages.dev)へデプロイする
-# - preview以外からmainへ向けたPRは自動マージしない
+# - preview / main 間のリリースは引き続き人間が明示的に扱う
 # - main 向けの通常PRは retarget-main-pr.yaml が dev へ自動で向け直す。
 #   emergency ラベル付きの緊急修正だけが main 宛てのまま残り、人間が手動でマージする。
 #   人間による手動マージの push は deploy.yaml の push トリガーで本番デプロイされる
@@ -17,7 +15,7 @@ name: automerge
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled]
-    branches: [dev, preview, main]
+    branches: [dev, preview]
 
 permissions:
   contents: write
@@ -38,14 +36,8 @@ jobs:
         !contains(github.event.pull_request.labels.*.name, 'no-automerge') &&
         !contains(github.event.pull_request.labels.*.name, 'emergency') &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        (
-          github.event.pull_request.base.ref == 'dev' ||
-          github.event.pull_request.base.ref == 'preview' ||
-          (
-            github.event.pull_request.base.ref == 'main' &&
-            github.event.pull_request.head.ref == 'preview'
-          )
-        )
+        (github.event.pull_request.base.ref == 'dev' ||
+          github.event.pull_request.base.ref == 'preview')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -100,10 +92,6 @@ jobs:
                 echo "PRの状態が待機開始時から変わったためマージしません" >&2
                 exit 1
               fi
-              if [ "$BASE" = "main" ] && [ "$BRANCH" != "preview" ]; then
-                echo "mainへ自動マージできるのはpreviewだけです" >&2
-                exit 1
-              fi
               echo "全チェック成功。マージします"
               result=''
               for attempt in 1 2 3; do
@@ -153,12 +141,4 @@ jobs:
     uses: ./.github/workflows/preview.yaml
     with:
       ref: preview
-    secrets: inherit
-
-  # GITHUB_TOKENによるマージpushはpushトリガーを起動しないため、release PRの
-  # 自動マージ成功後に本番デプロイを明示的に呼び出す。
-  deploy-main:
-    needs: automerge
-    if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'preview' }}
-    uses: ./.github/workflows/deploy.yaml
     secrets: inherit
