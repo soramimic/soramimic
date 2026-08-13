@@ -31,7 +31,7 @@ for (const [file, metadata] of Object.entries(expected)) {
 	assertOnce(html, `<link rel="canonical" href="${escapeRegExp(metadata.url)}" ?/?>`, `${file} canonical`);
 	assertOnce(html, '<link rel="icon" type="image/png" href="/logo-soramimic-symbol-v4\\.png" ?/?>', `${file} favicon`);
 	assertOnce(html, '<link rel="apple-touch-icon" href="/logo-soramimic-symbol-v4\\.png" ?/?>', `${file} apple touch icon`);
-	assertOnce(html, '<img class="brand-logo"\\s+src="/logo-soramimic-horizontal-v2\\.png"', `${file} brand logo`);
+	assertOnce(html, '<img class="brand-logo"\\s+src="/logo-soramimic-horizontal-v3\\.png"', `${file} brand logo`);
 	assertOnce(html, `<meta property="og:title" content="${escapeRegExp(metadata.title)}" ?/?>`, `${file} og:title`);
 	assertOnce(html, `<meta property="og:description" content="${escapeRegExp(metadata.description)}" ?/?>`, `${file} og:description`);
 	assertOnce(html, `<meta property="og:url" content="${escapeRegExp(metadata.url)}" ?/?>`, `${file} og:url`);
@@ -47,7 +47,7 @@ assert.equal(image.readUInt32BE(20), 630, "OG image height");
 
 for (const [file, width, height, sha256] of [
 	["logo-soramimic-symbol-v4.png", 512, 512, "42101a49907d7f25495b8f6b672b659cae73e1bc0c57ba96c418554f1f244418"],
-	["logo-soramimic-horizontal-v2.png", 1899, 466, "79eeb3734a198f392132523797425fdfd901227131d8c0c1f2b7ad1526c7630b"],
+	["logo-soramimic-horizontal-v3.png", 1900, 467, "1abf8461b6db03f4658554f49c02321891fdad049335f95163edebc4455cd0a9"],
 ]) {
 	const logo = await readFile(new URL(`../dist/${file}`, import.meta.url));
 	assert.deepEqual([...logo.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], `${file} must be a PNG`);
