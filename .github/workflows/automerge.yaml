@@ -105,8 +105,22 @@ jobs:
                 exit 1
               fi
               echo "全チェック成功。マージします"
-              result=$(gh api -X PUT "repos/$REPO/pulls/$PR/merge" \
-                -f merge_method=merge -f sha="$SHA")
+              result=''
+              for attempt in 1 2 3; do
+                if result=$(gh api -X PUT "repos/$REPO/pulls/$PR/merge" \
+                  -f merge_method=merge -f sha="$SHA"); then
+                  break
+                fi
+                # GitHub側ではマージ済みなのに応答だけ5xxになる場合もあるため、
+                # 再試行前にPRのlive状態で完了を確認する。
+                after_error=$(gh api "repos/$REPO/pulls/$PR" 2>/dev/null || true)
+                if [ "$(echo "$after_error" | jq -r '.merged_at // empty')" != "" ]; then
+                  result='{"merged":true}'
+                  break
+                fi
+                echo "マージAPIが失敗しました（$attempt/3）。再試行します" >&2
+                sleep 10
+              done
               if [ "$(echo "$result" | jq -r '.merged')" != "true" ]; then
                 echo "$result" | jq -r '.message // "マージできませんでした"' >&2
                 exit 1
