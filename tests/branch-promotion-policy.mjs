@@ -4,25 +4,37 @@ import { readFile } from "node:fs/promises";
 const workflow = async (name) => readFile(
 	new URL(`../.github/workflows/${name}`, import.meta.url), "utf8");
 
-const [automerge, bump, deploy, preview, release, retarget] = await Promise.all([
+const [automerge, bump, deploy, smoke, preview, release, retarget] = await Promise.all([
 	workflow("automerge.yaml"),
 	workflow("bump-wordlists.yaml"),
 	workflow("deploy.yaml"),
+	workflow("frontend-smoke.yaml"),
 	workflow("preview.yaml"),
 	workflow("release.yaml"),
 	workflow("retarget-main-pr.yaml"),
 ]);
 
-assert.match(automerge, /branches: \[dev, main\]/,
-	"自動マージworkflowはdev PRとmain release PRを監視する");
+assert.match(automerge, /branches: \[dev, preview, main\]/,
+	"自動マージworkflowはdev/preview PRとmain release PRを監視する");
 assert.match(automerge,
 	/types: \[opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled\]/,
 	"待機中のドラフト化やbase変更でも古い自動マージ実行をキャンセルする");
 assert.match(automerge,
 	/!contains\(github\.event\.pull_request\.labels\.\*\.name, 'emergency'\)/,
 	"emergency PRは自動マージ対象から除外する");
+assert.match(automerge,
+	/!contains\(github\.event\.pull_request\.labels\.\*\.name, 'no-automerge'\)/,
+	"no-automerge PRは自動マージ対象から除外する");
+assert.match(automerge, /\["golden", "smoke"\] as \$required/,
+	"全自動マージ対象でgoldenとsmokeの出現・成功を必須にする");
+assert.match(automerge, /\[ "\$required_ready" -eq 2 \]/,
+	"必須checkが揃う前に自動マージしない");
+assert.match(automerge, /!github\.event\.pull_request\.draft/,
+	"ドラフトPRは自動マージ対象から除外する");
 assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'dev'/,
-	"dev PRは従来どおり自動マージする");
+	"dev PRを自動マージする");
+assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'preview'/,
+	"選択promotionとdev直接PRのどちらもpreviewへ自動マージする");
 assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'main'/,
 	"main向けPRは独立したrelease条件で判定する");
 assert.match(automerge, /github\.event\.pull_request\.head\.ref == 'preview'/,
@@ -30,7 +42,7 @@ assert.match(automerge, /github\.event\.pull_request\.head\.ref == 'preview'/,
 assert.match(automerge, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/,
 	"forkのpreviewという名前だけでは自動releaseしない");
 assert.match(automerge,
-	/github\.event\.pull_request\.base\.ref == 'dev'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'main'[^]*?&&[^]*?github\.event\.pull_request\.head\.ref == 'preview'/,
+	/github\.event\.pull_request\.base\.ref == 'dev'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'preview'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'main'[^]*?&&[^]*?github\.event\.pull_request\.head\.ref == 'preview'/,
 	"同一条件式でmain向け自動マージをpreview releaseだけに限定する");
 assert.match(automerge, /\[ "\$BRANCH" != "dev" \] && \[ "\$BRANCH" != "preview" \]/,
 	"常設のdev/preview branchは自動マージ後も削除しない");
@@ -54,11 +66,21 @@ assert.match(automerge,
 assert.match(automerge, /uses: \.\/\.github\/workflows\/deploy\.yaml/,
 	"preview→mainの自動マージ成功後に本番deployを確実に起動する");
 assert.match(automerge,
+	/needs\.automerge\.outputs\.merged == 'true'[^\n]*base\.ref == 'dev'[^]*?uses: \.\/\.github\/workflows\/preview\.yaml[^]*?ref: dev/,
+	"devへのマージ成功後に固定dev環境をデプロイする");
+assert.match(automerge,
+	/needs\.automerge\.outputs\.merged == 'true'[^\n]*base\.ref == 'preview'[^]*?uses: \.\/\.github\/workflows\/preview\.yaml[^]*?ref: preview/,
+	"previewへのマージ成功後に固定preview環境をデプロイする");
+assert.match(automerge,
 	/needs\.automerge\.outputs\.merged == 'true'[^\n]*github\.event\.pull_request\.base\.ref == 'main'/,
 	"本番deployはmain releaseのマージ成功時だけに限定する");
 
 assert.match(preview, /branches: \[dev, preview\]/,
 	"devとpreviewを別々の常設環境へデプロイする");
+assert.match(smoke, /pull_request:/,
+	"dev/preview/main向けPRで必須smoke checkを常に生成する");
+assert.doesNotMatch(smoke, /pull_request:\s*\n\s+paths:/,
+	"変更パスだけを理由にpreview rulesetの必須smoke checkを欠落させない");
 assert.doesNotMatch(preview, /pull_request:/,
 	"promotion PRの一時成果物を公開せず、固定previewで確認する");
 assert.match(preview, /ALIAS=\"\$RAW\"/, "常設ブランチ名をCloudflare aliasに使う");
