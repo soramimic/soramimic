@@ -1,98 +1,145 @@
-# dev に溜まった変更を main へリリースし、本番(soramimic.com)へデプロイする。
-#
-# 運用(リリーストレイン方式):
-# - 開発PRは base=dev で automerge され、preview.soramimic.pages.dev で確認できる
-# - このワークフローが週次(+手動)で dev→main をマージ → 本番デプロイする
-# - 差分がなければ何もしないので、cron は空振りしても無害
-# - すぐ本番に出したいときは Actions の Run workflow から手動実行する
-#
-# 補足:
-# - マージ前に dev の状態で golden / smoke を再実行する(dev は個別PRごとに
-#   CI通過済みだが、積み重なった合成状態を最終確認するため)
-# - GITHUB_TOKEN による main への push は deploy の push トリガーを起動しないため、
-#   automerge.yaml / bump-wordlists.yaml と同様に workflow_call で deploy を回す
-# - リリース後は dev を main に揃える(fast-forward)。main に直接入った緊急修正や
-#   bump-wordlists のコミットもここで dev に取り込まれる
-# - dev→main のマージが競合したら失敗で止まる。手元で dev に main を取り込んで
-#   解消してから再実行する
+# preview の公開候補を固定した SHA で検証し、手動release PRの案内を出す。
+# main への反映は、release PR の現在の head SHA のCIを確認して人間が行う。
 name: release
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 23 * * 0" # 毎週月曜 08:00 JST 頃(bump-wordlists の1時間後)
+    - cron: "0 23 * * 0" # 毎週月曜 08:00 JST 頃
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('release-pr-{0}', github.event.pull_request.number) || 'release-prepare' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  resolve:
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.diff.outputs.changed }}
+      changed: ${{ steps.resolve.outputs.changed }}
+      preview_sha: ${{ steps.resolve.outputs.preview_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-      - name: dev と main の差分を確認
-        id: diff
+      - name: 検証する preview SHA を固定
+        id: resolve
         run: |
-          if ! git fetch origin dev; then
-            echo "dev ブランチが存在しないためスキップします"
+          preview_sha=$(git ls-remote origin refs/heads/preview | awk '{print $1}')
+          if [ -z "$preview_sha" ]; then
+            echo "preview ブランチが存在しないためスキップします"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          count=$(git rev-list --count main..origin/dev)
-          echo "dev には main にないコミットが ${count} 件"
+
+          git fetch --no-tags origin "$preview_sha"
+          count=$(git rev-list --count "origin/main..$preview_sha")
+          echo "preview ($preview_sha) には main にないコミットが ${count} 件"
+          echo "preview_sha=$preview_sha" >> "$GITHUB_OUTPUT"
           if [ "$count" -eq 0 ]; then
-            echo "リリースする変更なし"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # リリース対象(dev)の合成状態を最終検証する
-  golden:
-    needs: check
-    if: ${{ needs.check.outputs.changed == 'true' }}
+  golden-candidate:
+    needs: resolve
+    if: ${{ needs.resolve.outputs.changed == 'true' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/golden-test.yaml
     with:
-      ref: dev
+      ref: ${{ needs.resolve.outputs.preview_sha }}
 
-  smoke:
-    needs: check
-    if: ${{ needs.check.outputs.changed == 'true' }}
+  smoke-candidate:
+    needs: resolve
+    if: ${{ needs.resolve.outputs.changed == 'true' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/frontend-smoke.yaml
     with:
-      ref: dev
+      ref: ${{ needs.resolve.outputs.preview_sha }}
 
-  merge:
-    needs: [golden, smoke]
+  publish-instructions:
+    needs: [resolve, golden-candidate, smoke-candidate]
+    if: ${{ needs.resolve.outputs.changed == 'true' && needs.golden-candidate.result == 'success' && needs.smoke-candidate.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PREVIEW_SHA: ${{ needs.resolve.outputs.preview_sha }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: 手動release PRの案内を表示
+        run: |
+          current_sha=$(gh api "repos/$REPO/git/ref/heads/preview" --jq '.object.sha')
+          {
+            echo "## Release candidate の検証完了"
+            echo
+            echo "- 検証済み preview SHA: \`$PREVIEW_SHA\`"
+            echo "- 現在の preview SHA: \`$current_sha\`"
+            echo
+            if [ "$current_sha" = "$PREVIEW_SHA" ]; then
+              echo "[preview → main のPRを作成または確認する](https://github.com/$REPO/compare/main...preview?expand=1)"
+              echo
+              echo "PRのタイトルは \`release: preview → main\` とし、公開内容を本文に記載してください。"
+              echo "PRのhead SHAに対するチェックを確認し、開発者が明示承認して手動マージしてください。"
+            else
+              echo "> preview が検証中に進みました。この結果は \`$PREVIEW_SHA\` だけに対するものです。"
+              echo "> Actionsからreleaseを再実行し、現在のpreview SHAを検証してください。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  golden-release-pr-head:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/golden-test.yaml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  smoke-release-pr-head:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/frontend-smoke.yaml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+
+  reject-fork-main-pr:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: forkからmainへのPRを拒否
+        run: |
+          echo "forkのhead SHAはrelease gateでは検証しません。PRのbaseをdevに変更してください。" >&2
+          exit 1
+
+  validate-main-source:
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: dev を main へマージして push
+      - name: previewまたは明示された緊急修正だけを許可
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          IS_EMERGENCY: ${{ contains(github.event.pull_request.labels.*.name, 'emergency') }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin dev
-          git merge --no-ff origin/dev -m "リリース: dev を main へマージ"
-          git push origin main
-      - name: dev を main に揃える(緊急修正などの取り込み)
-        run: |
-          # リリース直後は dev ⊆ main なので fast-forward で追従できる。
-          # このリリース中に dev へ新しいマージが入った場合は non-ff で失敗するが、
-          # その分は次回リリースで拾われるため無視してよい
-          git push origin main:dev || echo "dev が先行しているため同期をスキップ(次回リリースで拾う)"
-
-  deploy:
-    needs: merge
-    uses: ./.github/workflows/deploy.yaml
-    secrets: inherit
+          if [ "$HEAD_REPO" = "$REPO" ] && [ "$HEAD_REF" = "preview" ]; then
+            exit 0
+          fi
+          if [ "$IS_EMERGENCY" = "true" ]; then
+            exit 0
+          fi
+          echo "mainへ入れられるのは同一repositoryのpreviewか、明示されたemergency PRだけです" >&2
+          exit 1
