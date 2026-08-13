@@ -261,13 +261,11 @@ export function renderFacets(container, entry) {
 	for (const f of facets) {
 		const group = document.createElement("div");
 		group.className = "facet-group";
+		const header = document.createElement("div");
+		header.className = "facet-header";
 		const label = document.createElement("span");
 		label.className = "facet-label";
 		label.textContent = f.label || f.column || "";
-		group.appendChild(label);
-		const options = document.createElement("div");
-		options.className = "facet-options";
-		group.appendChild(options);
 		const selectAllLabel = document.createElement("label");
 		selectAllLabel.className = "facet-check facet-select-all";
 		const selectAll = document.createElement("input");
@@ -275,7 +273,11 @@ export function renderFacets(container, entry) {
 		selectAll.className = "facet-select-all-input";
 		selectAll.setAttribute("aria-label", `${label.textContent}をすべて選択`);
 		selectAllLabel.append(selectAll, document.createTextNode("(すべて選択)"));
-		options.appendChild(selectAllLabel);
+		header.append(label, selectAllLabel);
+		group.appendChild(header);
+		const options = document.createElement("div");
+		options.className = "facet-options";
+		group.appendChild(options);
 		const valueCheckboxes = [];
 		const syncSelectAll = () => {
 			const checkedCount = valueCheckboxes.filter((cb) => cb.checked).length;
