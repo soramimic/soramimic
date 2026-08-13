@@ -38,6 +38,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: UIスモークテスト(ビルド+実ブラウザで変換導線を確認)
         run: npm run test:smoke
+      - name: 配信アセットの列・サイズ検証
+        run: node tests/static-assets.mjs
       - name: 編集ツールE2E(読み修正・差し替え・再生成・undo・コピー)
         run: node tests/editor-smoke.mjs
       - name: 編集ツールタッチE2E(タップ伸縮・ドラッグ選択・長押し詳細)
