@@ -1,5 +1,6 @@
-# preview の公開候補を固定した SHA で検証し、手動release PRの案内を出す。
-# main への反映は、release PR の現在の head SHA のCIを確認して人間が行う。
+# preview の公開候補を固定した SHA で検証し、release PRの案内を出す。
+# 同一repositoryのpreview→main PR作成をリリース承認とし、必須チェック後の自動マージと
+# automerge workflowからdeploy workflowを直接呼び出す本番デプロイまで自動実行する。
 name: release
 on:
   workflow_dispatch: {}
@@ -77,7 +78,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
     steps:
-      - name: 手動release PRの案内を表示
+      - name: release PRの案内を表示
         run: |
           current_sha=$(gh api "repos/$REPO/git/ref/heads/preview" --jq '.object.sha')
           {
@@ -90,7 +91,7 @@ jobs:
               echo "[preview → main のPRを作成または確認する](https://github.com/$REPO/compare/main...preview?expand=1)"
               echo
               echo "PRのタイトルは \`release: preview → main\` とし、公開内容を本文に記載してください。"
-              echo "PRのhead SHAに対するチェックを確認し、開発者が明示承認して手動マージしてください。"
+              echo "このPRの作成をリリース承認として扱います。必須チェック成功後にautomerge workflowが自動マージし、deploy workflowを直接呼び出して本番デプロイまで自動実行します。"
             else
               echo "> preview が検証中に進みました。この結果は \`$PREVIEW_SHA\` だけに対するものです。"
               echo "> Actionsからreleaseを再実行し、現在のpreview SHAを検証してください。"

@@ -2,7 +2,9 @@
 # 生成画面と編集ツール(editor.html)は同じ dist に含まれるので両方が反映される。
 #
 # 起動経路:
-# - 通常は preview→main のrelease PRを人間がマージしたpushで起動する
+# - 通常は、承認として作成されたpreview→main release PRをrepository workflowが
+#   必須チェック後に自動マージし、automerge workflowからworkflow_callで直接起動する
+# - 人間がmainへマージした場合は、そのpushでも起動する
 # - workflow_dispatchでmainの再デプロイもできる
 #
 # 必要な GitHub Secrets(Settings → Secrets and variables → Actions):
@@ -46,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.guard.outputs.run == 'true'
         with:
-          ref: main # 常にmainの最新(承認済みの本番状態)をデプロイする
+          ref: main # 常にmainの最新(リリース承認済みの本番状態)をデプロイする
           submodules: true
       - uses: actions/setup-node@v4
         if: steps.guard.outputs.run == 'true'
