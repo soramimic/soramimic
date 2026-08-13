@@ -221,6 +221,17 @@ main {
 	background: var(--panel);
 }
 
+.facet-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-bottom: 0.35rem;
+	padding-bottom: 0.35rem;
+	border-bottom: 1px solid var(--border);
+}
+
 .facet-options {
 	display: flex;
 	flex-wrap: wrap;
@@ -229,18 +240,15 @@ main {
 }
 
 .facet-label {
-	display: block;
-	margin-bottom: 0.35rem;
 	font-size: 0.85rem;
 	font-weight: 600;
 	color: var(--muted);
 }
 
 .facet-select-all {
-	flex-basis: 100%;
-	padding-bottom: 0.35rem;
-	border-bottom: 1px solid var(--border);
+	margin-left: auto;
 	font-weight: 600;
+	white-space: nowrap;
 }
 
 .facet-check {

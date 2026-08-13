@@ -219,6 +219,21 @@ try {
 			JSON.stringify(initialFacetState));
 	}
 	const firstFacet = page.locator("#wordlist-facets .facet-group").first();
+	const headerLayout = await firstFacet.locator(".facet-header").evaluate((header) => {
+		const label = header.querySelector(".facet-label").getBoundingClientRect();
+		const selectAll = header.querySelector(".facet-select-all").getBoundingClientRect();
+		return {
+			labelCenterY: label.top + label.height / 2,
+			selectAllCenterY: selectAll.top + selectAll.height / 2,
+			selectAllRight: selectAll.right,
+			headerRight: header.getBoundingClientRect().right,
+		};
+	});
+	if (Math.abs(headerLayout.labelCenterY - headerLayout.selectAllCenterY) > 1 ||
+		Math.abs(headerLayout.headerRight - headerLayout.selectAllRight) > 1) {
+		throw new Error("ファセットのすべて選択が見出し行の右端にない: " +
+			JSON.stringify(headerLayout));
+	}
 	const selectAll = firstFacet.getByRole("checkbox", { name: "タイプをすべて選択" });
 	await selectAll.uncheck();
 	if (await firstFacet.locator("input.facet-value:checked").count() !== 0) {
