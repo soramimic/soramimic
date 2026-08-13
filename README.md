@@ -37,6 +37,7 @@ node tests/editor-api.mjs                    # 編集ツールlib API(getCandida
 node tests/editdist.mjs                      # ン・ッ・ーの編集距離一貫性(49ペア。#105)
 node tests/small-kana.mjs                    # 小書きカナ(ハァ/ウッセェ)の吸収
 node tests/unit-weights.mjs                  # ユニット位置別の重み付きスコアリング
+node tests/streaming-exact.mjs               # 重複なし生成の省メモリexact検索
 cd frontend && npm run test:smoke            # UIスモークテスト(実ブラウザ)
 ```
 

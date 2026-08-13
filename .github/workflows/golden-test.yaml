@@ -40,6 +40,8 @@ jobs:
         run: node tests/unit-weights.mjs
       - name: 近似候補検索と正確検索の一致テスト
         run: node tests/approximate-search.mjs
+      - name: 重複なし生成のstreaming exact検索テスト
+        run: node tests/streaming-exact.mjs
       - name: 音節バリエーション早期枝刈りのテスト
         run: node tests/variation-pruning.mjs
       - name: 自作リストの正規化CSV(csvText契約・idの決定性)のテスト

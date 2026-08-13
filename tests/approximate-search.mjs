@@ -67,8 +67,8 @@ for(const [label,phrase,makeWeights] of [
 	}
 }
 
-// 同じIDに多数の読みがあってもK枠を独占しないこと。重複禁止時は歌詞全体の
-// ユニット数からKを広げるため、後半行まで別IDの候補を残せる。
+// 同じIDに多数の読みがあっても、重複禁止のstreaming exactではID単位で集約され、
+// 後半行まで別IDの候補を選べる。
 const repeatedReadings=[
 	["多読語",...Array(12).fill("カカ")].join(","),
 	...Array.from({length:24},(_,i)=>`別語${i},カカ`),
@@ -82,9 +82,9 @@ const repeatedApprox=await h.generate(repeatedPhrases,repeatedDb,{
 	...BASE,VOWEL_RATIO:0.8,VARIATION_COST:0,DUPLICATE:false,APPROX_CANDIDATES:2,
 });
 assert.deepEqual(compact(repeatedApprox),compact(repeatedExact),
-	"同一IDの複数読みと適応Kでも正確検索と一致");
+	"同一IDの複数読みを集約するstreaming exactが設定Kに依存しない");
 assert.equal(new Set(repeatedApprox.flat().map(w=>w.id)).size,4,"4行で異なる単語IDを選べる");
-print("[ok] 同一IDの複数読みはKを重複消費せず、長い歌詞ではKを自動拡張");
+print("[ok] 同一IDの複数読みを集約し、重複なしではstreaming exactを使用");
 
 // 編集APIも近似を使い、要求件数よりKを小さくしない。length=0の既存契約も維持。
 const target=textAnalyzer.yomiToSyllable("カカ");
