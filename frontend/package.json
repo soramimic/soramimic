@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/prepare-static-assets.mjs",
     "preview": "vite preview",
-    "test:smoke": "npm run build && node tests/smoke.mjs",
+    "test:smoke": "npm run build && node tests/logo.mjs && node tests/smoke.mjs",
     "test:editor": "npm run build && node tests/editor-smoke.mjs",
     "test:touch": "npm run build && node tests/editor-touch.mjs",
     "test:assets": "npm run build && node tests/static-assets.mjs",
