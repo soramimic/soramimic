@@ -11,6 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const libUrl = (file) => pathToFileURL(path.join(ROOT, "frontend/src/lib", file)).href;
 const { KanaToSyllable } = await import(libUrl("kanaToSyllable.js"));
 const { TextAnalyzer } = await import(libUrl("textAnalyzer.js"));
+const { WordList } = await import(libUrl("wordList.js"));
 
 const print = console.log.bind(console);
 const snapshot = (variations) => variations.map((v) => ({
@@ -55,6 +56,23 @@ assert.deepEqual(snapshot(textAnalyzer.yomiToVariation(yomi)), snapshot(yomiLega
 	"TextAnalyzerでも上限省略時は不変");
 print("[ok] TextAnalyzer.yomiToVariationがmaxUnitsを伝播");
 
+// WordList が後段で結果を filter するだけでなく、生成API自体へ上限を渡すこと。
+const variationCalls = [];
+const wordList = WordList({
+	getYomi: (values) => values,
+	formatKana: (value) => value,
+	yomiToVariation: (value, maxUnits) => {
+		variationCalls.push([value, maxUnits]);
+		return [];
+	},
+});
+await wordList.parseTidy([
+	"id,original,surface,pronunciation",
+	"0,学校,学校,ガッコウ",
+].join("\n"), "", 3);
+assert.deepEqual(variationCalls, [["ガッコウ", 3]]);
+print("[ok] WordListが変種生成APIへmaxUnitsを伝播");
+
 // ---- 高分岐でも小さい上限なら組合せ全体を展開しない ----
 // 「ンッ」18個の素朴な直積は4^18 (約687億) 通り。maxUnits=1なら有効なのは
 // 各位置から「ン」か「ッ」を1つだけ残す36通りだけで、早期枝刈りなら即座に終わる。
@@ -69,7 +87,9 @@ const stressScript = `
 	}
 `;
 const execFileAsync = promisify(execFile);
-await execFileAsync(process.execPath, ["--input-type=module", "--eval", stressScript], {
+await execFileAsync(process.execPath, [
+	"--max-old-space-size=64", "--input-type=module", "--eval", stressScript,
+], {
 	timeout: 3000,
 	maxBuffer: 1024 * 1024,
 });

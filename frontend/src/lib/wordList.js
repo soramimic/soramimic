@@ -232,7 +232,8 @@ function WordList(textAnalyzer){
 			obj.pronunciation = pronunciations[i];
 			if(!obj.pronunciation) continue;
 			
-			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation);
+			// maxUnits を変種生成まで渡し、長い読みの直積を作る途中で枝刈りする。
+			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits);
 			for(let p of pvariations){
 				if(maxUnits !== undefined && p.length > maxUnits) continue;
 				if(p.length in resultdb === false)resultdb[p.length]=[];

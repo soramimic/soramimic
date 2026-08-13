@@ -17,6 +17,7 @@ node tests/editor-api.mjs                       # 編集ツールAPI
 node tests/small-kana.mjs                       # 小書きカナの吸収
 node tests/format-kana.mjs                      # formatKanaの英字カナ化
 node tests/unit-weights.mjs                     # ユニット位置別の重み付きスコアリング
+node tests/variation-pruning.mjs                # 音節バリエーションの最大長早期枝刈り
 node tests/ruby.mjs                             # ルビ記法(｜表層《よみ》)
 node tests/wordlist-csv.mjs                     # 自作リストの正規化CSV(csvText契約)
 node tests/filler.mjs                           # filler(万能候補)で行が空にならないこと
