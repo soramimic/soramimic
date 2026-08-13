@@ -19,6 +19,8 @@ assert.doesNotMatch(automerge, /branches: \[(?:preview|main)/,
 
 assert.match(preview, /branches: \[dev, preview\]/,
 	"devとpreviewを別々の常設環境へデプロイする");
+assert.doesNotMatch(preview, /pull_request:/,
+	"promotion PRの一時成果物を公開せず、固定previewで確認する");
 assert.match(preview, /ALIAS=\"\$RAW\"/, "常設ブランチ名をCloudflare aliasに使う");
 assert.doesNotMatch(preview, /alias:\s*\n\s+description:/,
 	"再利用呼出からCloudflare aliasを直接指定させない");
