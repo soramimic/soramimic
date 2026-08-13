@@ -1,10 +1,12 @@
-# dev 向けPRと preview→main のrelease PRの自動マージ。
+# dev / preview 向けPRと preview→main のrelease PRの自動マージ。
 # CI(golden / smoke など、このPRに付く全チェック)が
 # すべて成功したら、確認したコミットSHAを指定してマージする。
 # - 開発PRは base=dev。マージ後は dev.soramimic.pages.dev を更新する
+# - 公開候補PRは base=preview。選択的promotionでもdev全体でも、マージ後は
+#   preview.soramimic.pages.dev を更新する
 # - 同一repositoryの preview→main PRは、PR作成をリリース承認として自動マージし、
 #   マージ後に本番(soramimic.pages.dev)へデプロイする
-# - preview 向けPRと、preview以外からmainへ向けたPRは自動マージしない
+# - preview以外からmainへ向けたPRは自動マージしない
 # - main 向けの通常PRは retarget-main-pr.yaml が dev へ自動で向け直す。
 #   emergency ラベル付きの緊急修正だけが main 宛てのまま残り、人間が手動でマージする。
 #   人間による手動マージの push は deploy.yaml の push トリガーで本番デプロイされる
@@ -15,7 +17,7 @@ name: automerge
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled]
-    branches: [dev, main]
+    branches: [dev, preview, main]
 
 permissions:
   contents: write
@@ -38,6 +40,7 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         (
           github.event.pull_request.base.ref == 'dev' ||
+          github.event.pull_request.base.ref == 'preview' ||
           (
             github.event.pull_request.base.ref == 'main' &&
             github.event.pull_request.head.ref == 'preview'
@@ -69,13 +72,17 @@ jobs:
             failed=$(echo "$runs" | jq '[.[] | select(.status == "completed"
               and .conclusion != "success" and .conclusion != "neutral"
               and .conclusion != "skipped")] | length')
-            echo "checks: total=$total incomplete=$incomplete failed=$failed"
+            required_ready=$(echo "$runs" | jq '["golden", "smoke"] as $required
+              | [$required[] as $name | any(.[]; .name == $name and .status == "completed"
+                and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped"))]
+              | map(select(.)) | length')
+            echo "checks: total=$total incomplete=$incomplete failed=$failed required_ready=$required_ready/2"
             if [ "$failed" -gt 0 ]; then
               echo "$runs" | jq -r '.[] | select(.conclusion != null) | "\(.name): \(.conclusion)"'
               echo "失敗したチェックがあるためマージしません"
               exit 0
             fi
-            if [ "$total" -gt 0 ] && [ "$incomplete" -eq 0 ]; then
+            if [ "$total" -gt 0 ] && [ "$incomplete" -eq 0 ] && [ "$required_ready" -eq 2 ]; then
               # 待機中のbase/head変更、ドラフト化、停止ラベル追加、preview更新を
               # event payloadだけでは検知できないため、マージ直前にlive状態を再検証する。
               live=$(gh api "repos/$REPO/pulls/$PR")
@@ -124,6 +131,14 @@ jobs:
     uses: ./.github/workflows/preview.yaml
     with:
       ref: dev
+    secrets: inherit
+
+  deploy-preview:
+    needs: automerge
+    if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'preview' }}
+    uses: ./.github/workflows/preview.yaml
+    with:
+      ref: preview
     secrets: inherit
 
   # GITHUB_TOKENによるマージpushはpushトリガーを起動しないため、release PRの
