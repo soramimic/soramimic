@@ -34,6 +34,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: UIスモークテスト(ビルド+実ブラウザで変換導線を確認)
         run: npm run test:smoke
+      - name: SNS共有メタデータテスト
+        run: node tests/metadata.mjs
       - name: 配信アセットの列・サイズ検証
         run: node tests/static-assets.mjs
       - name: 編集ツールE2E(読み修正・差し替え・再生成・undo・コピー)
