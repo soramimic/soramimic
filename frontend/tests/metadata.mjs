@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const expected = {
 	"index.html": {
 		title: "Soramimic | 空耳歌詞メーカー",
-		description: "歌詞と単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。",
+		description: "歌詞を入力して、単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。",
 		url: "https://soramimic.com/",
 	},
 	"editor.html": {
