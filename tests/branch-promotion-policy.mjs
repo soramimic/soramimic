@@ -14,10 +14,8 @@ const [automerge, bump, deploy, smoke, preview, release, retarget] = await Promi
 	workflow("retarget-main-pr.yaml"),
 ]);
 
-assert.match(automerge, /branches: \[dev, preview\]/,
-	"自動マージworkflowはdev/preview PRを監視する");
-assert.doesNotMatch(automerge, /branches: \[[^\]]*main/,
-	"main向けPRは自動マージworkflowの対象にしない");
+assert.match(automerge, /branches: \[dev, preview, main\]/,
+	"自動マージworkflowはdev/preview PRとmain release PRを監視する");
 assert.match(automerge,
 	/types: \[opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled\]/,
 	"待機中のドラフト化やbase変更でも古い自動マージ実行をキャンセルする");
@@ -37,11 +35,15 @@ assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'dev'/,
 	"dev PRを自動マージする");
 assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'preview'/,
 	"選択promotionとdev直接PRのどちらもpreviewへ自動マージする");
+assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'main'/,
+	"main向けPRは独立したrelease条件で判定する");
+assert.match(automerge, /github\.event\.pull_request\.head\.ref == 'preview'/,
+	"mainへ自動マージできるheadをpreviewに限定する");
 assert.match(automerge, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/,
-	"forkからのPRは自動マージしない");
+	"forkのpreviewという名前だけでは自動releaseしない");
 assert.match(automerge,
-	/github\.event\.pull_request\.base\.ref == 'dev'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'preview'/,
-	"自動マージ対象をdevとpreviewに限定する");
+	/github\.event\.pull_request\.base\.ref == 'dev'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'preview'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'main'[^]*?&&[^]*?github\.event\.pull_request\.head\.ref == 'preview'/,
+	"同一条件式でmain向け自動マージをpreview releaseだけに限定する");
 assert.match(automerge, /\[ "\$BRANCH" != "dev" \] && \[ "\$BRANCH" != "preview" \]/,
 	"常設のdev/preview branchは自動マージ後も削除しない");
 assert.match(automerge, /gh api "repos\/\$REPO\/pulls\/\$PR"/,
@@ -63,14 +65,17 @@ assert.match(automerge,
 	"APIが実際のマージ成功を返した場合だけdeployを有効にする");
 assert.match(automerge, /for attempt in 1 2 3; do[^]*?\.merged_at \/\/ empty[^]*?sleep 10/,
 	"一時的なマージAPI障害を再試行し、応答消失時もlive状態で完了を確認する");
-assert.doesNotMatch(automerge, /uses: \.\/\.github\/workflows\/deploy\.yaml/,
-	"自動マージworkflowから本番deployを起動しない");
+assert.match(automerge, /uses: \.\/\.github\/workflows\/deploy\.yaml/,
+	"preview→mainの自動マージ成功後に本番deployを確実に起動する");
 assert.match(automerge,
 	/needs\.automerge\.outputs\.merged == 'true'[^\n]*base\.ref == 'dev'[^]*?uses: \.\/\.github\/workflows\/preview\.yaml[^]*?ref: dev/,
 	"devへのマージ成功後に固定dev環境をデプロイする");
 assert.match(automerge,
 	/needs\.automerge\.outputs\.merged == 'true'[^\n]*base\.ref == 'preview'[^]*?uses: \.\/\.github\/workflows\/preview\.yaml[^]*?ref: preview/,
 	"previewへのマージ成功後に固定preview環境をデプロイする");
+assert.match(automerge,
+	/needs\.automerge\.outputs\.merged == 'true'[^\n]*github\.event\.pull_request\.base\.ref == 'main'/,
+	"本番deployはmain releaseのマージ成功時だけに限定する");
 
 assert.match(preview, /branches: \[dev, preview\]/,
 	"devとpreviewを別々の常設環境へデプロイする");
