@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Soramimic 空耳歌詞メーカー</title>
+  <desc id="desc">Soramimicのロゴと「空耳でつくる、替え歌。」というメッセージ</desc>
+  <rect width="1200" height="630" fill="#ffffff" />
+  <circle cx="78" cy="72" r="118" fill="#f0f9ff" />
+  <circle cx="1142" cy="570" r="154" fill="#f0f9ff" />
+  <image href="logo-soramimic-horizontal-v3.png" x="240" y="74" width="720" height="177" />
+  <text x="600" y="366" fill="#16324f" font-family="'Noto Sans CJK JP', 'Hiragino Sans', sans-serif" font-size="54" font-weight="700" text-anchor="middle">空耳でつくる、替え歌。</text>
+  <text x="600" y="444" fill="#5082a8" font-family="'Noto Sans CJK JP', 'Hiragino Sans', sans-serif" font-size="30" font-weight="500" text-anchor="middle">歌詞と単語リストを選ぶだけ</text>
+  <rect x="510" y="506" width="180" height="8" rx="4" fill="#139cf3" />
+</svg>
