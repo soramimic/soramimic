@@ -26,6 +26,9 @@ GitHub Actionsの `GITHUB_TOKEN` でpull requestをマージした場合、そ�
 
 - ユーザーの指示で作成またはready化した、同一repositoryの非ドラフト
   `preview` → `main` pull requestを本番リリースの明示承認とする。
+- release pull requestがopenかつreadyである間はリリース承認が継続する。`preview` のheadが
+  更新された場合は古い待機をキャンセルし、新しいhead SHAで全チェックを最初から実行する。
+  リリースを保留する場合はdraft化、`no-automerge` ラベル、またはcloseで明示的に停止する。
 - release pull requestは `golden` と `smoke` を含む全チェックの完了を待ち、失敗がなく、
   必須チェックが成功した場合にrepositoryのautomerge workflowが自動マージする。
 - マージ直前にPRのopen状態、draft状態、base、head、head repository、head SHA、停止ラベルを
@@ -44,8 +47,8 @@ GitHub Actionsの `GITHUB_TOKEN` でpull requestをマージした場合、そ�
 
 - ユーザーは公開候補を確認してrelease pull requestの作成を指示すればよく、その後の待機、
   マージ、本番デプロイは自動で完了する。
-- 承認対象はPRのhead SHAとして記録され、更新時には古い待機がキャンセルされて新しいSHAを
-  再検証するため、確認していない変更の混入を防げる。
+- マージ対象はPR eventごとのhead SHAとして記録される。`preview` が更新された場合も古いSHAを
+  マージせず、新しいSHAのCIとlive状態を再検証する。
 - 自動マージ経路でも、fork、停止ラベル、必須チェック、live状態の再検証により、通常の
   `main` 向けPRを誤って本番へ入れない。
 - 自動化障害時は本番反映が止まる。原因を解消してworkflowを再実行することを優先し、通常運用を
