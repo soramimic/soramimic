@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const expected = {
 	"index.html": {
 		title: "Soramimic | 空耳歌詞メーカー",
-		description: "好きな歌詞を、野球選手名・ポケモン・駅名などの言葉で再現。「○○で歌ってみた」風の空耳歌詞・替え歌を自動生成できるWebツールです。",
+		description: "歌詞と単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。",
 		url: "https://soramimic.com/",
 	},
 	"editor.html": {
@@ -14,6 +14,8 @@ const expected = {
 		url: "https://soramimic.com/editor.html",
 	},
 };
+
+const imageAlt = "Soramimic 空耳歌詞メーカー。空耳でつくる、替え歌。";
 
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -35,12 +37,19 @@ for (const [file, metadata] of Object.entries(expected)) {
 	assertOnce(html, `<meta property="og:title" content="${escapeRegExp(metadata.title)}" ?/?>`, `${file} og:title`);
 	assertOnce(html, `<meta property="og:description" content="${escapeRegExp(metadata.description)}" ?/?>`, `${file} og:description`);
 	assertOnce(html, `<meta property="og:url" content="${escapeRegExp(metadata.url)}" ?/?>`, `${file} og:url`);
-	assertOnce(html, '<meta property="og:image" content="https://soramimic\\.com/og-image\\.png" ?/?>', `${file} og:image`);
+	assertOnce(html, '<meta property="og:image" content="https://soramimic\\.com/og-image-v2\\.png" ?/?>', `${file} og:image`);
+	assertOnce(html, '<meta property="og:image:type" content="image/png" ?/?>', `${file} og:image:type`);
+	assertOnce(html, '<meta property="og:image:width" content="1200" ?/?>', `${file} og:image:width`);
+	assertOnce(html, '<meta property="og:image:height" content="630" ?/?>', `${file} og:image:height`);
+	assertOnce(html, `<meta property="og:image:alt" content="${escapeRegExp(imageAlt)}" ?/?>`, `${file} og:image:alt`);
 	assertOnce(html, '<meta name="twitter:card" content="summary_large_image" ?/?>', `${file} twitter:card`);
-	assertOnce(html, '<meta name="twitter:image" content="https://soramimic\\.com/og-image\\.png" ?/?>', `${file} twitter:image`);
+	assertOnce(html, `<meta name="twitter:title" content="${escapeRegExp(metadata.title)}" ?/?>`, `${file} twitter:title`);
+	assertOnce(html, `<meta name="twitter:description" content="${escapeRegExp(metadata.description)}" ?/?>`, `${file} twitter:description`);
+	assertOnce(html, '<meta name="twitter:image" content="https://soramimic\\.com/og-image-v2\\.png" ?/?>', `${file} twitter:image`);
+	assertOnce(html, `<meta name="twitter:image:alt" content="${escapeRegExp(imageAlt)}" ?/?>`, `${file} twitter:image:alt`);
 }
 
-const image = await readFile(new URL("../dist/og-image.png", import.meta.url));
+const image = await readFile(new URL("../dist/og-image-v2.png", import.meta.url));
 assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], "OG image must be a PNG");
 assert.equal(image.readUInt32BE(16), 1200, "OG image width");
 assert.equal(image.readUInt32BE(20), 630, "OG image height");
