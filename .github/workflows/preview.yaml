@@ -4,7 +4,8 @@
 # - preview: 次に本番へ出す承認済み候補 (https://preview.soramimic.pages.dev)
 #
 # 起動経路:
-# - automerge が dev へのマージ成功後に workflow_call で呼ぶ(alias=dev 固定)。
+# - automerge が dev / preview へのマージ成功後に workflow_call で呼ぶ
+#   (refと同名の固定alias)。
 #   GITHUB_TOKEN によるマージpushは push トリガーを起動しないため、call で確実に回す
 # - dev / preview へ直接pushされたとき(常設ブランチと同名のaliasになる)
 # - 手動(workflow_dispatch)
