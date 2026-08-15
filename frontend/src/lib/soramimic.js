@@ -88,7 +88,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	//weights(省略可): targetのユニット位置ごとの重み(平均1に正規化済み・targetと同じ長さ)。
 	//省略時は従来と完全同一。変種でユニット数が変わる場合は変種側の由来index(srcIndex)を
 	//たどって元音節の重みを引く
-	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null) => {
+	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null,
+		excludedIds=null) => {
 		//console.log(kanaDist);
 		const orglen = target.length;
 			//Object.keysでは文字列配列が取得できるので、v.lengthも文字列に直してからfilterする
@@ -114,6 +115,45 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 					return (typeof w === "number") ? w : 1;
 				}));
 			}
+		}
+		// 重複なし生成では、使用可能なexact最良IDだけを発音entryの1走査で返す。
+		// 同一IDの複数読みは最小scoreへ集約し、同点順は従来のObjectキー列挙順
+		// (配列index形式IDは数値昇順、それ以外は初出順)を維持する。
+		if(excludedIds){
+			let best=null;
+			let bestScore=Infinity;
+			let bestOrder=null;
+			let nonIndexOrder=0;
+			const nonIndexOrders=new Map();
+			const propertyOrder=(id)=>{
+				const key=String(id);
+				const numeric=Number(key);
+				if(Number.isInteger(numeric) && numeric>=0 && numeric<4294967295
+					&& String(numeric)===key)return [0,numeric];
+				if(!nonIndexOrders.has(key))nonIndexOrders.set(key,nonIndexOrder++);
+				return [1,nonIndexOrders.get(key)];
+			};
+			const earlier=(a,b)=>!b || a[0]<b[0] || (a[0]===b[0] && a[1]<b[1]);
+			for(const i in candidates){
+				for(const w of wordlist[i]){
+					const currentOrder=propertyOrder(w.id);
+					if(excludedIds.has(w.id))continue;
+					let sim=Infinity;
+					for(const c of candidates[i]){
+						const d=ld(c,w.pronunciation,kanaDist,
+							candidateWeights ? candidateWeights.get(c) : null)
+							+ ((c.vcost||0)+(w.vcost||0))*variationCost;
+						sim=Math.min(d,sim);
+					}
+					if(sim<bestScore || (sim===bestScore && earlier(currentOrder,bestOrder))
+						|| (sim===bestScore && best?.id===w.id)){
+						best=w;
+						bestScore=sim;
+						bestOrder=currentOrder;
+					}
+				}
+			}
+			return best ? [Object.assign({},best,{sim:bestScore})] : [];
 		}
 		//console.timeLog("in gs");
 		let words = {}
@@ -259,13 +299,14 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 					results.push([prev_score + FILLER_COST + wordsNum, filler_words]);
 				}
 
-				const similarWords = getSimilarWordFunc(subtarget, i, t);
+				// 重複なしでは、全曲の使用済みID・固定語・現在のDP prefixを
+				// 検索前に除外し、使用可能なexact最良1件だけをstreaming検索する。
+				const currentUsed = prev_words.filter(v=>!v.filler).map(v=>v.id);
+				const excludedIds = isDuplicate ? null : new Set(used.concat(currentUsed));
+				const similarWords = getSimilarWordFunc(subtarget, i, t, excludedIds);
 				if(!similarWords){
 					continue;
 				}
-
-				//fillerはidを持たない仮想語なので、使用済み(単語重複なし)の判定からは外す
-				const currentUsed = prev_words.filter(v=>!v.filler).map(v=>v.id);
 
 
 				const newWord = (function(words){
@@ -398,7 +439,11 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 		//重みなしの行で使う共有メモ(従来どおりカナ文字列キー。行をまたいで使い回せる)
 		const gs = (function(){
 			const gsmemo = {}
-			return function(target){
+			return function(target,start,end,excludedIds=null){
+				if(excludedIds){
+					return getSimilarWord(wordlist,target,kanaDist,1,param.VARIATION_COST,
+						null,excludedIds);
+				}
 				const joined_target = target.join("");
 				if(joined_target in gsmemo)return gsmemo[joined_target];
 				const result = getSimilarWord(wordlist, target, kanaDist, 100, param.VARIATION_COST);
@@ -410,7 +455,11 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 		//(共有メモは汚さないよう行ごとに独立させる)
 		const makeWeightedGs = (lineWeights) => {
 			const gsmemo = {}
-			return function(target, start, end){
+			return function(target, start, end, excludedIds=null){
+				if(excludedIds){
+					return getSimilarWord(wordlist,target,kanaDist,1,param.VARIATION_COST,
+						lineWeights.slice(start,end),excludedIds);
+				}
 				const key = start + ":" + end;
 				if(key in gsmemo)return gsmemo[key];
 				const result = getSimilarWord(wordlist, target, kanaDist, 100, param.VARIATION_COST,

@@ -5,12 +5,14 @@ import {
 } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { createYomiApi } from "./yomiApi.js";
+import { createLruCache } from "./lib/lruCache.js";
 import {
 	setupButtonGroup, createParamControls,
 	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
 } from "./convertControls.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
+const DATABASE_CACHE_LIMIT = 2;
 
 // GA4カスタムイベント送信(本番以外・広告ブロック時はgtag未定義なので何もしない)
 function track(name, params) {
@@ -206,7 +208,8 @@ export async function startApp() {
 
 	// ---- 単語リスト ----
 	let selectedWordlist = null;
-	const dbCache = new Map();
+	// 現在と直前のDBだけを残し、設定変更で巨大DBが蓄積し続けるのを防ぐ。
+	const dbCache = createLruCache(DATABASE_CACHE_LIMIT);
 
 	// 設定の wordlist は「エントリ(=ボタン)」と「グループ {label, items}(=プルダウン)」の混在。
 	// 表示順・グループ分け・ラベルはすべて設定ファイル側で決める。
@@ -349,14 +352,10 @@ export async function startApp() {
 		// キーは内容で構成する(ORIGINALは登録テキスト自体をキーにする)
 		if (entry.value === "ORIGINAL") {
 			const key = "ORIGINAL|" + (localStorage.getItem(ORIGINAL_STORAGE_KEY) || "");
-			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry));
-			return dbCache.get(key);
+			return dbCache.getOrCreate(key, () => buildDatabase(app, entry));
 		}
 		const key = [entry.filepath, entry.dbtype, where].join("|");
-		if (!dbCache.has(key)) {
-			dbCache.set(key, await buildDatabase(app, entry, where));
-		}
-		return dbCache.get(key);
+		return dbCache.getOrCreate(key, () => buildDatabase(app, entry, where));
 	}
 
 	// ---- 変換 ----
