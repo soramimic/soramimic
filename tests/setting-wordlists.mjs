@@ -6,8 +6,12 @@ const biology = setting.wordlist.find((entry) => entry.label === "生物");
 assert.ok(biology, "生物グループが存在する");
 
 const marine = biology.items.find((entry) => entry.value === "MARINE_LIFE");
-assert.ok(marine, "海の生き物リストが存在する");
-assert.equal(marine.text, "海の生き物");
+assert.ok(marine, "海の動物リストが存在する");
+assert.equal(marine.text, "海の動物");
+
+const vertebrates = biology.items.find((entry) => entry.value === "SEKITSUI");
+assert.ok(vertebrates, "脊椎動物リストが存在する");
+assert.equal(vertebrates.text, "脊椎動物");
 assert.equal(marine.filepath, "wordlists/marine_life.csv");
 
 const facets = Object.fromEntries(marine.facets.map((facet) => [facet.column, facet]));

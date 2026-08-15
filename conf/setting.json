@@ -169,7 +169,7 @@
    "items": [
     {
      "value": "SEKITSUI",
-     "text": "動物",
+     "text": "脊椎動物",
      "filepath": "wordlists/sekitsui.csv",
      "dbtype": "tidy",
      "facets": [
@@ -197,7 +197,7 @@
     },
     {
      "value": "MARINE_LIFE",
-     "text": "海の生き物",
+     "text": "海の動物",
      "filepath": "wordlists/marine_life.csv",
      "dbtype": "tidy",
      "facets": [
