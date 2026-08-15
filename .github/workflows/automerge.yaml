@@ -1,18 +1,3 @@
-# dev / preview 向けPRと preview→main のrelease PRの自動マージ。
-# CI(golden / smoke など、このPRに付く全チェック)が
-# すべて成功したら、確認したコミットSHAを指定してマージする。
-# - 開発PRは base=dev。マージ後は dev.soramimic.pages.dev を更新する
-# - 公開候補PRは base=preview。選択的promotionでもdev全体でも、マージ後は
-#   preview.soramimic.pages.dev を更新する
-# - 同一repositoryの preview→main PRは、PR作成をリリース承認として自動マージし、
-#   マージ後に本番(soramimic.pages.dev)へデプロイする
-# - preview以外からmainへ向けたPRは自動マージしない
-# - main 向けの通常PRは retarget-main-pr.yaml が dev へ自動で向け直す。
-#   emergency ラベル付きの緊急修正だけが main 宛てのまま残り、人間が手動でマージする。
-#   人間による手動マージの push は deploy.yaml の push トリガーで本番デプロイされる
-# - 除外したいPRには `no-automerge` ラベルを付ける(ドラフトPRも対象外)
-# - 新しいpushが来ると古い待機はキャンセルされ、新SHAで待機し直す
-# - privateリポジトリ+FreeプランではGitHub標準のauto-merge機能が使えないための自作
 name: automerge
 on:
   pull_request:
@@ -30,8 +15,6 @@ concurrency:
 
 jobs:
   automerge:
-    # フォークからのPRは対象外(公開リポジトリでは外部PRを人間レビューなしで
-    # マージしない。そもそもフォークPRのGITHUB_TOKENはread-onlyでマージ不可)
     if: >-
       ${{
         !github.event.pull_request.draft &&
@@ -83,8 +66,6 @@ jobs:
               exit 0
             fi
             if [ "$total" -gt 0 ] && [ "$incomplete" -eq 0 ] && [ "$required_ready" -eq 2 ]; then
-              # 待機中のbase/head変更、ドラフト化、停止ラベル追加、preview更新を
-              # event payloadだけでは検知できないため、マージ直前にlive状態を再検証する。
               live=$(gh api "repos/$REPO/pulls/$PR")
               live_state=$(echo "$live" | jq -r '.state')
               live_draft=$(echo "$live" | jq -r '.draft')
@@ -111,8 +92,6 @@ jobs:
                   -f merge_method=merge -f sha="$SHA"); then
                   break
                 fi
-                # GitHub側ではマージ済みなのに応答だけ5xxになる場合もあるため、
-                # 再試行前にPRのlive状態で完了を確認する。
                 after_error=$(gh api "repos/$REPO/pulls/$PR" 2>/dev/null || true)
                 if [ "$(echo "$after_error" | jq -r '.merged_at // empty')" != "" ]; then
                   result='{"merged":true}'
@@ -125,11 +104,9 @@ jobs:
                 echo "$result" | jq -r '.message // "マージできませんでした"' >&2
                 exit 1
               fi
-              # dev / preview は常設ブランチなので削除しない
               if [ "$BRANCH" != "dev" ] && [ "$BRANCH" != "preview" ]; then
                 gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" || true
               fi
-              # 後続の deploy ジョブを起動するためのフラグ
               echo "merged=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -137,8 +114,6 @@ jobs:
           echo "タイムアウト: チェックが完了しませんでした" >&2
           exit 1
 
-  # マージ成功時の後続処理(GITHUB_TOKEN によるマージpushは push トリガーを
-  # 起動しないため、workflow_call で確実に回す)
   deploy-dev:
     needs: automerge
     if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'dev' }}
@@ -155,8 +130,6 @@ jobs:
       ref: preview
     secrets: inherit
 
-  # GITHUB_TOKENによるマージpushはpushトリガーを起動しないため、release PRの
-  # 自動マージ成功後に本番デプロイを明示的に呼び出す。
   deploy-main:
     needs: automerge
     if: ${{ needs.automerge.outputs.merged == 'true' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'preview' }}

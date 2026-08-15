@@ -3,9 +3,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    # main / preview rulesetの必須checkなので、変更パスにかかわらず常に実行する。
-    # dev向けPRでもautomergeが全checkの完了を待つため、同じ品質基準を適用する。
-  # release.yaml が固定したpreview SHAとrelease PRのheadを再検証するために呼ぶ
   workflow_call:
     inputs:
       ref:

@@ -1,11 +1,8 @@
-# preview の公開候補を固定した SHA で検証し、release PRの案内を出す。
-# 同一repositoryのpreview→main PR作成をリリース承認とし、必須チェック後の自動マージと
-# automerge workflowからdeploy workflowを直接呼び出す本番デプロイまで自動実行する。
 name: release
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 23 * * 0" # 毎週月曜 08:00 JST 頃
+    - cron: "0 23 * * 0"
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, edited]
     branches: [main]
@@ -90,8 +87,6 @@ jobs:
             if [ "$current_sha" = "$PREVIEW_SHA" ]; then
               echo "[preview → main のPRを作成または確認する](https://github.com/$REPO/compare/main...preview?expand=1)"
               echo
-              echo "PRのタイトルは \`release: preview → main\` とし、公開内容を本文に記載してください。"
-              echo "このPRの作成をリリース承認として扱います。必須チェック成功後にautomerge workflowが自動マージし、deploy workflowを直接呼び出して本番デプロイまで自動実行します。"
             else
               echo "> preview が検証中に進みました。この結果は \`$PREVIEW_SHA\` だけに対するものです。"
               echo "> Actionsからreleaseを再実行し、現在のpreview SHAを検証してください。"

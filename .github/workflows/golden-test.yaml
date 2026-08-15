@@ -3,7 +3,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # release.yaml が固定したpreview SHAとrelease PRのheadを再検証するために呼ぶ
   workflow_call:
     inputs:
       ref:
