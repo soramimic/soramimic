@@ -178,7 +178,7 @@
    "items": [
     {
      "value": "SEKITSUI",
-     "text": "動物",
+     "text": "脊椎動物",
      "filepath": "wordlists/sekitsui.csv",
      "dbtype": "tidy",
      "facets": [
