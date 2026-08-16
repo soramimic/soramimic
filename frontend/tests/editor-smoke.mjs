@@ -86,7 +86,7 @@ try {
 		(els) => els.map((e) => e.textContent));
 	assert(JSON.stringify(rowLabels) === JSON.stringify(["元歌詞の読み", "替え歌"]),
 		"行の役割がラベルで示されていない: " + JSON.stringify(rowLabels));
-	assert(await editor.textContent("#btn-regenerate") === "固定した単語を残して再生成",
+	assert(await editor.textContent("#btn-regenerate") === "固定中以外を再生成",
 		"再生成ボタンから固定単語の扱いが分からない");
 	const kanaBefore = await editor.$$eval(".chip-unit", (els) => els.map((e) => e.textContent).join(""));
 	assert(kanaBefore === "ワスレガタキコキョーシンヤイチニジヲスギタッテカンジ",
@@ -233,7 +233,7 @@ try {
 	assert(candSurface.startsWith(lockedSurface),
 		`差し替えた単語がチップに反映されていない: 候補=${candSurface} チップ=${lockedSurface}`);
 
-	// ---- 固定以外を再生成: 固定した単語が保持される ----
+	// ---- 固定中以外を再生成: 固定した単語が保持される ----
 	await editor.click("#btn-regenerate");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,

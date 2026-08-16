@@ -154,7 +154,7 @@ try {
 	assert(afterReconvert.param.WORD_NUMBER_PENALTY === 0,
 		"⚙からの再変換でパラメータが反映されていない");
 	assert(await wordsOf(page) !== wordsFirst, "再変換したのに結果が同じ");
-	// 「固定以外を再生成」も使える
+	// 「固定中以外を再生成」も使える
 	await page.click("#btn-regenerate");
 	await page.waitForFunction(() => document.getElementById("regen-progress").hidden,
 		undefined, { timeout: 180000 });

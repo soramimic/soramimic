@@ -218,7 +218,7 @@ function afterHistoryJump() {
 	if (appFor) syncEngine().then(() => renderPanel()).catch((err) => console.error(err));
 }
 
-// 編集した行を記録する。「固定以外を再生成」は編集の影響がありうる行だけを
+// 編集した行を記録する。「固定中以外を再生成」は編集の影響がありうる行だけを
 // 計算し直す(それ以外の行は現在の単語を丸ごと固定してDPをスキップさせる)
 function markDirty(line) {
 	if (!data.dirtyLines.includes(line)) data.dirtyLines.push(line);
