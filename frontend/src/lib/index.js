@@ -20,9 +20,9 @@ export function createSoramimic({
 	tokenizeSentenses,
 	getYomi,
 }) {
-	const kanji = Kanji(kanjiDict);
-	const character = Character(kanji);
 	const k2s = KanaToSyllable();
+	const kanji = Kanji(kanjiDict, k2s);
+	const character = Character(kanji);
 	const english = English(englishDict, romanTree);
 	const textAnalyzer = TextAnalyzer(character, k2s, english, tokenizeSentenses, getYomi);
 	const kanaSimilarity = KanaSimilarity(vowelSimilarity, consonantSimilarity, kana2phonon);
