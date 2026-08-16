@@ -725,13 +725,16 @@ function applyReadingFix(line, span, newYomiRaw) {
 		pronunciation: u.pronunciation,
 		phrase: u.phrase,
 	}));
+	const oldUnits = data.unitsList[line];
+	const unitsAfter = oldUnits.length - span.unitEnd;
+	const newSpanEnd = newUnits.length - unitsAfter;
+	// 有効な読みを入力したのに対象範囲のユニットが消えるのは導出失敗。
+	// 空の選択と候補ゼロ件を正データへ保存せず、入力フォームに留める。
+	if (newSpanEnd <= span.unitStart) return false;
 	// ここから確定: 履歴を積んでから正データ(tokensList)を差し替える
 	pushHistory();
 	markDirty(line);
 	data.tokensList[line] = tokens;
-	const oldUnits = data.unitsList[line];
-	const unitsAfter = oldUnits.length - span.unitEnd;
-	const newSpanEnd = newUnits.length - unitsAfter;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
 	data.results[line] = (data.results[line] || [])

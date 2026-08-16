@@ -108,7 +108,10 @@ function TokenFormatter(){
 		let n2p = {"1":"イチ","2":"ニ","3":"サン","4":"ヨン","5":"ゴ","6":"ロク","7":"ナナ","8":"ハチ","9":"キュウ","0":"ゼロ"}
 		tokens = tokens.map(token=>{
 			if(isRuby(token))return token;
-			if(/^[0-9]$/.test(token.surface_form)){
+			// 複数桁も1トークンになる。仮読みは桁読みでよいので、まず編集可能な
+			// 発音ユニットを作り、必要なら編集ツールで「12→ジュウニ」のように直す。
+			if(/^[0-9]+$/.test(token.surface_form) &&
+				!/^[ァ-ヴー]+$/.test(token.pronunciation || "")){
 				let p = "";
 				for(let v of token.surface_form){
 					p += n2p[v];
@@ -444,7 +447,9 @@ function Character(kanji){
 			//console.log(token);
 			let correspondance = kanaAllocate(separated, token.pronunciation);
 			//記号の場合はtypeに記号を設定する
-			if(token.pos == "記号"){
+			// 数字などは解析器によって記号POSになることがある。読み修正やルビで
+			// 有効なカナ読みが与えられている場合は、無音の記号として捨てない。
+			if(token.pos == "記号" && !/^[ァ-ヴー]+$/.test(token.pronunciation || "")){
 				correspondance = correspondance.map(v=>{
 					v["type"] = "sign";
 					return v;
