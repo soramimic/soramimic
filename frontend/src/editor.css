@@ -68,6 +68,11 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	position: relative;
+}
+
+.chip-word-main {
+	padding: 0 1rem;
 }
 
 .chip-word-surface {
@@ -115,16 +120,53 @@
 }
 
 .chip-lock {
-	border: 1px solid var(--border);
-	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.65);
-	color: var(--muted);
+	display: grid;
+	place-items: center;
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 1.75rem;
+	height: 1.75rem;
 	cursor: pointer;
-	font-size: 0.62rem;
-	font-weight: 600;
-	margin-top: 0.15rem;
-	padding: 0.08rem 0.35rem;
+}
+
+.chip-lock-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.chip-lock-box {
+	display: grid;
+	place-items: center;
+	width: 0.9rem;
+	height: 0.9rem;
+	border: 1.5px solid #94a3b8;
+	border-radius: 3px;
+	background: #fff;
+	color: #fff;
+	font-size: 0.68rem;
+	font-weight: 700;
 	line-height: 1;
+	pointer-events: none;
+}
+
+.chip-lock-input:focus-visible + .chip-lock-box {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.chip-lock-input:checked + .chip-lock-box {
+	border-color: #d97706;
+	background: #d97706;
+}
+
+.chip-lock-input:checked + .chip-lock-box::after {
+	content: "✓";
 }
 
 /* filler(置ける単語が無く、元歌詞のまま残った区間)。替え歌単語と一目で
@@ -147,12 +189,6 @@
 .chip-word.locked {
 	border-color: #d97706;
 	background: #fef3c7;
-}
-
-.chip-word.locked .chip-lock {
-	border-color: #d97706;
-	background: #fff;
-	color: #92400e;
 }
 
 .chip-unit,
@@ -276,11 +312,6 @@
 }
 
 /* ---- 以降: 候補グループ・使用中表示・詳細ポップオーバー・戻る/進む ---- */
-
-/* 単語チップ内でも押しやすい高さを確保する */
-.chip-lock {
-	min-height: 1.35rem;
-}
 
 .copy-label {
 	color: var(--muted);

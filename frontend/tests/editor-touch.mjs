@@ -80,6 +80,25 @@ try {
 
 	const cdp = await context.newCDPSession(editor);
 
+	// 固定チェックは3行目を増やさず、指で直接切り替えられる大きさにする
+	const firstLock = editor.locator(".chip-word:not(.filler) .chip-lock").first();
+	const lockBox = await firstLock.boundingBox();
+	assert(lockBox && lockBox.width >= 28 && lockBox.height >= 28,
+		`固定チェックがタッチには小さい: ${lockBox?.width}x${lockBox?.height}`);
+	const lockInput = firstLock.locator(".chip-lock-input");
+	const initiallyLocked = await lockInput.isChecked();
+	await editor.touchscreen.tap(lockBox.x + lockBox.width / 2, lockBox.y + lockBox.height / 2);
+	await editor.waitForFunction((expected) =>
+		document.querySelector(".chip-word:not(.filler) .chip-lock-input")?.checked === expected,
+		!initiallyLocked, { timeout: 5000 });
+	assert(!await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
+		"固定チェックのタップで候補パネルが開いた");
+	const toggledLock = await editor.locator(".chip-word:not(.filler) .chip-lock").first().boundingBox();
+	await editor.touchscreen.tap(
+		toggledLock.x + toggledLock.width / 2,
+		toggledLock.y + toggledLock.height / 2,
+	); // 初期状態へ戻す
+
 	// ユニットチップの中心座標(再描画で要素が入れ替わるため毎回取り直す)
 	async function unitCenter(i) {
 		const box = await editor.locator(".chip-unit").nth(i).boundingBox();

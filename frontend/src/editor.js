@@ -324,6 +324,8 @@ function renderLine(line) {
 		// タップすれば通常の単語と同じように候補パネルが開き、差し替えられる
 		if (word.filler) chip.classList.add("filler");
 		if (word.locked) chip.classList.add("locked");
+		chip.dataset.start = String(word.period[0]);
+		chip.dataset.end = String(word.period[1]);
 		if (selection && selection.line === line &&
 			selection.start === word.period[0] && selection.end === word.period[1]) {
 			chip.classList.add("selected");
@@ -346,19 +348,33 @@ function renderLine(line) {
 			grid.appendChild(chip);
 			continue;
 		}
-		const lock = document.createElement("button");
-		lock.className = "chip-lock";
-		lock.textContent = word.locked ? "✓ 固定中" : "固定";
-		lock.title = word.locked ? "固定を解除" : "この単語を固定";
-		lock.setAttribute("aria-label", word.locked ? `${word.surface}の固定を解除` : `${word.surface}を固定`);
-		lock.setAttribute("aria-pressed", String(word.locked));
-		lock.addEventListener("click", (e) => {
-			e.stopPropagation();
+		const main = document.createElement("span");
+		main.className = "chip-word-main";
+		const lockControl = document.createElement("label");
+		lockControl.className = "chip-lock";
+		lockControl.title = word.locked ? "固定を解除" : "この単語を固定";
+		const lock = document.createElement("input");
+		lock.className = "chip-lock-input";
+		lock.type = "checkbox";
+		lock.checked = !!word.locked;
+		lock.setAttribute("aria-label", `${word.surface}を固定`);
+		const lockBox = document.createElement("span");
+		lockBox.className = "chip-lock-box";
+		lockBox.setAttribute("aria-hidden", "true");
+		lock.addEventListener("change", () => {
+			const [start, end] = word.period;
 			toggleLock(line, word);
+			document.querySelector(
+				`.editor-line[data-line="${line}"] .chip-word[data-start="${start}"]` +
+				`[data-end="${end}"] .chip-lock-input`,
+			)?.focus({ preventScroll: true });
 		});
-		// 🔒への操作でチップの長押し(詳細表示)が誤発火しないようにする
-		lock.addEventListener("pointerdown", (e) => e.stopPropagation());
-		chip.append(surface, kana, lock);
+		// 固定トグルへの操作で候補パネルや長押し詳細が誤発火しないようにする
+		lockControl.addEventListener("click", (e) => e.stopPropagation());
+		lockControl.addEventListener("pointerdown", (e) => e.stopPropagation());
+		lockControl.append(lock, lockBox);
+		main.append(surface, lockControl);
+		chip.append(main, kana);
 		// PCはホバーで詳細(標準ツールチップ)、スマホは長押しでポップオーバー。
 		// 候補パネルと同じく、どのidの単語かまで分かるようにする
 		chip.title = wordDetail(word);
