@@ -582,13 +582,16 @@ function applyReadingFix(line, span, newYomiRaw) {
 		pronunciation: u.pronunciation,
 		phrase: u.phrase,
 	}));
+	const oldUnits = data.unitsList[line];
+	const unitsAfter = oldUnits.length - span.unitEnd;
+	const newSpanEnd = newUnits.length - unitsAfter;
+	// 有効な読みを入力したのに対象範囲のユニットが消えるのは導出失敗。
+	// 空の選択と候補ゼロ件を正データへ保存せず、入力フォームに留める。
+	if (newSpanEnd <= span.unitStart) return false;
 	// ここから確定: 履歴を積んでから正データ(tokensList)を差し替える
 	pushHistory();
 	markDirty(line);
 	data.tokensList[line] = tokens;
-	const oldUnits = data.unitsList[line];
-	const unitsAfter = oldUnits.length - span.unitEnd;
-	const newSpanEnd = newUnits.length - unitsAfter;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
 	data.results[line] = (data.results[line] || [])
@@ -886,6 +889,9 @@ function buildPanel() {
 				readingFixOpen = true;
 				rerenderLine(line); // 読みが変わるトークン範囲をチップ側にも反映
 				renderPanel();
+				// renderPanelで作り直した読み入力欄へ、クリック操作の中で直接フォーカスする。
+				// モバイルでもソフトウェアキーボードを開き、そのまま修正を始められる。
+				$id("editor-panel").querySelector(".panel-yomi .input")?.focus({ preventScroll: true });
 			});
 			yomiRow.appendChild(toggle);
 		} else {

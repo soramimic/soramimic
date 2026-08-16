@@ -85,7 +85,7 @@
    "items": [
     {
      "value": "SEKITSUI",
-     "text": "動物",
+     "text": "脊椎動物",
      "filepath": "wordlists/sekitsui.csv",
      "dbtype": "tidy",
      "facets": [
@@ -107,6 +107,32 @@
        "values": [
         { "v": "no", "label": "現生", "default": true },
         { "v": "yes", "label": "絶滅種", "default": true }
+       ]
+      }
+     ]
+    },
+    {
+     "value": "MARINE_LIFE",
+     "text": "海の動物",
+     "filepath": "wordlists/marine_life.csv",
+     "dbtype": "tidy",
+     "facets": [
+      {
+       "column": "class",
+       "label": "分類",
+       "values": [
+        { "v": "哺乳類", "label": "哺乳類", "default": true },
+        { "v": "爬虫類", "label": "爬虫類", "default": true },
+        { "v": "魚類", "label": "魚類", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
+       ]
+      },
+      {
+       "column": "vertebrate",
+       "label": "脊椎区分",
+       "values": [
+        { "v": "脊椎動物", "label": "脊椎動物", "default": true },
+        { "v": "無脊椎動物", "label": "無脊椎動物", "default": true }
        ]
       }
      ]
