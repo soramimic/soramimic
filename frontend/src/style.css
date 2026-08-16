@@ -551,12 +551,74 @@ dialog h2 {
 	font-weight: 600;
 }
 
-.custom-wordlist-file {
-	display: flex;
-	flex-wrap: wrap;
+.custom-wordlist-dropzone {
+	display: grid;
+	grid-template-columns: auto 1fr;
 	align-items: center;
-	gap: 0.5rem;
+	width: 100%;
+	min-height: 7rem;
+	padding: 1rem 1.25rem;
 	margin-bottom: 0.7rem;
+	border: 2px dashed #93b4f8;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 150ms ease, background-color 150ms ease,
+		box-shadow 150ms ease, transform 150ms ease;
+}
+
+.custom-wordlist-dropzone:hover {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.custom-wordlist-dropzone:focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+	outline-offset: 2px;
+}
+
+.custom-wordlist-dropzone.is-dragging {
+	border-color: var(--accent);
+	border-style: solid;
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+	transform: translateY(-1px);
+}
+
+.custom-wordlist-dropzone-icon {
+	grid-row: 1 / span 2;
+	width: 2.25rem;
+	height: 2.25rem;
+	margin-right: 0.9rem;
+	fill: none;
+	stroke: var(--accent);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.8;
+}
+
+.custom-wordlist-dropzone-copy {
+	display: flex;
+	align-items: baseline;
+	gap: 0.45rem;
+}
+
+.custom-wordlist-dropzone-copy strong {
+	font-size: 0.95rem;
+	font-weight: 650;
+}
+
+.custom-wordlist-dropzone-copy > span {
+	color: var(--accent);
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.custom-wordlist-dropzone-mobile {
+	display: none;
 }
 
 .custom-wordlist-status {
@@ -602,6 +664,20 @@ dialog h2 {
 	#original-delete {
 		grid-column: 1 / -1;
 		justify-self: start;
+	}
+
+	.custom-wordlist-dropzone {
+		min-height: 5.5rem;
+		padding: 0.8rem 1rem;
+	}
+
+	.custom-wordlist-dropzone-desktop,
+	.custom-wordlist-dropzone-copy > span {
+		display: none;
+	}
+
+	.custom-wordlist-dropzone-mobile {
+		display: inline;
 	}
 }
 

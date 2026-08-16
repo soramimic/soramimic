@@ -140,6 +140,33 @@ try {
 		value: "__NEW_CUSTOM_WORDLIST__",
 	});
 	await page.waitForSelector("#original-dialog[open]");
+	const dropzoneText = await page.textContent("#btn-original-file");
+	if (!dropzoneText.includes("ここにドロップ") || !dropzoneText.includes("クリックして選択")) {
+		throw new Error("ファイルのドラッグ＆ドロップ案内が表示されない");
+	}
+	const droppedText = "surface,pronunciation\n葡萄,ブドウ";
+	await page.evaluate((text) => {
+		const file = new File([text], "果物.csv", { type: "text/csv" });
+		const transfer = new DataTransfer();
+		transfer.items.add(file);
+		const zone = document.getElementById("btn-original-file");
+		zone.dispatchEvent(new DragEvent("dragenter", {
+			bubbles: true, cancelable: true, dataTransfer: transfer,
+		}));
+		if (!zone.classList.contains("is-dragging")) {
+			throw new Error("ドラッグ中の表示にならない");
+		}
+		zone.dispatchEvent(new DragEvent("drop", {
+			bubbles: true, cancelable: true, dataTransfer: transfer,
+		}));
+	}, droppedText);
+	await page.waitForFunction(
+		(text) => document.getElementById("original-text").value === text,
+		droppedText, { timeout: 10000 });
+	if (!(await page.textContent("#original-status")).includes("果物.csv")) {
+		throw new Error("ドロップしたファイルの読み込み状態が表示されない");
+	}
+	await page.fill("#original-name", "");
 	const uploadedText = "surface,pronunciation\n林檎,リンゴ";
 	const [chooser] = await Promise.all([
 		page.waitForEvent("filechooser"),
