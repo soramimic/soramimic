@@ -80,6 +80,14 @@ try {
 		() => !document.getElementById("btn-regenerate").disabled,
 		undefined, { timeout: 120000 },
 	);
+	assert(await editor.locator("#editor-hint").count() === 0,
+		"冒頭の操作説明が残っている");
+	const rowLabels = await editor.$$eval(".editor-line:first-child .editor-row-label",
+		(els) => els.map((e) => e.textContent));
+	assert(JSON.stringify(rowLabels) === JSON.stringify(["元歌詞の読み", "替え歌"]),
+		"行の役割がラベルで示されていない: " + JSON.stringify(rowLabels));
+	assert(await editor.textContent("#btn-regenerate") === "固定した単語を残して再生成",
+		"再生成ボタンから固定単語の扱いが分からない");
 	const kanaBefore = await editor.$$eval(".chip-unit", (els) => els.map((e) => e.textContent).join(""));
 	assert(kanaBefore === "ワスレガタキコキョーシンヤイチニジヲスギタッテカンジ",
 		"アライン表示の読みが想定外: " + kanaBefore);

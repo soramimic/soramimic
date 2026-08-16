@@ -270,7 +270,19 @@ function renderLine(line) {
 	// 下段: 替え歌単語チップ(period[開始,終了) の列にまたがる)
 	const grid = document.createElement("div");
 	grid.className = "editor-grid";
-	grid.style.gridTemplateColumns = `repeat(${units.length}, minmax(2.4em, max-content))`;
+	grid.style.gridTemplateColumns = `auto repeat(${units.length}, minmax(2.4em, max-content))`;
+
+	const sourceLabel = document.createElement("span");
+	sourceLabel.className = "editor-row-label";
+	sourceLabel.textContent = "元歌詞の読み";
+	sourceLabel.style.gridRow = "1";
+	sourceLabel.style.gridColumn = "1";
+	const resultLabel = document.createElement("span");
+	resultLabel.className = "editor-row-label";
+	resultLabel.textContent = "替え歌";
+	resultLabel.style.gridRow = "2";
+	resultLabel.style.gridColumn = "1";
+	grid.append(sourceLabel, resultLabel);
 
 	const inSelection = (i) =>
 		selection && selection.line === line && i >= selection.start && i < selection.end;
@@ -296,9 +308,10 @@ function renderLine(line) {
 		if (inReadingScope(i) && !inSelection(i)) chip.classList.add("reading-scope");
 		chip.textContent = unit.pronunciation;
 		chip.title = unit.surface_form;
+		chip.setAttribute("aria-label", `${unit.surface_form}、読み ${unit.pronunciation}。範囲を選択`);
 		chip.dataset.index = String(i);
 		chip.style.gridRow = "1";
-		chip.style.gridColumn = `${i + 1}`;
+		chip.style.gridColumn = `${i + 2}`;
 		chip.addEventListener("click", (e) => onUnitClick(line, i, e.shiftKey));
 		chip.addEventListener("pointerdown", (e) => onUnitPointerDown(line, i, e));
 		grid.appendChild(chip);
@@ -316,7 +329,7 @@ function renderLine(line) {
 			chip.classList.add("selected");
 		}
 		chip.style.gridRow = "2";
-		chip.style.gridColumn = `${word.period[0] + 1} / ${word.period[1] + 1}`;
+		chip.style.gridColumn = `${word.period[0] + 2} / ${word.period[1] + 2}`;
 		const surface = document.createElement("span");
 		surface.className = "chip-word-surface";
 		surface.textContent = word.surface;
@@ -335,8 +348,10 @@ function renderLine(line) {
 		}
 		const lock = document.createElement("button");
 		lock.className = "chip-lock";
-		lock.textContent = word.locked ? "🔒" : "🔓";
+		lock.textContent = word.locked ? "✓ 固定中" : "固定";
 		lock.title = word.locked ? "固定を解除" : "この単語を固定";
+		lock.setAttribute("aria-label", word.locked ? `${word.surface}の固定を解除` : `${word.surface}を固定`);
+		lock.setAttribute("aria-pressed", String(word.locked));
 		lock.addEventListener("click", (e) => {
 			e.stopPropagation();
 			toggleLock(line, word);
@@ -1113,6 +1128,10 @@ function buildPanel() {
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
+	const listTitle = document.createElement("h3");
+	listTitle.className = "panel-candidates-title";
+	listTitle.textContent = "差し替え候補";
+	list.appendChild(listTitle);
 	const shown = groups.slice(0, Math.min(panelShown, GROUP_MAX));
 	if (shown.length === 0) {
 		const note = document.createElement("p");
@@ -1720,7 +1739,6 @@ function enterSetup() {
 	setupMode = true;
 	moveSettingsBody(true);
 	$id("editor-setup").hidden = false;
-	$id("editor-hint").hidden = true;
 	$id("editor-toolbar").hidden = true;
 	$id("editor-lines").hidden = true;
 	renderSongField();
@@ -1735,7 +1753,6 @@ function leaveSetup() {
 	setupMode = false;
 	$id("editor-setup").hidden = true;
 	moveSettingsBody(false);
-	$id("editor-hint").hidden = false;
 	$id("editor-toolbar").hidden = false;
 	$id("editor-lines").hidden = false;
 	if (data.setupFirst) {
