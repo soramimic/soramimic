@@ -79,11 +79,19 @@
 	font-size: 0.75rem;
 }
 
-.editor-status,
-.editor-hint {
+.editor-status {
 	color: var(--muted);
 	font-size: 0.85rem;
 	margin: 0 0 0.6rem;
+}
+
+.editor-row-label {
+	align-self: center;
+	color: var(--muted);
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding-right: 0.45rem;
+	text-align: right;
 }
 
 .editor-toolbar {
@@ -107,13 +115,16 @@
 }
 
 .chip-lock {
-	border: none;
-	background: none;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.65);
+	color: var(--muted);
 	cursor: pointer;
-	font-size: 0.7rem;
-	padding: 0;
+	font-size: 0.62rem;
+	font-weight: 600;
+	margin-top: 0.15rem;
+	padding: 0.08rem 0.35rem;
 	line-height: 1;
-	opacity: 0.45;
 }
 
 /* filler(置ける単語が無く、元歌詞のまま残った区間)。替え歌単語と一目で
@@ -139,7 +150,9 @@
 }
 
 .chip-word.locked .chip-lock {
-	opacity: 1;
+	border-color: #d97706;
+	background: #fff;
+	color: #92400e;
 }
 
 .chip-unit,
@@ -243,6 +256,12 @@
 	gap: 0.4rem;
 }
 
+.panel-candidates-title {
+	flex-basis: 100%;
+	font-size: 0.85rem;
+	margin: 0.15rem 0 0;
+}
+
 .candidate {
 	display: flex;
 	flex-direction: column;
@@ -258,11 +277,9 @@
 
 /* ---- 以降: 候補グループ・使用中表示・詳細ポップオーバー・戻る/進む ---- */
 
-/* 🔒の当たり判定を見た目を変えずに広げる(スマホでの誤タップ・押しにくさ対策) */
+/* 単語チップ内でも押しやすい高さを確保する */
 .chip-lock {
-	font-size: 0.8rem;
-	padding: 0.25rem 0.4rem;
-	margin: -0.25rem -0.4rem;
+	min-height: 1.35rem;
 }
 
 .copy-label {
