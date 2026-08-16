@@ -133,6 +133,8 @@ try {
 	assert(toggleText.includes("故郷") && toggleText.includes("コキョー"),
 		"読み修正の対象が想定外: " + toggleText);
 	await editor.click(".panel-yomi-toggle");
+	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
+		"読み修正フォームを開いても読み入力欄にフォーカスされない");
 	await editor.fill(".panel-yomi .input", "ふるさと");
 	await editor.click(".panel-yomi .btn-primary");
 	await editor.waitForFunction(
