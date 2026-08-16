@@ -37,6 +37,59 @@ assert.ok(candidates.every((w) => typeof w.sim === "number"), "simスコア付�
 print("[ok] getCandidates: 上位候補=" +
 	candidates.slice(0, 3).map((w) => w.surface).join(","));
 
+// ---- 複数桁の算用数字を読み修正しても拗音を分割しない ----
+// kuromojiは「12」を1トークンにするため、1桁限定の仮読み処理では発音ユニットが
+// 0件になり、編集ツールから選択も修正もできなかった。
+const numberTokens = textAnalyzer.tokenizeTogether(["12"])[0];
+assert.equal(numberTokens.length, 1, "12が1トークンになる前提");
+assert.equal(numberTokens[0].pronunciation, "イチニ", "複数桁にも編集用の仮読みが付くこと");
+assert.ok(
+	textAnalyzer.getYomiAndPhraseBreak(numberTokens).length > 0,
+	"複数桁の数字が選択可能な発音ユニットになること",
+);
+
+// 読み推定APIなどが文脈に合う読みを返した場合は、桁読みで上書きしない。
+const explicitNumberTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "12", basic_form: "12", reading: "ジュウニ",
+		pronunciation: "ジュウニ", pos: "名詞", pos_detail_1: "数", word_position: 1,
+	},
+]])[0];
+assert.equal(
+	explicitNumberTokens[0].pronunciation, "ジュウニ",
+	"解析器が返した複数桁数字の読みを桁読みで上書きしないこと",
+);
+
+// applyReadingFixと同じくpronunciationだけを書き換える。ジュを文字単位の
+// ジ/ュへ割らず、候補検索と同じ音節単位にまとめること。
+const correctedNumberTokens = numberTokens.map((token) => ({ ...token }));
+correctedNumberTokens[0].pronunciation = "ジュウニ";
+const correctedNumberUnits = textAnalyzer.getYomiAndPhraseBreak(correctedNumberTokens);
+assert.deepEqual(
+	correctedNumberUnits.map((unit) => unit.pronunciation),
+	["ジュウ", "ニ"],
+	"読み修正したジュウニを正しい音節単位に保つこと",
+);
+const numberCandidates = soramimiMaker.getCandidates(
+	db, correctedNumberUnits.map((unit) => unit.pronunciation), PARAM, 10);
+assert.ok(numberCandidates.length > 0, "数字の読み修正後に候補が返ること");
+assert.ok(
+	numberCandidates.every((candidate) => Number.isFinite(candidate.sim)),
+	"数字の読み修正後の候補スコアが有限であること",
+);
+
+// 読み修正前の保存データなどで記号POSが残っていても、明示されたカナ読みは
+// 無音記号として捨てずに復元できること。
+const legacyNumberTokens = correctedNumberTokens.map((token) => ({ ...token, pos: "記号" }));
+assert.deepEqual(
+	textAnalyzer.getYomiAndPhraseBreak(legacyNumberTokens)
+		.map((unit) => unit.pronunciation),
+	["ジュウ", "ニ"],
+	"記号POSに残った数字でも明示読みを尊重すること",
+);
+print("[ok] 算用数字の読み修正: 12(ジュウニ)の候補=" +
+	numberCandidates.slice(0, 3).map((word) => word.surface).join(","));
+
 // ---- 固定つき再生成 ----
 const phrases = ["カナダ カナダ カナダ"];
 const tokensList = textAnalyzer.tokenizeTogether(phrases);
