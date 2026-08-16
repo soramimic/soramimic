@@ -86,7 +86,7 @@ try {
 		(els) => els.map((e) => e.textContent));
 	assert(JSON.stringify(rowLabels) === JSON.stringify(["元歌詞の読み", "替え歌"]),
 		"行の役割がラベルで示されていない: " + JSON.stringify(rowLabels));
-	assert(await editor.textContent("#btn-regenerate") === "固定した単語を残して再生成",
+	assert(await editor.textContent("#btn-regenerate") === "固定中以外を再生成",
 		"再生成ボタンから固定単語の扱いが分からない");
 	const kanaBefore = await editor.$$eval(".chip-unit", (els) => els.map((e) => e.textContent).join(""));
 	assert(kanaBefore === "ワスレガタキコキョーシンヤイチニジヲスギタッテカンジ",
@@ -96,6 +96,37 @@ try {
 	const wordTitle = await editor.getAttribute(".chip-word", "title");
 	assert(wordTitle && wordTitle.includes("→") && wordTitle.includes("ID:"),
 		"替え歌単語チップの詳細が想定外: " + wordTitle);
+
+	// 固定操作は3行目を増やさず、単語と同じ行のチェックで完結する
+	const firstWord = editor.locator(".chip-word:not(.filler)").first();
+	assert(await firstWord.locator(":scope > .chip-word-main + .chip-word-kana").count() === 1,
+		"単語チップが表記／読みの2行構造になっていない");
+	const chipRows = await firstWord.evaluate((el) => {
+		const surface = el.querySelector(".chip-word-surface").getBoundingClientRect();
+		const kana = el.querySelector(".chip-word-kana").getBoundingClientRect();
+		const lock = el.querySelector(".chip-lock").getBoundingClientRect();
+		return {
+			surfaceTop: surface.top, surfaceBottom: surface.bottom,
+			kanaTop: kana.top, lockCenter: lock.top + lock.height / 2,
+		};
+	});
+	assert(chipRows.kanaTop >= chipRows.surfaceBottom - 1,
+		"表記と読みが2段に並んでいない: " + JSON.stringify(chipRows));
+	assert(chipRows.lockCenter >= chipRows.surfaceTop - 2 &&
+		chipRows.lockCenter <= chipRows.surfaceBottom + 2,
+		"固定チェックが3段目に配置されている: " + JSON.stringify(chipRows));
+	const firstLock = firstWord.locator(".chip-lock-input");
+	const initiallyLocked = await firstLock.isChecked();
+	await firstLock.click();
+	assert(await firstWord.locator(".chip-lock-input").isChecked() === !initiallyLocked,
+		"チェックで固定状態を切り替えられない");
+	assert(await firstWord.evaluate((el) => el.classList.contains("locked")) === !initiallyLocked,
+		"チェックと固定中の見た目が一致しない");
+	assert(await firstWord.locator(".chip-lock-input").evaluate((el) => el === document.activeElement),
+		"固定切り替え後にチェックからフォーカスが失われた");
+	assert(!(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open"))),
+		"固定チェックの押下で候補パネルが開いた");
+	await firstWord.locator(".chip-lock-input").click(); // 初期状態へ戻す
 
 	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
 	// 12は1トークンだが、表示上は複数ユニット。どれをタップしても対象全体が
@@ -229,11 +260,13 @@ try {
 	const candSurface = await editor.textContent(".candidate .candidate-surface");
 	await editor.click(".panel-candidates .candidate");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
+	assert(await editor.isChecked(".chip-word.locked .chip-lock-input"),
+		"差し替え後の自動固定がチェックに反映されない");
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`差し替えた単語がチップに反映されていない: 候補=${candSurface} チップ=${lockedSurface}`);
 
-	// ---- 固定以外を再生成: 固定した単語が保持される ----
+	// ---- 固定中以外を再生成: 固定した単語が保持される ----
 	await editor.click("#btn-regenerate");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
