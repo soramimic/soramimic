@@ -153,79 +153,102 @@ function TokenFormatter(){
 	}
 }
 
-function Kanji(dictionary){
+function Kanji(dictionary, kanaToSyllable){
+	//同じ辞書読みを語ごと・文字ごとに再分割しない。歌詞や大規模単語リストの
+	//解析では同じ候補を多数回使うため、発音単位列だけを共有する。
+	const dictionaryUnits = new Map();
+	function splitDictionaryYomi(yomi){
+	  if(!dictionaryUnits.has(yomi)){
+	    dictionaryUnits.set(yomi, kanaToSyllable.split(yomi) || []);
+	  }
+	  return dictionaryUnits.get(yomi);
+	}
+
+	//読み候補は文字列ではなく発音単位列で照合する。「ジ」は一まとまりの
+	//「ジュウ」内部には一致しないため、拗音・長音の途中をアンカーにしない。
+	function findSyllableMatch(restText, yomiCandidates){
+	  const restUnits = kanaToSyllable.split(restText) || [];
+	  let best = null;
+	  for(const yomi of yomiCandidates){
+	    const yomiUnits = splitDictionaryYomi(yomi);
+	    if(yomiUnits.length == 0) continue;
+	    for(let i=0;i+yomiUnits.length<=restUnits.length;i++){
+	      if(!yomiUnits.every((unit, j) => unit === restUnits[i+j])) continue;
+	      if(best == null || i < best.unitStart){
+	        best = { unitStart: i, yomi };
+	      }
+	      break;
+	    }
+	    //辞書候補は長い順。読みの先頭で一致した最初の候補を採ればよい。
+	    if(best && best.unitStart === 0) break;
+	  }
+	  if(best == null) return null;
+	  return {
+	    start: restUnits.slice(0, best.unitStart).join("").length,
+	    yomi: best.yomi,
+	  };
+	}
+
 	//辞書ベースで、漢字（熟語)と発音のなるべく細かい対応を見つける
 	//pronunciationはsurfaceよりも長い必要あり
 	function kanjiAllocate (surface, pronunciation, kanji_dict = {}) {
 	  let rest_text = pronunciation;
-	  let skipped_char = "";
-
+	  //surfaceCursorより前の表層はすべてoutput済み、という単調性を保つ。
+	  //未割当文字を別バッファへ退避して後から足すと表層順を逆転できてしまうため、
+	  //出力には必ずsurfaceのsliceを左から順番に追加する。
+	  let surfaceCursor = 0;
 	  let output = [];
 	  for(let i=0;i<surface.length;i++){
 	    let char = surface[i];
 	    if(char in kanji_dict == false){
-	      skipped_char += char;
 	      continue;
 	    }
 
 	    let yomi_candidates = kanji_dict[char];//長さの降順にソート済みとする
-	    let start = -1;
-	    let yomi = "";
-	    for(let y of yomi_candidates){
-	      start = rest_text.indexOf(y);
-	      if(start >= 0){
-	        yomi = y;
-	        break;
-	      }
-	    }
+	    const match = findSyllableMatch(rest_text, yomi_candidates);
 	    //マッチする読みが見つからなければスキップ
-	    if(start == -1){
-	      skipped_char += char;
+	    if(match == null){
+	      continue;
+	    }
+	    const { start, yomi } = match;
+	    const hasPendingSurface = surfaceCursor < i;
+	    //読みの手前に割り当てられる部分がない限り、未割当の表層を飛び越えて
+	    //後続文字を確定できない。このアンカーは採用せず次を探す。
+	    if(start === 0 && hasPendingSurface){
 	      continue;
 	    }
 	    if(start > 0){
-	      if(output.length == 0){
-	        if(skipped_char != ""){
-	          output.push([skipped_char, rest_text.slice(0,start)]);
-	          skipped_char = "";
-	          rest_text = rest_text.slice(start);
-	          output.push([char, yomi]);
-	          rest_text = rest_text.slice(yomi.length);
-	        }else{
-	          output.push([char, rest_text.slice(0, start+yomi.length)]);
-	          rest_text = rest_text.slice(start+yomi.length);
-	        }
+	      const prefix = rest_text.slice(0,start);
+	      if(hasPendingSurface){
+	        //未割当の表層区間を、後続のcharより必ず先に出力する。
+	        output.push([surface.slice(surfaceCursor, i), prefix]);
+	      }else if(output.length == 0){
+	        //先頭文字の辞書読みに接頭音がある場合は同じ文字へ含める。
+	        output.push([char, prefix+yomi]);
+	        surfaceCursor = i+1;
+	        rest_text = rest_text.slice(start+yomi.length);
+	        continue;
 	      }else{
-	        if(skipped_char != 0){
-	          output.push([skipped_char, rest_text.slice(0,start)]);
-	          skipped_char = "";
-	          rest_text = rest_text.slice(start);
-	          output.push([char, yomi]);
-	          rest_text = rest_text.slice(yomi.length);          
-	        }else{
-	          output[output.length-1][1]+= rest_text.slice(0, start);
-	          rest_text = rest_text.slice(start);
-	          output.push([char, yomi]);
-	          rest_text = rest_text.slice(yomi.length);                    
-	        }
+	        //連続した既知文字間の余剰読みは直前の文字へ含める。
+	        output[output.length-1][1] += prefix;
 	      }
-	    }else{
-	      output.push([char, yomi]);
-	      rest_text = rest_text.slice(yomi.length);
 	    }
+	    output.push([char, yomi]);
+	    surfaceCursor = i+1;
+	    rest_text = rest_text.slice(start+yomi.length);
 	  }
 
 	  //ループで処理しきれなかった文字列の処理
-	  if(skipped_char != ""){
+	  const remainingSurface = surface.slice(surfaceCursor);
+	  if(remainingSurface != ""){
 	    if(rest_text != ""){
-	      //console.log(skipped_char, rest_text);
-	      output.push([skipped_char, rest_text]);
+	      output.push([remainingSurface, rest_text]);
 	    }else{
 	      if(output.length == 0){
 	        //たぶんほとんどないケース
-	        output.push([skipped_char, rest_text]);
+	        output.push([remainingSurface, rest_text]);
 	      }else{
-	        output[output.length-1][0]+=skipped_char;        
+	        output[output.length-1][0] += remainingSurface;
 	      }
 	    }
 	  }else{
@@ -241,6 +264,14 @@ function Kanji(dictionary){
 	  //  return balancedAllocate(surface, yomi);
 	  //});
 	  //output = output.flat();
+	  //アラインメントは表層順を絶対に変えてはならない。細分化に失敗した場合は
+	  //安全な全体対応へ戻し、後段の音節分割に任せる。
+	  const surfaceInOutput = output.map(([part]) => part).join("");
+	  const splitSmallKana = output.slice(1).some(([, yomi]) =>
+	    /^[ァィゥェォヮャュョ]/.test(yomi));
+	  if(surfaceInOutput !== surface || splitSmallKana){
+	    return [[surface, pronunciation]];
+	  }
 	  return output;
 	}
 	
@@ -467,7 +498,7 @@ function Character(kanji){
 	    //console.log("in kana_correspondance",token);
 	    if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
 	    	//console.log("in if",token);
-	    	correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
+		correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
     		? token.manualAlign
     		: kanji_allocator.allocate(token.surface_form, token.pronunciation);
 	      correspondance = correspondance.map(function([surface_form,yomi]){
