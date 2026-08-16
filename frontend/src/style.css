@@ -559,11 +559,6 @@ dialog h2 {
 	margin-bottom: 0.7rem;
 }
 
-.custom-wordlist-file span {
-	color: var(--muted);
-	font-size: 0.78rem;
-}
-
 .custom-wordlist-status {
 	margin: 0.65rem 0 0;
 	color: var(--muted);
