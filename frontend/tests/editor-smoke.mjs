@@ -52,17 +52,18 @@ try {
 	await page.goto(`http://localhost:${PORT}/`);
 	await page.waitForFunction(
 		() => document.getElementById("btn-convert").textContent === "変換",
-		{ timeout: 60000 },
+		undefined, { timeout: 60000 },
 	);
-	// 「故郷」は読みがコキョーと推定される(読み修正のテスト対象)
-	await page.fill("#input-text", "忘れがたき故郷");
+	// 「故郷」は読みがコキョーと推定される(読み修正のテスト対象)。2行目の
+	// 複数桁数字は、仮読みからジュウニへ修正する回帰テストに使う。
+	await page.fill("#input-text", "忘れがたき故郷\n深夜12時をすぎたって\n漢字");
 	await page.click("#btn-convert");
 	await page.waitForFunction(
 		() => {
 			const out = document.getElementById("output-text");
 			return !document.getElementById("output-field").hidden && out.value.length > 0;
 		},
-		{ timeout: 120000 },
+		undefined, { timeout: 120000 },
 	);
 
 	const [editor] = await Promise.all([
@@ -75,15 +76,83 @@ try {
 	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
-		{ timeout: 120000 },
+		undefined, { timeout: 120000 },
 	);
 	const kanaBefore = await editor.$$eval(".chip-unit", (els) => els.map((e) => e.textContent).join(""));
-	assert(kanaBefore === "ワスレガタキコキョー", "アライン表示の読みが想定外: " + kanaBefore);
+	assert(kanaBefore === "ワスレガタキコキョーシンヤイチニジヲスギタッテカンジ",
+		"アライン表示の読みが想定外: " + kanaBefore);
 
 	// 替え歌単語チップの詳細(ホバーの標準ツールチップ)にidまで含まれること
 	const wordTitle = await editor.getAttribute(".chip-word", "title");
 	assert(wordTitle && wordTitle.includes("→") && wordTitle.includes("ID:"),
 		"替え歌単語チップの詳細が想定外: " + wordTitle);
+
+	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
+	// 12は1トークンだが、表示上は複数ユニット。どれをタップしても対象全体が
+	// 12(イチニ)へスナップし、ジュウニへの修正後もジュウ/ニの2音節になる。
+	await editor.locator('.editor-line[data-line="1"] .chip-unit').nth(2).click();
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	const numberToggle = await editor.textContent(".panel-yomi-toggle");
+	assert(numberToggle.includes("12") && numberToggle.includes("イチニ"),
+		"複数桁数字が読み修正の対象になっていない: " + numberToggle);
+	await editor.click(".panel-yomi-toggle");
+	await editor.fill(".panel-yomi .input", "ジュウニ");
+	await editor.click(".panel-yomi .btn-primary");
+	await editor.waitForFunction(() =>
+		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
+			.map((e) => e.textContent).join("|") === "シン|ヤ|ジュウ|ニ|ジ|ヲ|ス|ギ|タッ|テ",
+		undefined, { timeout: 10000 });
+	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
+	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
+		"ジュウニへの読み修正後に候補が表示されない");
+	await editor.click("#btn-undo"); // 後続テストに影響させない
+	await editor.waitForTimeout(300);
+
+	// ---- 公開版での最小再現: 複数漢字の読み修正 ----
+	// 漢字→ジュウで「字漢」「ジ|ュ|ウ」にならず、表層順と拗音を保つ。
+	await editor.locator('.editor-line[data-line="2"] .chip-unit').first().click();
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	await editor.click(".panel-yomi-toggle");
+	await editor.fill(".panel-yomi .input", "ジュウ");
+	await editor.click(".panel-yomi .btn-primary");
+	await editor.waitForFunction(() =>
+		[...document.querySelectorAll('.editor-line[data-line="2"] .chip-unit')]
+			.map((e) => e.textContent).join("|") === "ジュウ",
+		undefined, { timeout: 10000 });
+	assert((await editor.textContent(".panel-title")).includes("漢字(ジュウ)"),
+		"複数漢字の読み修正で表層順が変わった");
+	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
+	await editor.click("#btn-undo"); // 後続テストに影響させない
+	await editor.waitForTimeout(300);
+
+	// ---- 公開版の報告操作: 深夜12時を、の読みをまとめて修正 ----
+	// 読みAPIが使えず12の読みが欠落した公開版では、表示されたヤ〜ヲのカナを
+	// 選ぶと、内部の読み修正範囲が深夜12時をへ広がる。シンヤジューニジヲを
+	// 割り当てた際、時=ジが先頭側のジへ
+	// 誤対応して、表層が深夜時12を、読みがシン|ヤ|ジ|ュ|ー|ニ|ジ|ヲになっていた。
+	await editor.locator('.editor-line[data-line="0"] .chip-unit').first().click();
+	const mixedLineUnits = editor.locator('.editor-line[data-line="1"] .chip-unit');
+	await mixedLineUnits.nth(1).click();
+	await editor.waitForTimeout(300);
+	await mixedLineUnits.nth(6).click({ modifiers: ["Shift"] });
+	await editor.waitForFunction(() =>
+		document.querySelector(".panel-yomi-toggle")?.textContent.includes(
+			"深夜12時を(シンヤイチニジヲ)"),
+		undefined, { timeout: 10000 });
+	await editor.click(".panel-yomi-toggle");
+	await editor.fill(".panel-yomi .input", "シンヤジューニジヲ");
+	await editor.click(".panel-yomi .btn-primary");
+	await editor.waitForFunction(() =>
+		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
+			.map((e) => e.textContent).join("|") === "シン|ヤ|ジュー|ニ|ジ|ヲ|ス|ギ|タッ|テ",
+		undefined, { timeout: 10000 });
+	assert((await editor.textContent(".panel-title")).includes("深夜12時を(シンヤジューニジヲ)"),
+		"読み修正後に表層順が変わった");
+	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
+	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
+		"深夜12時を、の読み修正後に候補が表示されない");
+	await editor.click("#btn-undo"); // 後続テストに影響させない
+	await editor.waitForTimeout(300);
 
 	// ---- 回帰ガード: かな区間の読みを長くしてもサーフェスが重複しないこと ----
 	// (getYomiAndPhraseBreakは読み>サーフェスのモーラ数だとかなサーフェスを複製する。
@@ -137,8 +206,8 @@ try {
 	await editor.click(".panel-yomi .btn-primary");
 	await editor.waitForFunction(
 		() => [...document.querySelectorAll(".chip-unit")].map((e) => e.textContent).join("")
-			=== "ワスレガタキフルサト",
-		{ timeout: 10000 },
+			=== "ワスレガタキフルサトシンヤイチニジヲスギタッテカンジ",
+		undefined, { timeout: 10000 },
 	);
 	const selTitle = await editor.textContent(".panel-title");
 	assert(selTitle.includes("フルサト"), "読み修正後の選択範囲が想定外: " + selTitle);
@@ -156,7 +225,7 @@ try {
 	await editor.click("#btn-regenerate");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
-		{ timeout: 120000 },
+		undefined, { timeout: 120000 },
 	);
 	const lockedAfter = await editor.$$eval(".chip-word.locked .chip-word-surface",
 		(els) => els.map((e) => e.textContent));
@@ -168,7 +237,7 @@ try {
 	await editor.click("#btn-undo");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-redo").disabled,
-		{ timeout: 10000 },
+		undefined, { timeout: 10000 },
 	);
 	assert(wordsAfterRegen > 0, "再生成後の単語が空");
 
@@ -181,7 +250,7 @@ try {
 		};
 	});
 	await editor.click("#btn-copy");
-	await editor.waitForFunction(() => window.__copied !== null, { timeout: 10000 });
+	await editor.waitForFunction(() => window.__copied !== null, undefined, { timeout: 10000 });
 	const copied = await editor.evaluate(() => window.__copied);
 	assert(copied.includes("使用単語一覧："), "コピー結果に使用単語一覧がない:\n" + copied);
 	assert(copied.includes(lockedSurface), "コピー結果に差し替えた単語がない:\n" + copied);
@@ -207,7 +276,7 @@ try {
 	// wordlist情報も引き継がれ、候補機能(再生成)が使える状態になる
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
-		{ timeout: 120000 },
+		undefined, { timeout: 120000 },
 	);
 
 	if (pageErrors.length > 0) {

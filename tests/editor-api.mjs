@@ -1,7 +1,10 @@
 // 編集ツール向けlib API(getCandidates / 固定つき再生成)のテスト。
 // 実行: node tests/editor-api.mjs (frontend/でnpm install済みであること)
 import assert from "node:assert";
+import fs from "node:fs";
 import { buildApp } from "./golden/harness-lib.mjs";
+import { Kanji } from "../frontend/src/lib/character.js";
+import { KanaToSyllable } from "../frontend/src/lib/kanaToSyllable.js";
 
 const print = console.log.bind(console);
 
@@ -22,6 +25,40 @@ const h = await buildApp({ tokenizer: "kuromoji" });
 const db = h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
 const { soramimiMaker, textAnalyzer } = h.app;
 
+// allocatorの最重要不変条件: 細分化の成否にかかわらず表層順は変えない。
+// 公開版では漢字→ジュウが「字=ジ / 漢=ュウ」になり、この条件を破っていた。
+const kanjiAllocator = Kanji(
+	JSON.parse(fs.readFileSync(new URL("../data/kanjiyomi.json", import.meta.url), "utf8")),
+	KanaToSyllable(),
+);
+assert.deepEqual(
+	kanjiAllocator.allocate("漢字", "ジュウ"),
+	[["漢字", "ジュウ"]],
+	"発音単位内部のジを字の読みとして採用しないこと",
+);
+assert.deepEqual(
+	kanjiAllocator.allocate("深夜12時を", "シンヤジューニジヲ"),
+	[["深", "シン"], ["夜", "ヤ"], ["12", "ジューニ"], ["時", "ジ"], ["を", "ヲ"]],
+	"算用数字を含む読みも発音単位境界と表層順に沿って対応させること",
+);
+for (const [surface, yomi] of [
+	["漢字", "ジュウ"],
+	["深夜12時を", "シンヤジューニジヲ"],
+	["学校", "ガッコウ"],
+	["日本", "ニホン"],
+]) {
+	const allocation = kanjiAllocator.allocate(surface, yomi);
+	assert.equal(
+		allocation.map(([part]) => part).join(""), surface,
+		`漢字アラインメントの表層順を保つこと: ${surface}(${yomi})`,
+	);
+	assert.ok(
+		allocation.slice(1).every(([, partYomi]) => !/^[ァィゥェォヮャュョ]/.test(partYomi)),
+		`小書きカナから始まる境界を作らないこと: ${surface}(${yomi})`,
+	);
+}
+print("[ok] 漢字アラインメント: 表層順と拗音境界を保持");
+
 // ---- getCandidates: 「カナダ」の候補上位が妥当か ----
 const tokens = textAnalyzer.tokenizeTogether(["カナダ"])[0];
 const units = textAnalyzer.getYomiAndPhraseBreak(tokens);
@@ -35,6 +72,113 @@ assert.ok(candidates.length <= 10, "上限件数を守ること");
 assert.ok(candidates.every((w) => typeof w.sim === "number"), "simスコア付き");
 print("[ok] getCandidates: 上位候補=" +
 	candidates.slice(0, 3).map((w) => w.surface).join(","));
+
+// ---- 複数桁の算用数字を読み修正しても拗音を分割しない ----
+// kuromojiは「12」を1トークンにするため、1桁限定の仮読み処理では発音ユニットが
+// 0件になり、編集ツールから選択も修正もできなかった。
+const numberTokens = textAnalyzer.tokenizeTogether(["12"])[0];
+assert.equal(numberTokens.length, 1, "12が1トークンになる前提");
+assert.equal(numberTokens[0].pronunciation, "イチニ", "複数桁にも編集用の仮読みが付くこと");
+assert.ok(
+	textAnalyzer.getYomiAndPhraseBreak(numberTokens).length > 0,
+	"複数桁の数字が選択可能な発音ユニットになること",
+);
+
+// 読み推定APIなどが文脈に合う読みを返した場合は、桁読みで上書きしない。
+const explicitNumberTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "12", basic_form: "12", reading: "ジュウニ",
+		pronunciation: "ジュウニ", pos: "名詞", pos_detail_1: "数", word_position: 1,
+	},
+]])[0];
+assert.equal(
+	explicitNumberTokens[0].pronunciation, "ジュウニ",
+	"解析器が返した複数桁数字の読みを桁読みで上書きしないこと",
+);
+
+// applyReadingFixと同じくpronunciationだけを書き換える。ジュを文字単位の
+// ジ/ュへ割らず、候補検索と同じ音節単位にまとめること。
+const correctedNumberTokens = numberTokens.map((token) => ({ ...token }));
+correctedNumberTokens[0].pronunciation = "ジュウニ";
+const correctedNumberUnits = textAnalyzer.getYomiAndPhraseBreak(correctedNumberTokens);
+assert.deepEqual(
+	correctedNumberUnits.map((unit) => unit.pronunciation),
+	["ジュウ", "ニ"],
+	"読み修正したジュウニを正しい音節単位に保つこと",
+);
+const numberCandidates = soramimiMaker.getCandidates(
+	db, correctedNumberUnits.map((unit) => unit.pronunciation), PARAM, 10);
+assert.ok(numberCandidates.length > 0, "数字の読み修正後に候補が返ること");
+assert.ok(
+	numberCandidates.every((candidate) => Number.isFinite(candidate.sim)),
+	"数字の読み修正後の候補スコアが有限であること",
+);
+
+// 読み修正前の保存データなどで記号POSが残っていても、明示されたカナ読みは
+// 無音記号として捨てずに復元できること。
+const legacyNumberTokens = correctedNumberTokens.map((token) => ({ ...token, pos: "記号" }));
+assert.deepEqual(
+	textAnalyzer.getYomiAndPhraseBreak(legacyNumberTokens)
+		.map((unit) => unit.pronunciation),
+	["ジュウ", "ニ"],
+	"記号POSに残った数字でも明示読みを尊重すること",
+);
+print("[ok] 算用数字の読み修正: 12(ジュウニ)の候補=" +
+	numberCandidates.slice(0, 3).map((word) => word.surface).join(","));
+
+// 公開版の報告操作。読みが欠落した12を周囲ごと選択して修正すると、
+// 時=ジが先頭側の「ジ」に誤対応し、表層が深夜時12をへ逆転したうえで
+// 残りが単独のュから分割されていた。
+const mixedNumberTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "深夜12時を", basic_form: "深夜12時を", reading: "シンヤジヲ",
+		pronunciation: "シンヤジューニジヲ", pos: "名詞", pos_detail_1: "一般", word_position: 1,
+	},
+]])[0];
+const mixedNumberUnits = textAnalyzer.getYomiAndPhraseBreak(mixedNumberTokens);
+assert.deepEqual(
+	mixedNumberUnits.map((unit) => unit.pronunciation),
+	["シン", "ヤ", "ジュー", "ニ", "ジ", "ヲ"],
+	"数字と漢字の混在表層でも拗音を分割しないこと",
+);
+assert.equal(
+	mixedNumberUnits.map((unit) => unit.surface_form).join(""),
+	"深夜12時を",
+	"数字の読み修正で表層順を逆転させないこと",
+);
+assert.ok(
+	mixedNumberUnits.every((unit) => unit.pronunciation !== "ュ"),
+	"数字と漢字の読み修正後に単独の小書きカナを残さないこと",
+);
+const mixedNumberCandidates = soramimiMaker.getCandidates(
+	db, mixedNumberUnits.map((unit) => unit.pronunciation), PARAM, 10);
+assert.ok(mixedNumberCandidates.length > 0, "深夜12時を、の読み修正後に候補が返ること");
+assert.ok(
+	mixedNumberCandidates.every((candidate) => Number.isFinite(candidate.sim)),
+	"深夜12時を、の読み修正後の候補スコアが有限であること",
+);
+print("[ok] 公開版の算用数字読み修正: 深夜12時を(シンヤジューニジヲ)");
+
+// 公開版での最小再現: 漢字(カンジ)の読みをジュウへ直すと、辞書の
+// 字=ジが先頭一致して割当が「字=ジ / 漢=ュウ」と逆転していた。
+const kanjiCorrectionTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "漢字", basic_form: "漢字", reading: "カンジ",
+		pronunciation: "ジュウ", pos: "名詞", pos_detail_1: "一般", word_position: 1,
+	},
+]])[0];
+const kanjiCorrectionUnits = textAnalyzer.getYomiAndPhraseBreak(kanjiCorrectionTokens);
+assert.deepEqual(
+	kanjiCorrectionUnits.map((unit) => unit.pronunciation),
+	["ジュウ"],
+	"複数漢字の読み修正でも拗音を分割しないこと",
+);
+assert.equal(
+	kanjiCorrectionUnits.map((unit) => unit.surface_form).join(""),
+	"漢字",
+	"読み修正で表層順を逆転させないこと",
+);
+print("[ok] 複数漢字の読み修正: 漢字(ジュウ)");
 
 // ---- 固定つき再生成 ----
 const phrases = ["カナダ カナダ カナダ"];
