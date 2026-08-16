@@ -307,6 +307,7 @@ export async function startApp() {
 			capEl.hidden = false;
 			selectedWordlist = opt.__config;
 			renderFacets(selectedWordlist);
+			customWordlistActions.hidden = true;
 			saveMainState();
 		});
 		wrap.append(capEl, textEl, sel);
@@ -339,6 +340,9 @@ export async function startApp() {
 	customSelect.setAttribute("aria-label", "自作リスト");
 	customWrap.append(customCapEl, customTextEl, customSelect);
 	wordlistButtons.appendChild(customWrap);
+	// 選択中リストの管理導線は、設定欄の下に離して置くと見落としやすい。
+	// 自作リストのピッカー直後へ移し、「編集・削除」が同じ操作だと示す。
+	wordlistButtons.appendChild(customWordlistActions);
 	wordlistSelects.push({
 		sel: customSelect, wrap: customWrap, textEl: customTextEl,
 		capEl: customCapEl, label: "自作リスト",
@@ -451,7 +455,9 @@ export async function startApp() {
 		saveMainState();
 	});
 
-	btnCustomWordlistEdit.addEventListener("click", () => {
+	btnCustomWordlistEdit.addEventListener("click", (event) => {
+		// wordlistButtons 内へ配置しているため、通常リスト用の委譲clickを止める。
+		event.stopPropagation();
 		const id = customWordlistId(selectedWordlist && selectedWordlist.value);
 		const list = id && customLists.find((item) => item.id === id);
 		if (list) openOriginalDialog(list);
@@ -576,6 +582,7 @@ export async function startApp() {
 			found.activate();
 			selectedWordlist = found.entry;
 			renderFacets(selectedWordlist);
+			customWordlistActions.hidden = !customWordlistId(selectedWordlist.value);
 		}
 		inputText.value = await fetchText(btn.dataset.path);
 		saveMainState();

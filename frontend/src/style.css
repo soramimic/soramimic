@@ -537,7 +537,12 @@ dialog h2 {
 }
 
 .custom-wordlist-actions {
-	margin-top: 0.55rem;
+	display: inline-flex;
+	align-items: stretch;
+}
+
+.custom-wordlist-actions[hidden] {
+	display: none;
 }
 
 .custom-wordlist-name {
