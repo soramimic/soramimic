@@ -90,6 +90,26 @@ try {
 	if (await page.isHidden("#custom-wordlist-actions")) {
 		throw new Error("保存済み自作リストの編集ボタンが表示されない");
 	}
+	const customManageAction = await page.$eval("#custom-wordlist-actions", (el) => ({
+		parent: el.parentElement?.id,
+		previousPicker: el.previousElementSibling?.querySelector("select")
+			?.getAttribute("aria-label"),
+		label: el.textContent.trim(),
+	}));
+	if (customManageAction.parent !== "wordlist-buttons"
+		|| customManageAction.previousPicker !== "自作リスト"
+		|| !customManageAction.label.includes("編集・削除")) {
+		throw new Error("自作リストの編集・削除導線が選択欄のそばにない: "
+			+ JSON.stringify(customManageAction));
+	}
+	// 自作リストからプルダウン型の通常リストへ移った場合も、操作不能な管理導線を残さない。
+	await page.selectOption("#wordlist-buttons select[aria-label='生物']", "MARINE_LIFE");
+	if (await page.isVisible("#custom-wordlist-actions")) {
+		throw new Error("通常リストの選択中も自作リストの編集・削除導線が残っている");
+	}
+	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
+		label: "自作リスト",
+	});
 	await page.click("#btn-custom-wordlist-edit");
 	await page.waitForSelector("#original-dialog[open]");
 	if (await page.inputValue("#original-text") !== "山田,ヤマダ") {
