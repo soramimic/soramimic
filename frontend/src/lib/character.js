@@ -477,9 +477,19 @@ function Character(kanji){
 	    //console.log("in kana_correspondance",token);
 	    if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
 	    	//console.log("in if",token);
-	    	correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
+		let allocated = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
     		? token.manualAlign
     		: kanji_allocator.allocate(token.surface_form, token.pronunciation);
+		// 辞書の部分一致が読み先頭の「ジ」を後ろの「字」「時」へ誤対応すると、
+		// 表層順が逆転し、次のchunkが単独の小書き「ュ」から始まる。
+		// その割当は採用せず、表層・読み全体を1subwordとして音節分割する。
+		const reordered = allocated.map(([surface]) => surface).join("") !== token.surface_form;
+		const splitSmallKana = allocated.slice(1).some(([, yomi]) =>
+			/^[ァィゥェォヮャュョ]/.test(yomi));
+		if(reordered || splitSmallKana){
+			allocated = [[token.surface_form, token.pronunciation]];
+		}
+		correspondance = allocated;
 	      correspondance = correspondance.map(function([surface_form,yomi]){
 	    	 let c = balancedAllocate(surface_form, yomi);
 	    	 //surfaceが１文字のとき何もしない

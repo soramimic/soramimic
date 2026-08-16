@@ -90,6 +90,54 @@ assert.deepEqual(
 print("[ok] 算用数字の読み修正: 12(ジュウニ)の候補=" +
 	numberCandidates.slice(0, 3).map((word) => word.surface).join(","));
 
+// 数字と漢字をまとめて読み修正する実操作。漢字辞書へ「12時」を渡すと、
+// 時=ジが先頭の「ジ」に誤対応し、残りが単独のュから分割されていた。
+const mixedNumberTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "12時", basic_form: "12時", reading: "ジュウニジ",
+		pronunciation: "ジュウニジ", pos: "名詞", pos_detail_1: "一般", word_position: 1,
+	},
+]])[0];
+const mixedNumberUnits = textAnalyzer.getYomiAndPhraseBreak(mixedNumberTokens);
+assert.deepEqual(
+	mixedNumberUnits.map((unit) => unit.pronunciation),
+	["ジュウ", "ニ", "ジ"],
+	"数字と漢字の混在表層でも拗音を分割しないこと",
+);
+assert.ok(
+	mixedNumberUnits.every((unit) => unit.pronunciation !== "ュ"),
+	"数字と漢字の読み修正後に単独の小書きカナを残さないこと",
+);
+const mixedNumberCandidates = soramimiMaker.getCandidates(
+	db, mixedNumberUnits.map((unit) => unit.pronunciation), PARAM, 10);
+assert.ok(mixedNumberCandidates.length > 0, "12時の読み修正後に候補が返ること");
+assert.ok(
+	mixedNumberCandidates.every((candidate) => Number.isFinite(candidate.sim)),
+	"12時の読み修正後の候補スコアが有限であること",
+);
+print("[ok] 数字＋漢字の読み修正: 12時(ジュウニジ)");
+
+// 公開版での最小再現: 漢字(カンジ)の読みをジュウへ直すと、辞書の
+// 字=ジが先頭一致して割当が「字=ジ / 漢=ュウ」と逆転していた。
+const kanjiCorrectionTokens = textAnalyzer.formatTokensList([[
+	{
+		surface_form: "漢字", basic_form: "漢字", reading: "カンジ",
+		pronunciation: "ジュウ", pos: "名詞", pos_detail_1: "一般", word_position: 1,
+	},
+]])[0];
+const kanjiCorrectionUnits = textAnalyzer.getYomiAndPhraseBreak(kanjiCorrectionTokens);
+assert.deepEqual(
+	kanjiCorrectionUnits.map((unit) => unit.pronunciation),
+	["ジュウ"],
+	"複数漢字の読み修正でも拗音を分割しないこと",
+);
+assert.equal(
+	kanjiCorrectionUnits.map((unit) => unit.surface_form).join(""),
+	"漢字",
+	"読み修正で表層順を逆転させないこと",
+);
+print("[ok] 複数漢字の読み修正: 漢字(ジュウ)");
+
 // ---- 固定つき再生成 ----
 const phrases = ["カナダ カナダ カナダ"];
 const tokensList = textAnalyzer.tokenizeTogether(phrases);

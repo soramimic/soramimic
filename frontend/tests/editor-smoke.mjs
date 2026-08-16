@@ -56,7 +56,7 @@ try {
 	);
 	// 「故郷」は読みがコキョーと推定される(読み修正のテスト対象)。2行目の
 	// 複数桁数字は、仮読みからジュウニへ修正する回帰テストに使う。
-	await page.fill("#input-text", "忘れがたき故郷\n12");
+	await page.fill("#input-text", "忘れがたき故郷\n12時\n漢字");
 	await page.click("#btn-convert");
 	await page.waitForFunction(
 		() => {
@@ -81,7 +81,7 @@ try {
 		undefined, { timeout: 120000 },
 	);
 	const kanaBefore = await editor.$$eval(".chip-unit", (els) => els.map((e) => e.textContent).join(""));
-	assert(kanaBefore === "ワスレガタキコキョーイチニ", "アライン表示の読みが想定外: " + kanaBefore);
+	assert(kanaBefore === "ワスレガタキコキョーイチニジカンジ", "アライン表示の読みが想定外: " + kanaBefore);
 
 	// 替え歌単語チップの詳細(ホバーの標準ツールチップ)にidまで含まれること
 	const wordTitle = await editor.getAttribute(".chip-word", "title");
@@ -101,11 +101,53 @@ try {
 	await editor.click(".panel-yomi .btn-primary");
 	await editor.waitForFunction(() =>
 		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
-			.map((e) => e.textContent).join("|") === "ジュウ|ニ",
+			.map((e) => e.textContent).join("|") === "ジュウ|ニ|ジ",
 		undefined, { timeout: 10000 });
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
 		"ジュウニへの読み修正後に候補が表示されない");
+	await editor.click("#btn-undo"); // 後続テストに影響させない
+	await editor.waitForTimeout(300);
+
+	// ---- 公開版での最小再現: 複数漢字の読み修正 ----
+	// 漢字→ジュウで「字漢」「ジ|ュ|ウ」にならず、表層順と拗音を保つ。
+	await editor.locator('.editor-line[data-line="2"] .chip-unit').first().click();
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	await editor.click(".panel-yomi-toggle");
+	await editor.fill(".panel-yomi .input", "ジュウ");
+	await editor.click(".panel-yomi .btn-primary");
+	await editor.waitForFunction(() =>
+		[...document.querySelectorAll('.editor-line[data-line="2"] .chip-unit')]
+			.map((e) => e.textContent).join("|") === "ジュウ",
+		undefined, { timeout: 10000 });
+	assert((await editor.textContent(".panel-title")).includes("漢字(ジュウ)"),
+		"複数漢字の読み修正で表層順が変わった");
+	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
+	await editor.click("#btn-undo"); // 後続テストに影響させない
+	await editor.waitForTimeout(300);
+
+	// ---- 回帰ガード: 数字＋漢字をまとめた読み修正でも拗音を分割しない ----
+	// 12時の全ユニットを選びジュウニジを割り当てる。以前は時=ジが先頭のジへ
+	// 誤対応し、残りがュから始まる別単位になって候補が消えていた。
+	// いったん別行へ選択を移し、数字行では先頭を新しいアンカーにする。
+	await editor.locator('.editor-line[data-line="0"] .chip-unit').first().click();
+	const mixedLineUnits = editor.locator('.editor-line[data-line="1"] .chip-unit');
+	await mixedLineUnits.first().click();
+	await editor.waitForTimeout(300);
+	await mixedLineUnits.last().click({ modifiers: ["Shift"] });
+	await editor.waitForFunction(() =>
+		document.querySelector(".panel-title")?.textContent.includes("12時(イチニジ)"),
+		undefined, { timeout: 10000 });
+	await editor.click(".panel-yomi-toggle");
+	await editor.fill(".panel-yomi .input", "ジュウニジ");
+	await editor.click(".panel-yomi .btn-primary");
+	await editor.waitForFunction(() =>
+		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
+			.map((e) => e.textContent).join("|") === "ジュウ|ニ|ジ",
+		undefined, { timeout: 10000 });
+	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
+	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
+		"12時をまとめた読み修正後に候補が表示されない");
 	await editor.click("#btn-undo"); // 後続テストに影響させない
 	await editor.waitForTimeout(300);
 
@@ -163,7 +205,7 @@ try {
 	await editor.click(".panel-yomi .btn-primary");
 	await editor.waitForFunction(
 		() => [...document.querySelectorAll(".chip-unit")].map((e) => e.textContent).join("")
-			=== "ワスレガタキフルサトイチニ",
+			=== "ワスレガタキフルサトイチニジカンジ",
 		undefined, { timeout: 10000 },
 	);
 	const selTitle = await editor.textContent(".panel-title");
