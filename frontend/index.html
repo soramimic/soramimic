@@ -186,9 +186,16 @@
           <input id="original-name" class="input" type="text" maxlength="100"
             placeholder="例: 歴代レスラー" autocomplete="off" />
         </label>
-        <div class="custom-wordlist-file">
-          <button id="btn-original-file" class="btn" type="button">CSV・テキストを読み込む</button>
-        </div>
+        <button id="btn-original-file" class="custom-wordlist-dropzone" type="button">
+          <svg class="custom-wordlist-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5v3A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-3" />
+          </svg>
+          <span class="custom-wordlist-dropzone-copy">
+            <strong class="custom-wordlist-dropzone-desktop">CSV・TXTファイルをここにドロップ</strong>
+            <strong class="custom-wordlist-dropzone-mobile">CSV・TXTファイルを選択</strong>
+            <span>またはクリックして選択</span>
+          </span>
+        </button>
         <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
         <textarea id="original-text" class="input" rows="16"
           placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>

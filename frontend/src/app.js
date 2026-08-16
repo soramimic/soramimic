@@ -464,10 +464,8 @@ export async function startApp() {
 	});
 
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
-	$id("btn-original-file").addEventListener("click", () => originalFile.click());
-	originalFile.addEventListener("change", async () => {
-		const file = originalFile.files && originalFile.files[0];
-		originalFile.value = ""; // 同じファイルを選び直してもchangeを発火させる
+	const originalDropzone = $id("btn-original-file");
+	async function loadOriginalFile(file) {
 		if (!file) return;
 		try {
 			const loaded = await readCustomWordlistFile(file);
@@ -482,6 +480,42 @@ export async function startApp() {
 			console.warn("自作リストファイルの読み込みに失敗:", err);
 			showOriginalStatus("読み込めませんでした: " + err.message);
 		}
+	}
+	originalDropzone.addEventListener("click", () => originalFile.click());
+	originalFile.addEventListener("change", () => {
+		const file = originalFile.files && originalFile.files[0];
+		originalFile.value = ""; // 同じファイルを選び直してもchangeを発火させる
+		loadOriginalFile(file);
+	});
+	let originalDragDepth = 0;
+	originalDropzone.addEventListener("dragenter", (event) => {
+		if (!event.dataTransfer || !event.dataTransfer.types.includes("Files")) return;
+		event.preventDefault();
+		originalDragDepth += 1;
+		originalDropzone.classList.add("is-dragging");
+	});
+	originalDropzone.addEventListener("dragover", (event) => {
+		if (!event.dataTransfer || !event.dataTransfer.types.includes("Files")) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+	});
+	originalDropzone.addEventListener("dragleave", () => {
+		originalDragDepth = Math.max(0, originalDragDepth - 1);
+		if (originalDragDepth === 0) originalDropzone.classList.remove("is-dragging");
+	});
+	originalDropzone.addEventListener("dragend", () => {
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
+	});
+	originalDropzone.addEventListener("drop", (event) => {
+		event.preventDefault();
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
+		loadOriginalFile(event.dataTransfer && event.dataTransfer.files[0]);
+	});
+	originalDialog.addEventListener("close", () => {
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
 	});
 	$id("original-register").addEventListener("click", () => {
 		const name = originalName.value.trim();
