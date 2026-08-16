@@ -889,6 +889,9 @@ function buildPanel() {
 				readingFixOpen = true;
 				rerenderLine(line); // 読みが変わるトークン範囲をチップ側にも反映
 				renderPanel();
+				// renderPanelで作り直した読み入力欄へ、クリック操作の中で直接フォーカスする。
+				// モバイルでもソフトウェアキーボードを開き、そのまま修正を始められる。
+				$id("editor-panel").querySelector(".panel-yomi .input")?.focus({ preventScroll: true });
 			});
 			yomiRow.appendChild(toggle);
 		} else {
