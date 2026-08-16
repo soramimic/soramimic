@@ -126,8 +126,9 @@ try {
 	await editor.waitForTimeout(300);
 
 	// ---- 公開版の報告操作: 深夜12時を、の読みをまとめて修正 ----
-	// 読みAPIが使えず12の読みが欠落した公開版では、夜12〜をを選ぶと読み修正範囲が
-	// 深夜12時をへ広がる。シンヤジューニジヲを割り当てた際、時=ジが先頭側のジへ
+	// 読みAPIが使えず12の読みが欠落した公開版では、表示されたヤ〜ヲのカナを
+	// 選ぶと、内部の読み修正範囲が深夜12時をへ広がる。シンヤジューニジヲを
+	// 割り当てた際、時=ジが先頭側のジへ
 	// 誤対応して、表層が深夜時12を、読みがシン|ヤ|ジ|ュ|ー|ニ|ジ|ヲになっていた。
 	await editor.locator('.editor-line[data-line="0"] .chip-unit').first().click();
 	const mixedLineUnits = editor.locator('.editor-line[data-line="1"] .chip-unit');
