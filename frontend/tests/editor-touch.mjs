@@ -42,6 +42,8 @@ try {
 		viewport: { width: 390, height: 844 },
 		hasTouch: true,
 		isMobile: true,
+		userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) " +
+			"AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
 	});
 	// 外部リクエスト(読みAPI・GA)を遮断して決定的なトークナイズに固定
 	await context.route(
@@ -79,6 +81,31 @@ try {
 	);
 
 	const cdp = await context.newCDPSession(editor);
+
+	// iPhoneでも「読みを修正」を開くと入力欄へ自動フォーカスする。
+	// 実機ではvisualViewportに合わせてパネルを持ち上げ、入力欄への重なりを防ぐ。
+	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	await editor.locator(".panel-yomi-toggle").tap();
+	assert(await editor.locator(".panel-yomi .input").count() === 1,
+		"読み修正の入力欄が表示されない");
+	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
+		"iPhoneで読み修正を開いても入力欄へ自動フォーカスされない");
+	const panelViewportPosition = await editor.evaluate(() => {
+		const viewport = window.visualViewport;
+		const expected = Math.max(
+			0, window.innerHeight - viewport.height - viewport.offsetTop);
+		return {
+			actual: document.getElementById("editor-panel").style.bottom,
+			expected: `${expected}px`,
+		};
+	});
+	assert(panelViewportPosition.actual === panelViewportPosition.expected,
+		"iPhoneの表示領域に合わせてパネル位置が調整されない: " +
+		JSON.stringify(panelViewportPosition));
+	await editor.locator(".panel-close").tap();
+	await editor.waitForFunction(() =>
+		!document.getElementById("editor-panel").classList.contains("open"));
 
 	// ユニットチップの中心座標(再描画で要素が入れ替わるため毎回取り直す)
 	async function unitCenter(i) {
