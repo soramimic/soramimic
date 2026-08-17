@@ -1076,6 +1076,8 @@ function buildPanel() {
 			const yomiInput = document.createElement("input");
 			yomiInput.className = "input";
 			yomiInput.value = span.yomi;
+			yomiInput.enterKeyHint = "done";
+			const initialYomi = yomiInput.value;
 			const yomiApply = document.createElement("button");
 			yomiApply.className = "btn btn-primary";
 			yomiApply.textContent = "修正";
@@ -1086,7 +1088,22 @@ function buildPanel() {
 					note.textContent = "かなで入力してください";
 				}
 			};
-			yomiApply.addEventListener("click", applyYomi);
+			// iOS Safariのキーボード上部にある✓は入力欄をblurするだけなので、
+			// 値が変わっていればその操作を「修正」の確定として扱う。
+			// ページ内の修正ボタンを押す場合はclick側で確定し、二重適用を避ける。
+			let applyButtonPressed = false;
+			yomiApply.addEventListener("pointerdown", () => {
+				applyButtonPressed = true;
+			});
+			yomiApply.addEventListener("click", () => {
+				applyButtonPressed = false;
+				applyYomi();
+			});
+			yomiInput.addEventListener("blur", () => {
+				const normalizedYomi = absorbSmallKana(hiraToKata(yomiInput.value.trim()));
+				const initialNormalizedYomi = absorbSmallKana(hiraToKata(initialYomi.trim()));
+				if (!applyButtonPressed && normalizedYomi !== initialNormalizedYomi) applyYomi();
+			});
 			yomiInput.addEventListener("keydown", (e) => {
 				if (e.key === "Enter") applyYomi();
 			});
