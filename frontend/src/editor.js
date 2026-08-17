@@ -289,6 +289,27 @@ function rangeSurface(line, start, end) {
 	return unitsOf(line).slice(start, end).map((u) => u.surface_form).join("");
 }
 
+function makeLockIcon() {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.classList.add("chip-lock-icon");
+	svg.setAttribute("viewBox", "0 0 24 24");
+	svg.setAttribute("aria-hidden", "true");
+	const body = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+	body.setAttribute("x", "3");
+	body.setAttribute("y", "11");
+	body.setAttribute("width", "18");
+	body.setAttribute("height", "10");
+	body.setAttribute("rx", "2");
+	const open = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	open.classList.add("chip-lock-icon-open");
+	open.setAttribute("d", "M7 11V7a5 5 0 0 1 9.8-1.4");
+	const closed = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	closed.classList.add("chip-lock-icon-closed");
+	closed.setAttribute("d", "M7 11V7a5 5 0 0 1 10 0v4");
+	svg.append(body, open, closed);
+	return svg;
+}
+
 function renderLine(line) {
 	const units = unitsOf(line);
 	const words = data.results[line] || [];
@@ -404,9 +425,6 @@ function renderLine(line) {
 		lock.type = "checkbox";
 		lock.checked = !!word.locked;
 		lock.setAttribute("aria-label", `${word.surface}を固定`);
-		const lockBox = document.createElement("span");
-		lockBox.className = "chip-lock-box";
-		lockBox.setAttribute("aria-hidden", "true");
 		lock.addEventListener("change", () => {
 			const [start, end] = word.period;
 			toggleLock(line, word);
@@ -418,7 +436,7 @@ function renderLine(line) {
 		// 固定トグルへの操作で候補パネルや長押し詳細が誤発火しないようにする
 		lockControl.addEventListener("click", (e) => e.stopPropagation());
 		lockControl.addEventListener("pointerdown", (e) => e.stopPropagation());
-		lockControl.append(lock, lockBox);
+		lockControl.append(lock, makeLockIcon());
 		main.append(surface, lockControl);
 		chip.append(main, kana);
 		// PCはホバーで詳細(標準ツールチップ)、スマホは長押しでポップオーバー。
