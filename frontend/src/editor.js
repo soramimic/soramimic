@@ -1339,7 +1339,9 @@ function buildPanel() {
 		};
 		yomiApply.addEventListener("click", applyYomi);
 		yomiInput.addEventListener("keydown", (e) => {
-			if (e.key === "Enter") applyYomi();
+			// IMEの変換確定に使ったEnterでは読みを更新しない。
+			// keyCode=229はisComposingを正しく返さないブラウザ向けのフォールバック。
+			if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) applyYomi();
 		});
 		if (span.surface !== rangeSurface(line, start, end)) {
 			label.textContent = `「${span.surface}」の読み`;
