@@ -84,33 +84,104 @@ try {
 	}
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.setViewportSize({ width: 320, height: 568 });
-	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
-		label: "自作リスト",
-	});
-	if (await page.isHidden("#custom-wordlist-actions")) {
-		throw new Error("保存済み自作リストの編集ボタンが表示されない");
+	const customTrigger = page.locator(".custom-wordlist-trigger");
+	const customMenu = page.locator("#custom-wordlist-menu");
+	if (await customTrigger.getAttribute("aria-haspopup") !== "menu"
+		|| await customTrigger.getAttribute("aria-controls") !== "custom-wordlist-menu"
+		|| await customTrigger.getAttribute("aria-expanded") !== "false") {
+		throw new Error("自作リストtriggerのARIA属性が不正");
 	}
-	const customManageAction = await page.$eval("#custom-wordlist-actions", (el) => ({
-		parent: el.parentElement?.id,
-		previousPicker: el.previousElementSibling?.querySelector("select")
-			?.getAttribute("aria-label"),
-		label: el.textContent.trim(),
+	await customTrigger.click();
+	const rowStructure = await customMenu.locator(".custom-wordlist-menu-row").first().evaluate((row) => ({
+		children: [...row.children].map((el) => ({
+			role: el.getAttribute("role"),
+			label: el.ariaLabel,
+			icon: !!el.querySelector("svg[aria-hidden='true']"),
+		})),
+		nested: row.querySelectorAll("button button").length,
+		rect: (() => {
+			const rect = row.getBoundingClientRect();
+			return { left: rect.left, right: rect.right, width: rect.width };
+		})(),
+		heights: [...row.children].map((el) => el.getBoundingClientRect().height),
 	}));
-	if (customManageAction.parent !== "wordlist-buttons"
-		|| customManageAction.previousPicker !== "自作リスト"
-		|| !customManageAction.label.includes("編集・削除")) {
-		throw new Error("自作リストの編集・削除導線が選択欄のそばにない: "
-			+ JSON.stringify(customManageAction));
+	if (rowStructure.children.length !== 3
+		|| rowStructure.children[0].role !== "menuitemradio"
+		|| rowStructure.children[1].role !== "menuitem"
+		|| rowStructure.children[2].role !== "menuitem"
+		|| !rowStructure.children[1].label.includes("編集")
+		|| !rowStructure.children[2].label.includes("削除")
+		|| !rowStructure.children[1].icon || !rowStructure.children[2].icon
+		|| rowStructure.nested !== 0 || rowStructure.rect.left < 0
+		|| rowStructure.rect.right > 320 || rowStructure.heights.some((height) => height < 43)) {
+		throw new Error("自作リスト行の3操作・狭幅配置が不正: " + JSON.stringify(rowStructure));
 	}
-	// 自作リストからプルダウン型の通常リストへ移った場合も、操作不能な管理導線を残さない。
-	await page.selectOption("#wordlist-buttons select[aria-label='生物']", "MARINE_LIFE");
-	if (await page.isVisible("#custom-wordlist-actions")) {
-		throw new Error("通常リストの選択中も自作リストの編集・削除導線が残っている");
+	// 基本キー操作と、閉じた後のtrigger focusを確認する。
+	await page.keyboard.press("End");
+	if ((await page.locator(":focus").textContent()).trim() !== "＋ 新しいリスト") {
+		throw new Error("Endで末尾項目へ移動しない");
 	}
-	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
-		label: "自作リスト",
+	await page.keyboard.press("Home");
+	if (await page.locator(":focus").getAttribute("role") !== "menuitemradio") {
+		throw new Error("Homeで先頭項目へ移動しない");
+	}
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowUp");
+	await page.keyboard.press("Escape");
+	if (!await customMenu.isHidden() || !await customTrigger.evaluate((el) => el === document.activeElement)) {
+		throw new Error("Escapeでメニューを閉じてtriggerへfocusしない");
+	}
+	await customTrigger.click();
+	await page.keyboard.press("Tab");
+	if (!await customMenu.isHidden()) throw new Error("Tabでメニューが閉じない");
+	await customTrigger.click();
+	await page.click("#input-text");
+	if (!await customMenu.isHidden()
+		|| !await page.locator("#input-text").evaluate((el) => el === document.activeElement)) {
+		throw new Error("外側クリックでメニューを閉じた後にクリック先へfocusしない");
+	}
+	await customTrigger.click();
+	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
+	if (!await customTrigger.evaluate((el) => el.classList.contains("active")
+		&& el === document.activeElement)) {
+		throw new Error("保存済み自作リストの選択後にtriggerへfocusしない");
+	}
+	await customTrigger.focus();
+	await page.keyboard.press("ArrowDown");
+	const selectedMenuVisual = await customMenu.getByRole(
+		"menuitemradio", { name: "自作リスト", exact: true }).evaluate((el) => {
+		const style = getComputedStyle(el);
+		const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+		const luminance = (value) => {
+			const channels = rgb(value).map((n) => {
+				const v = n / 255;
+				return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+			});
+			return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+		};
+		const [hi, lo] = [luminance(style.color), luminance(style.backgroundColor)]
+			.sort((a, b) => b - a);
+		return {
+			contrast: (hi + 0.05) / (lo + 0.05),
+			outlineWidth: parseFloat(style.outlineWidth),
+			outlineStyle: style.outlineStyle,
+		};
 	});
-	await page.click("#btn-custom-wordlist-edit");
+	if (selectedMenuVisual.contrast < 4.5 || selectedMenuVisual.outlineWidth < 2
+		|| selectedMenuVisual.outlineStyle === "none") {
+		throw new Error("ダークモードの選択行・focus表示が不明瞭: "
+			+ JSON.stringify(selectedMenuVisual));
+	}
+	await page.keyboard.press("Escape");
+	// 自作リストから通常のnative selectへ移ると、自作triggerのactiveを解除する。
+	await page.selectOption("#wordlist-buttons select[aria-label='生物']", "MARINE_LIFE");
+	if (await customTrigger.evaluate((el) => el.classList.contains("active"))) {
+		throw new Error("通常リスト選択後も自作リストがactiveのまま");
+	}
+	await customTrigger.click();
+	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "「自作リスト」を編集" }).click();
 	await page.waitForSelector("#original-dialog[open]");
 	if (await page.inputValue("#original-text") !== "山田,ヤマダ") {
 		throw new Error("移行した自作リスト本文が編集画面に復元されない");
@@ -156,9 +227,8 @@ try {
 	await page.emulateMedia({ colorScheme: "light" });
 	await page.setViewportSize({ width: 1280, height: 720 });
 
-	await page.selectOption("#wordlist-buttons select[aria-label='自作リスト']", {
-		value: "__NEW_CUSTOM_WORDLIST__",
-	});
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
 	await page.waitForSelector("#original-dialog[open]");
 	const dropzoneText = await page.textContent("#btn-original-file");
 	if (!dropzoneText.includes("ここにドロップ") || !dropzoneText.includes("クリックして選択")) {
@@ -221,10 +291,10 @@ try {
 		{ timeout: 60000 },
 	);
 	const restoredCustom = await page.evaluate(() => ({
-		value: document.querySelector("select[aria-label='自作リスト']").value,
-		label: document.querySelector(".wordlist-select-wrap.active span:last-of-type")?.textContent,
+		active: document.querySelector(".custom-wordlist-trigger")?.classList.contains("active"),
+		label: document.querySelector(".custom-wordlist-trigger span:last-of-type")?.textContent,
 	}));
-	if (!restoredCustom.value.startsWith("CUSTOM:") || restoredCustom.label !== "食べ物") {
+	if (!restoredCustom.active || restoredCustom.label !== "食べ物") {
 		throw new Error("自作リスト選択の復元に失敗: " + JSON.stringify(restoredCustom));
 	}
 	await page.fill("#input-text", "りんご");
@@ -239,15 +309,39 @@ try {
 		throw new Error("保存済み自作リストで変換できない: " + customOutput);
 	}
 
-	// 削除時は確認後に既定リストへ安全に戻る。
-	await page.click("#btn-custom-wordlist-edit");
+	// 非選択行を編集しても、現在選択しているリストを維持する。
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "「名字」を編集" }).click();
+	await page.fill("#original-name", "名字改");
+	await page.click("#original-register");
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リストの編集後に現在選択が変わった");
+	}
+
+	// 行の削除はcancelでは残り、accept後も非選択削除なら現在選択を維持する。
+	await customTrigger.click();
+	page.once("dialog", (dialog) => dialog.dismiss());
+	await customMenu.getByRole("menuitem", { name: "「名字改」を削除" }).click();
+	if ((await page.evaluate(() => JSON.parse(localStorage.getItem(
+		"soramimic-custom-wordlists")).lists.length)) !== 2) {
+		throw new Error("削除確認cancelでリストが消えた");
+	}
 	page.once("dialog", (dialog) => dialog.accept());
-	await page.click("#original-delete");
+	await customMenu.getByRole("menuitem", { name: "「名字改」を削除" }).click();
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リスト削除後に現在選択が変わった");
+	}
+
+	// 選択中行のごみ箱から削除した場合は、既定リストへ安全に戻る。
+	await customTrigger.click();
+	page.once("dialog", (dialog) => dialog.accept());
+	await customMenu.getByRole("menuitem", { name: "「食べ物」を削除" }).click();
 	const afterDelete = await page.evaluate(() => ({
 		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
 		active: document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+		triggerFocused: document.querySelector(".custom-wordlist-trigger") === document.activeElement,
 	}));
-	if (afterDelete.count !== 1 || afterDelete.active !== "BASEBALL") {
+	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL" || !afterDelete.triggerFocused) {
 		throw new Error("自作リスト削除後の状態が不正: " + JSON.stringify(afterDelete));
 	}
 

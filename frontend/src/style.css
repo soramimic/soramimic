@@ -536,13 +536,126 @@ dialog h2 {
 	margin-top: 0.8rem;
 }
 
-.custom-wordlist-actions {
-	display: inline-flex;
+.custom-wordlist-picker {
+	display: inline-block;
+}
+
+.custom-wordlist-trigger {
+	display: inline-grid;
+	grid-template-columns: auto auto;
+	align-items: center;
+	column-gap: 0.35rem;
+}
+
+.custom-wordlist-trigger::after {
+	content: "▾";
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	opacity: 0.6;
+}
+
+.custom-wordlist-trigger > span {
+	grid-column: 1;
+	justify-self: start;
+}
+
+.custom-wordlist-trigger:has(.wordlist-select-caption:not([hidden])) {
+	padding-top: 0.15rem;
+	padding-bottom: 0.15rem;
+}
+
+.custom-wordlist-trigger:has(.wordlist-select-caption:not([hidden])) > span {
+	line-height: 1.2;
+}
+
+.custom-wordlist-trigger.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.custom-wordlist-menu {
+	position: fixed;
+	z-index: 1000;
+	max-height: min(70dvh, 28rem);
+	overflow: auto;
+	padding: 0.35rem;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--panel);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.custom-wordlist-menu[hidden] {
+	display: none;
+}
+
+.custom-wordlist-menu-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
 	align-items: stretch;
 }
 
-.custom-wordlist-actions[hidden] {
-	display: none;
+.custom-wordlist-menu button {
+	min-height: 44px;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.custom-wordlist-menu button:hover {
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+
+.custom-wordlist-menu button:focus-visible {
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+	outline: 2px solid currentColor;
+	outline-offset: -2px;
+}
+
+.custom-wordlist-menu-select {
+	min-width: 0;
+	padding: 0.55rem 0.7rem;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.custom-wordlist-menu-select[aria-checked="true"] {
+	background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+	color: var(--text);
+	font-weight: 700;
+}
+
+.custom-wordlist-menu-select[aria-checked="true"]::before {
+	content: "✓ ";
+}
+
+.custom-wordlist-menu-action {
+	display: grid;
+	place-items: center;
+	min-width: 48px;
+	padding: 0.45rem;
+}
+
+.custom-wordlist-menu-icon {
+	display: block;
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.custom-wordlist-menu-delete {
+	color: var(--danger, #b91c1c) !important;
+}
+
+.custom-wordlist-menu-new {
+	width: 100%;
+	padding: 0.55rem 0.7rem;
+	border-top: 1px solid var(--border) !important;
+	text-align: left;
 }
 
 .custom-wordlist-name {
