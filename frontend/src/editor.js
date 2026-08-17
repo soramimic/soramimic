@@ -1240,12 +1240,33 @@ function appendReplacementControls(panel, target, rangeWeights) {
 			freeInputDraft = { surface: "", reading: "" };
 			renderPanel();
 		};
-		// ソフトウェアキーボード表示中でも、最初のタップで確実に戻れるよう
-		// touch の pointerdown 時点でフォームを閉じる。キーボード操作とマウスは click を使う。
+		// ソフトウェアキーボード表示中は通常の click がパネル移動で消えることがあるため、
+		// touch は pointerup で確定する。スクロール開始点がボタン上でも誤って閉じないよう、
+		// 指が動いた場合はタップとして扱わない。
+		let backTouch = null;
 		back.addEventListener("pointerdown", (event) => {
-			if (event.pointerType === "touch" && event.isPrimary) closeFreeInput();
+			if (event.pointerType !== "touch" || !event.isPrimary) return;
+			backTouch = { id: event.pointerId, x: event.clientX, y: event.clientY };
 		});
-		back.addEventListener("click", closeFreeInput);
+		back.addEventListener("pointermove", (event) => {
+			if (!backTouch || event.pointerId !== backTouch.id) return;
+			const dx = event.clientX - backTouch.x;
+			const dy = event.clientY - backTouch.y;
+			if (dx * dx + dy * dy > 100) backTouch = null;
+		});
+		back.addEventListener("pointerup", (event) => {
+			if (!backTouch || event.pointerId !== backTouch.id) return;
+			backTouch = null;
+			closeFreeInput();
+		});
+		back.addEventListener("pointercancel", () => {
+			backTouch = null;
+		});
+		back.addEventListener("click", (event) => {
+			// touch は pointerup 側で処理済み。マウスとキーボードの click だけを扱う。
+			if (event.pointerType === "touch") return;
+			closeFreeInput();
+		});
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
 		apply.textContent = "この歌詞で差し替え";
@@ -1340,6 +1361,8 @@ function appendReplacementControls(panel, target, rangeWeights) {
 function buildPanel() {
 	readingInputLayoutCleanup?.();
 	const panel = $id("editor-panel");
+	document.documentElement.classList.toggle(
+		"editor-free-input-open", !!selection && freeInputOpen);
 	hidePopover();
 	if (!selection) {
 		// 中身は残したまま下へスライドアウトさせる
