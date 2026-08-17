@@ -260,6 +260,20 @@ try {
 	const lockedAfter = await editor.locator(".chip-word.locked").count();
 	assert(lockedAfter === lockedBefore, "長押しなのに差し替えが発火した");
 
+	// ---- 自由入力から候補選択へは、キーボード表示中でも1タップで戻れる ----
+	await editor.locator(".panel-free-toggle").tap();
+	assert(await editor.locator(".panel-candidates").count() === 0,
+		"自由入力中にも候補一覧が表示されている");
+	await editor.fill(".panel-free-surface", "仮入力");
+	const freeBack = await editor.locator(".panel-free-back").boundingBox();
+	await editor.touchscreen.tap(
+		freeBack.x + freeBack.width / 2,
+		freeBack.y + freeBack.height / 2,
+	);
+	assert(await editor.locator(".panel-free").count() === 0 &&
+		await editor.locator(".panel-candidates").count() === 1,
+		"候補選択へ戻るボタンの1回のタップで候補一覧へ戻らない");
+
 	// ---- タップで候補を選び、明示確定で差し替えられること ----
 	// ×N付き(同名グループ)は個別選択リストが開くため、単独候補を選ぶ
 	const single = editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first();
