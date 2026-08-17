@@ -916,7 +916,6 @@ function refreshReadingFixAlign(resetForReading = false) {
 		return;
 	}
 	details.hidden = false;
-	details.open = true;
 	container.appendChild(buildAlignEditor(model, (align) => {
 		readingFixContext.alignMode = align ? "set" : "reset";
 		readingFixContext.draftAlign = align;
@@ -929,15 +928,15 @@ function openReadingFixDialog(line, start, end, span) {
 	const selectedSurface = rangeSurface(line, start, end);
 	const expanded = span.unitStart !== start || span.unitEnd !== end;
 	readingFixContext = { line, span, alignMode: "untouched", draftAlign: null };
-	$id("reading-fix-target").textContent = `「${span.surface}」の読み`;
+	$id("reading-fix-target").textContent = span.surface;
 	$id("reading-fix-input").value = span.yomi;
 	$id("reading-fix-error").textContent = "";
 	const scopeNote = $id("reading-fix-scope-note");
 	scopeNote.hidden = !expanded;
 	scopeNote.textContent = expanded
-		? `読みは元歌詞の単語区切りごとに修正するため、選んだ「${selectedSurface}」を含む` +
-			`「${span.surface}」全体を編集します。`
+		? `選択部分「${selectedSurface}」を含む単語が対象です。`
 		: "";
+	$id("reading-fix-align-details").open = false;
 	refreshReadingFixAlign();
 	dialog.showModal();
 	focusReadingInput($id("reading-fix-input"), dialog, true);

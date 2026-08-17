@@ -110,7 +110,8 @@ try {
 	// detailsの高さ変化でdialogの上端が跳ねない。
 	const readingDialogTop = await editor.locator("#editor-reading-dialog").evaluate(
 		(el) => el.getBoundingClientRect().top);
-	await editor.locator("#reading-fix-align-details > summary").tap();
+	assert(!(await editor.locator("#reading-fix-align-details").evaluate((el) => el.open)),
+		"文字ごとの対応調整が初期状態で閉じていない");
 	await editor.locator("#reading-fix-align-details > summary").tap();
 	const readingDialogAfterAlign = await editor.locator("#editor-reading-dialog").evaluate((el) => ({
 		top: el.getBoundingClientRect().top,

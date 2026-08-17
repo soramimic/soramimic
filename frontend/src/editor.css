@@ -503,8 +503,16 @@
 }
 
 .reading-fix-target {
-	margin: 0.4rem 0 0.8rem;
 	font-weight: 600;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.reading-fix-unit-note {
+	margin: 0.2rem 0 0.8rem;
+	color: var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.5;
 }
 
 .panel-yomi {
