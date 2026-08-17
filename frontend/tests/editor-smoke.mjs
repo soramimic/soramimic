@@ -197,7 +197,22 @@ try {
 		"元歌詞の読み修正が鉛筆だけの表示になっていない");
 	assert((await editor.getAttribute(".panel-yomi-toggle", "aria-label")).includes("読みを修正"),
 		"鉛筆に読み修正のアクセシブルな名前がない");
+	const numberSelectedSurface = await editor.textContent(".panel-original-surface");
 	await editor.click(".panel-yomi-toggle");
+	assert(await editor.textContent(".panel-original-surface") === "12" &&
+		await editor.textContent(".panel-original-reading") === "イチニ",
+		"読み修正の表示が実際の対象範囲へ広がらない");
+	const numberSelectedReading = await editor.$$eval(
+		'.editor-line[data-line="1"] .chip-unit.selected',
+		(els) => els.map((e) => e.textContent).join(""));
+	assert(numberSelectedReading === "イチニ",
+		"読み修正の選択が実際の対象範囲へ広がらない: " + numberSelectedReading);
+	const numberScopeNote = await editor.textContent(".panel-yomi-scope-note");
+	assert(numberScopeNote.includes(`選んだ「${numberSelectedSurface}」`) &&
+		numberScopeNote.includes("「12」全体") && numberScopeNote.includes("単語区切り"),
+		"読み修正範囲を広げた理由が表示されない: " + numberScopeNote);
+	assert(await editor.locator('.editor-line[data-line="1"] .chip-unit.reading-scope').count() === 0,
+		"読み修正範囲が別の破線表示のまま残っている");
 	await editor.fill(".panel-yomi .input", "ジュウニ");
 	const beforeImeCommit = await editor.evaluate(() =>
 		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).tokensList));
@@ -221,6 +236,8 @@ try {
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
 		"ジュウニへの読み修正後に候補が表示されない");
+	assert(await editor.locator(".panel-yomi-scope-note").count() === 0,
+		"読み修正の確定後も範囲拡張の説明が残っている");
 	await editor.click("#btn-undo"); // 後続テストに影響させない
 	await editor.waitForTimeout(300);
 
@@ -256,7 +273,22 @@ try {
 		document.querySelector(".panel-yomi-toggle")?.getAttribute("aria-label")?.includes(
 			"深夜12時を（シンヤイチニジヲ）"),
 		undefined, { timeout: 10000 });
+	const mixedSelectedSurface = await editor.textContent(".panel-original-surface");
+	assert(mixedSelectedSurface !== "深夜12時を",
+		"複数の単語区切りにまたがる部分選択を再現できていない");
 	await editor.click(".panel-yomi-toggle");
+	assert(await editor.textContent(".panel-original-surface") === "深夜12時を" &&
+		await editor.textContent(".panel-original-reading") === "シンヤイチニジヲ",
+		"複数の単語区切りにまたがる読み修正の表示範囲が広がらない");
+	const mixedSelectedReading = await editor.$$eval(
+		'.editor-line[data-line="1"] .chip-unit.selected',
+		(els) => els.map((e) => e.textContent).join(""));
+	assert(mixedSelectedReading === "シンヤイチニジヲ",
+		"複数の単語区切りにまたがる読み修正の選択範囲が広がらない: " + mixedSelectedReading);
+	const mixedScopeNote = await editor.textContent(".panel-yomi-scope-note");
+	assert(mixedScopeNote.includes(`選んだ「${mixedSelectedSurface}」`) &&
+		mixedScopeNote.includes("「深夜12時を」全体"),
+		"複数の単語区切りにまたがる範囲拡張の理由が表示されない: " + mixedScopeNote);
 	await editor.fill(".panel-yomi .input", "シンヤジューニジヲ");
 	await editor.click(".panel-yomi .btn-primary");
 	await editor.waitForFunction(() =>
@@ -271,6 +303,13 @@ try {
 		"深夜12時を、の読み修正後に候補が表示されない");
 	await editor.click("#btn-undo"); // 後続テストに影響させない
 	await editor.waitForTimeout(300);
+	const mixedReadingAfterUndo = await editor.$$eval(
+		'.editor-line[data-line="1"] .chip-unit',
+		(els) => els.map((e) => e.textContent).join(""));
+	assert(mixedReadingAfterUndo === "シンヤイチニジヲスギタッテ",
+		"戻る操作で複数単語の読みが復元されない: " + mixedReadingAfterUndo);
+	assert(await editor.locator(".panel-yomi-scope-note").count() === 0,
+		"戻る操作後も範囲拡張の説明が残っている");
 
 	// ---- 回帰ガード: かな区間の読みを長くしてもサーフェスが重複しないこと ----
 	// (getYomiAndPhraseBreakは読み>サーフェスのモーラ数だとかなサーフェスを複製する。

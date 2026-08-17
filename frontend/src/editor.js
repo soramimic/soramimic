@@ -62,6 +62,7 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
 let readingFixOpen = false; // 元歌詞の読み修正フォームの開閉
+let readingFixScope = null; // 読み修正で選択を広げた時の {selectedSurface, targetSurface}
 let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
@@ -486,6 +487,7 @@ function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
 	readingFixOpen = false;
+	readingFixScope = null;
 	candidateDraft = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
@@ -1281,9 +1283,15 @@ function buildPanel() {
 		toggle.title = editLabel;
 		toggle.setAttribute("aria-label", editLabel);
 		toggle.addEventListener("click", () => {
+			const selectedSurface = rangeSurface(line, start, end);
+			const scopeExpanded = span.unitStart !== start || span.unitEnd !== end;
+			// 読みはトークン単位で変更するため、表示・候補・実際の更新範囲が
+			// 食い違わないよう、編集開始時に選択自体を対象範囲へ広げる。
+			setSelection({ line, start: span.unitStart, end: span.unitEnd });
 			readingFixOpen = true;
-			candidateDraft = null;
-			freeInputOpen = false;
+			readingFixScope = scopeExpanded
+				? { selectedSurface, targetSurface: span.surface }
+				: null;
 			rerenderLine(line);
 			renderPanel();
 			focusReadingInput($id("editor-panel").querySelector(".panel-yomi .input"));
@@ -1321,6 +1329,15 @@ function buildPanel() {
 	if (span && readingFixOpen) {
 		const yomiRow = document.createElement("div");
 		yomiRow.className = "panel-yomi";
+		if (readingFixScope) {
+			const scopeNote = document.createElement("p");
+			scopeNote.className = "panel-yomi-scope-note";
+			scopeNote.setAttribute("role", "status");
+			scopeNote.textContent =
+				`読みは元歌詞の単語区切りごとに修正するため、選んだ「${readingFixScope.selectedSurface}」を含む` +
+				`「${readingFixScope.targetSurface}」全体を編集します。`;
+			yomiRow.appendChild(scopeNote);
+		}
 		const label = document.createElement("span");
 		label.className = "panel-yomi-label";
 		label.textContent = "元歌詞の読み";
