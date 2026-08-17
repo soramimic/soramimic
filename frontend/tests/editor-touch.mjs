@@ -106,11 +106,41 @@ try {
 	assert(panelViewportPosition.actual === panelViewportPosition.expected,
 		"iPhoneの表示領域に合わせてパネル位置が調整されない: " +
 		JSON.stringify(panelViewportPosition));
+	// 入力から文字対応へ触れた時も、blurでiOS用の位置追従を早期解除せず、
+	// detailsの高さ変化でdialogの上端が跳ねない。
+	const readingDialogTop = await editor.locator("#editor-reading-dialog").evaluate(
+		(el) => el.getBoundingClientRect().top);
+	await editor.locator("#reading-fix-align-details > summary").tap();
+	await editor.locator("#reading-fix-align-details > summary").tap();
+	const readingDialogAfterAlign = await editor.locator("#editor-reading-dialog").evaluate((el) => ({
+		top: el.getBoundingClientRect().top,
+		bottomStyle: el.style.bottom,
+		alignVisible: !!el.querySelector(".panel-align")?.getClientRects().length,
+	}));
+	assert(Math.abs(readingDialogAfterAlign.top - readingDialogTop) < 2 &&
+		readingDialogAfterAlign.bottomStyle === panelViewportPosition.expected &&
+		readingDialogAfterAlign.alignVisible,
+		"文字対応の開閉で読み修正小窓がずれた: " + JSON.stringify({
+			beforeTop: readingDialogTop, after: readingDialogAfterAlign,
+		}));
 	await editor.locator("#btn-reading-fix-cancel").tap();
 	assert(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")) &&
 		await editor.$$eval(".chip-unit.selected",
 			(els) => els.map((e) => e.textContent).join("")) === selectedBeforeReadingDialog,
 		"読み修正のキャンセルで背後の候補選択が変わった");
+
+	// 適用で閉じたタップが背後の鉛筆へ遅れて届いても、dialogを開き直さない。
+	await editor.locator(".panel-yomi-toggle").tap();
+	await editor.locator("#btn-reading-fix-apply").tap();
+	await editor.waitForTimeout(500);
+	assert(!(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open)) &&
+		!(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open"))) &&
+		await editor.locator(".chip-unit.selected").count() === 0,
+		"変更適用後の遅延タップで読み修正小窓が開き直した");
+
+	// 後続のパネル閉じる操作のため、通常のタップが再び有効になってから選び直す。
+	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await editor.waitForSelector(".editor-panel.open", { timeout: 10000 });
 	await editor.locator(".panel-close").tap();
 	await editor.waitForFunction(() =>
 		!document.getElementById("editor-panel").classList.contains("open"));

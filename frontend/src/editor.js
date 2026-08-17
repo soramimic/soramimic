@@ -76,16 +76,15 @@ function isIOSDevice() {
 		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-function focusReadingInput(input, container = $id("editor-panel")) {
+function focusReadingInput(input, container = $id("editor-panel"), keepPositionUntilClose = false) {
 	if (!input) return;
 	readingInputLayoutCleanup?.();
 	if (!isIOSDevice() || !window.visualViewport) {
 		input.focus({ preventScroll: true });
 		return;
 	}
-
 	// iOS Safariの固定パネルはキーボードに隠れるため、visual viewportの下端まで
-	// パネルを持ち上げる。入力アシスタント(↑↓✓)もこの不可視領域に含まれる。
+	// containerを持ち上げる。dialogは入力以外を触ってもcloseまで位置追従を続ける。
 	const viewport = window.visualViewport;
 	let cleaned = false;
 	const cleanup = () => {
@@ -93,12 +92,12 @@ function focusReadingInput(input, container = $id("editor-panel")) {
 		cleaned = true;
 		viewport.removeEventListener("resize", syncPanelPosition);
 		viewport.removeEventListener("scroll", syncPanelPosition);
-		input.removeEventListener("blur", cleanup);
+		if (!keepPositionUntilClose) input.removeEventListener("blur", cleanup);
 		container.style.removeProperty("bottom");
 		if (readingInputLayoutCleanup === cleanup) readingInputLayoutCleanup = null;
 	};
 	const syncPanelPosition = () => {
-		if (document.activeElement !== input) {
+		if (!keepPositionUntilClose && document.activeElement !== input) {
 			cleanup();
 			return;
 		}
@@ -108,7 +107,7 @@ function focusReadingInput(input, container = $id("editor-panel")) {
 	};
 	viewport.addEventListener("resize", syncPanelPosition);
 	viewport.addEventListener("scroll", syncPanelPosition);
-	input.addEventListener("blur", cleanup);
+	if (!keepPositionUntilClose) input.addEventListener("blur", cleanup);
 	readingInputLayoutCleanup = cleanup;
 	// preventScrollを付けず、Safari自身にもフォーカス欄を見える位置へ移動させる。
 	input.focus();
@@ -941,7 +940,11 @@ function openReadingFixDialog(line, start, end, span) {
 		: "";
 	refreshReadingFixAlign();
 	dialog.showModal();
-	focusReadingInput($id("reading-fix-input"), dialog);
+	focusReadingInput($id("reading-fix-input"), dialog, true);
+}
+
+function closeReadingFixDialog() {
+	$id("editor-reading-dialog").close();
 }
 
 function applyReadingFixFromDialog() {
@@ -953,17 +956,21 @@ function applyReadingFixFromDialog() {
 		return;
 	}
 	// 読みの長さでユニット境界が変わり得るため、古い候補範囲は引き継がない。
-	$id("editor-reading-dialog").close();
 	setSelection(null);
+	closeReadingFixDialog();
 }
 
 function setupReadingFixDialog() {
 	const dialog = $id("editor-reading-dialog");
 	const input = $id("reading-fix-input");
-	const close = () => dialog.close();
+	const close = () => closeReadingFixDialog();
 	$id("btn-reading-fix-close").addEventListener("click", close);
 	$id("btn-reading-fix-cancel").addEventListener("click", close);
-	$id("btn-reading-fix-apply").addEventListener("click", applyReadingFixFromDialog);
+	$id("btn-reading-fix-apply").addEventListener("click", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		applyReadingFixFromDialog();
+	});
 	input.addEventListener("keydown", (e) => {
 		// IMEの変換確定に使ったEnterでは読みを更新しない。
 		if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
@@ -990,7 +997,7 @@ function setupReadingFixDialog() {
 		const r = dialog.getBoundingClientRect();
 		const outside = e.clientX < r.left || e.clientX > r.right
 			|| e.clientY < r.top || e.clientY > r.bottom;
-		if (outside) dialog.close();
+		if (outside) closeReadingFixDialog();
 	});
 }
 
