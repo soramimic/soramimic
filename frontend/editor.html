@@ -110,6 +110,26 @@
         <section id="editor-panel" class="editor-panel"></section>
       </main>
 
+      <!-- 候補選択とは独立した元歌詞の読み修正。選択範囲を裏で変更せず、
+           実際に更新する単語区切りと理由をこの小窓だけで示す。 -->
+      <dialog id="editor-reading-dialog" class="reading-fix-dialog" aria-labelledby="reading-fix-title">
+        <div class="dialog-header">
+          <h2 id="reading-fix-title">元歌詞の読みを修正</h2>
+          <button id="btn-reading-fix-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <p id="reading-fix-target" class="reading-fix-target"></p>
+        <div class="panel-yomi reading-fix-form">
+          <p id="reading-fix-scope-note" class="panel-yomi-scope-note" role="status" hidden></p>
+          <label class="panel-yomi-label" for="reading-fix-input">読み</label>
+          <input id="reading-fix-input" class="input" autocomplete="off" />
+          <p id="reading-fix-error" class="panel-yomi-note" role="alert"></p>
+          <div class="dialog-buttons">
+            <button id="btn-reading-fix-cancel" class="btn" type="button">キャンセル</button>
+            <button id="btn-reading-fix-apply" class="btn btn-primary" type="button">読みを更新</button>
+          </div>
+        </div>
+      </dialog>
+
       <!-- 変換のしかた(ツールバーの⚙から開く)。生成画面のダイアログと同じ流儀で、
            Esc・×・外側クリックのどれでも閉じられる。中身は .field 単位の
            セクションを並べるだけの構造 -->

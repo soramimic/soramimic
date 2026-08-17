@@ -61,8 +61,8 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
-let readingFixOpen = false; // 元歌詞の読み修正フォームの開閉
-let readingFixScope = null; // 読み修正で選択を広げた時の {selectedSurface, targetSurface}
+let readingFixContext = null; // 読み修正ダイアログの {line, span}
+let alignEditorOpen = false; // 表層↔モーラの割り当て詳細の開閉
 let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
@@ -77,7 +77,7 @@ function isIOSDevice() {
 		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-function focusReadingInput(input) {
+function focusReadingInput(input, container = $id("editor-panel")) {
 	if (!input) return;
 	readingInputLayoutCleanup?.();
 	if (!isIOSDevice() || !window.visualViewport) {
@@ -87,7 +87,6 @@ function focusReadingInput(input) {
 
 	// iOS Safariの固定パネルはキーボードに隠れるため、visual viewportの下端まで
 	// パネルを持ち上げる。入力アシスタント(↑↓✓)もこの不可視領域に含まれる。
-	const panel = $id("editor-panel");
 	const viewport = window.visualViewport;
 	let cleaned = false;
 	const cleanup = () => {
@@ -96,7 +95,7 @@ function focusReadingInput(input) {
 		viewport.removeEventListener("resize", syncPanelPosition);
 		viewport.removeEventListener("scroll", syncPanelPosition);
 		input.removeEventListener("blur", cleanup);
-		panel.style.removeProperty("bottom");
+		container.style.removeProperty("bottom");
 		if (readingInputLayoutCleanup === cleanup) readingInputLayoutCleanup = null;
 	};
 	const syncPanelPosition = () => {
@@ -106,7 +105,7 @@ function focusReadingInput(input) {
 		}
 		const hiddenBottom = Math.max(
 			0, window.innerHeight - viewport.height - viewport.offsetTop);
-		panel.style.bottom = `${hiddenBottom}px`;
+		container.style.bottom = `${hiddenBottom}px`;
 	};
 	viewport.addEventListener("resize", syncPanelPosition);
 	viewport.addEventListener("scroll", syncPanelPosition);
@@ -359,16 +358,6 @@ function renderLine(line) {
 	const inSelection = (i) =>
 		selection && selection.line === line && i >= selection.start && i < selection.end;
 
-	// 読み修正フォームを開いている間は、実際に読みが変わるトークン範囲を
-	// 選択とは別に薄く示す(選択自体はユニット単位のまま)。サブトークンを
-	// 選んでも読み修正はトークン全体に及ぶため、その差分を可視化して明示する。
-	const readingScope =
-		readingFixOpen && selection && selection.line === line
-			? tokenSpanForSelection(line, selection.start, selection.end)
-			: null;
-	const inReadingScope = (i) =>
-		readingScope && i >= readingScope.unitStart && i < readingScope.unitEnd;
-
 	units.forEach((unit, i) => {
 		const chip = document.createElement("span");
 		chip.className = "chip chip-unit";
@@ -377,7 +366,6 @@ function renderLine(line) {
 			chip.classList.add("phrase-start");
 		}
 		if (inSelection(i)) chip.classList.add("selected");
-		if (inReadingScope(i) && !inSelection(i)) chip.classList.add("reading-scope");
 		chip.textContent = unit.pronunciation;
 		chip.title = unit.surface_form;
 		chip.setAttribute("aria-label", `${unit.surface_form}、読み ${unit.pronunciation}。範囲を選択`);
@@ -486,8 +474,7 @@ function toggleLock(line, word) {
 function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
-	readingFixOpen = false;
-	readingFixScope = null;
+	alignEditorOpen = false;
 	candidateDraft = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
@@ -884,9 +871,70 @@ function applyReadingFix(line, span, newYomiRaw) {
 			? Object.assign({}, w, { period: [w.period[0] + delta, w.period[1] + delta] })
 			: w);
 	saveData();
-	// 修正した範囲を選択し直す(新しい読みでの候補がそのまま出る)
-	setSelection({ line, start: span.unitStart, end: newSpanEnd });
 	return true;
+}
+
+// 読み修正は候補選択と別の作業として扱う。小窓を開いている間は背後の
+// selection・候補・未確定ドラフトを一切変更しない。
+function openReadingFixDialog(line, start, end, span) {
+	const dialog = $id("editor-reading-dialog");
+	const selectedSurface = rangeSurface(line, start, end);
+	const expanded = span.unitStart !== start || span.unitEnd !== end;
+	readingFixContext = { line, span };
+	$id("reading-fix-target").textContent = `「${span.surface}」の読み`;
+	$id("reading-fix-input").value = span.yomi;
+	$id("reading-fix-error").textContent = "";
+	const scopeNote = $id("reading-fix-scope-note");
+	scopeNote.hidden = !expanded;
+	scopeNote.textContent = expanded
+		? `読みは元歌詞の単語区切りごとに修正するため、選んだ「${selectedSurface}」を含む` +
+			`「${span.surface}」全体を編集します。`
+		: "";
+	dialog.showModal();
+	focusReadingInput($id("reading-fix-input"), dialog);
+}
+
+function applyReadingFixFromDialog() {
+	if (!readingFixContext) return;
+	const { line, span } = readingFixContext;
+	if (!applyReadingFix(line, span, $id("reading-fix-input").value)) {
+		$id("reading-fix-error").textContent = "かなで入力してください";
+		return;
+	}
+	// 読みの長さでユニット境界が変わり得るため、古い候補範囲は引き継がない。
+	$id("editor-reading-dialog").close();
+	setSelection(null);
+}
+
+function setupReadingFixDialog() {
+	const dialog = $id("editor-reading-dialog");
+	const input = $id("reading-fix-input");
+	const close = () => dialog.close();
+	$id("btn-reading-fix-close").addEventListener("click", close);
+	$id("btn-reading-fix-cancel").addEventListener("click", close);
+	$id("btn-reading-fix-apply").addEventListener("click", applyReadingFixFromDialog);
+	input.addEventListener("keydown", (e) => {
+		// IMEの変換確定に使ったEnterでは読みを更新しない。
+		if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
+			// close()でフォーカスが鉛筆へ戻った後、同じEnterの既定動作が鉛筆を
+			// 再クリックして小窓を開き直さないよう、この場で消費する。
+			e.preventDefault();
+			applyReadingFixFromDialog();
+		}
+	});
+	dialog.addEventListener("close", () => {
+		readingInputLayoutCleanup?.();
+		readingFixContext = null;
+		$id("reading-fix-error").textContent = "";
+	});
+	// バックドロップのクリックはキャンセル扱い。ダイアログ内の余白では閉じない。
+	dialog.addEventListener("click", (e) => {
+		if (e.target !== dialog) return;
+		const r = dialog.getBoundingClientRect();
+		const outside = e.clientX < r.left || e.clientX > r.right
+			|| e.clientY < r.top || e.clientY > r.bottom;
+		if (outside) dialog.close();
+	});
 }
 
 // ---- 候補パネル ----
@@ -1282,20 +1330,7 @@ function buildPanel() {
 		const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
 		toggle.title = editLabel;
 		toggle.setAttribute("aria-label", editLabel);
-		toggle.addEventListener("click", () => {
-			const selectedSurface = rangeSurface(line, start, end);
-			const scopeExpanded = span.unitStart !== start || span.unitEnd !== end;
-			// 読みはトークン単位で変更するため、表示・候補・実際の更新範囲が
-			// 食い違わないよう、編集開始時に選択自体を対象範囲へ広げる。
-			setSelection({ line, start: span.unitStart, end: span.unitEnd });
-			readingFixOpen = true;
-			readingFixScope = scopeExpanded
-				? { selectedSurface, targetSurface: span.surface }
-				: null;
-			rerenderLine(line);
-			renderPanel();
-			focusReadingInput($id("editor-panel").querySelector(".panel-yomi .input"));
-		});
+		toggle.addEventListener("click", () => openReadingFixDialog(line, start, end, span));
 		sourceReading.appendChild(toggle);
 	}
 	source.append(sourceSurface, sourceReading);
@@ -1324,55 +1359,22 @@ function buildPanel() {
 	header.appendChild(headerActions);
 	panel.appendChild(header);
 
-	// 元歌詞の読み修正(読み推定ミスをここで直せる)。対象はトークン境界にスナップ。
-	// 通常時は上の鉛筆だけを見せ、構造変更を伴う入力欄は編集時だけ開く。
-	if (span && readingFixOpen) {
-		const yomiRow = document.createElement("div");
-		yomiRow.className = "panel-yomi";
-		if (readingFixScope) {
-			const scopeNote = document.createElement("p");
-			scopeNote.className = "panel-yomi-scope-note";
-			scopeNote.setAttribute("role", "status");
-			scopeNote.textContent =
-				`読みは元歌詞の単語区切りごとに修正するため、選んだ「${readingFixScope.selectedSurface}」を含む` +
-				`「${readingFixScope.targetSurface}」全体を編集します。`;
-			yomiRow.appendChild(scopeNote);
-		}
-		const label = document.createElement("span");
-		label.className = "panel-yomi-label";
-		label.textContent = "元歌詞の読み";
-		const yomiInput = document.createElement("input");
-		yomiInput.className = "input";
-		yomiInput.value = span.yomi;
-		const yomiApply = document.createElement("button");
-		yomiApply.className = "btn btn-primary";
-		yomiApply.textContent = "読みを更新";
-		const note = document.createElement("span");
-		note.className = "panel-yomi-note";
-		const applyYomi = () => {
-			if (!applyReadingFix(line, span, yomiInput.value)) {
-				note.textContent = "かなで入力してください";
-			}
-		};
-		yomiApply.addEventListener("click", applyYomi);
-		yomiInput.addEventListener("keydown", (e) => {
-			// IMEの変換確定に使ったEnterでは読みを更新しない。
-			// keyCode=229はisComposingを正しく返さないブラウザ向けのフォールバック。
-			if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) applyYomi();
-		});
-		if (span.surface !== rangeSurface(line, start, end)) {
-			label.textContent = `「${span.surface}」の読み`;
-		}
-		note.setAttribute("role", "alert");
-		yomiRow.append(label, yomiInput, yomiApply, note);
-		panel.appendChild(yomiRow);
-	}
-
-	// 表層↔モーラの手動割当(選択が単一の漢字系トークンのときのみ)。読みの微調整の
-	// 一種なので、パネルのごちゃつきを避けて「読みを修正」を開いた時だけ出す。
-	if (readingFixOpen && span && span.arrEnd - span.arrStart === 1) {
+	// 表層↔モーラの割り当ては読み修正と別操作として残す。候補選択を変えず、
+	// 必要な人だけ詳細を開けるようにする。
+	if (span && span.arrEnd - span.arrStart === 1) {
 		const model = alignModel(line, span.arrStart);
-		if (model) panel.appendChild(buildAlignEditor(line, span.arrStart, model));
+		if (model) {
+			const details = document.createElement("details");
+			details.className = "panel-align-details";
+			details.open = alignEditorOpen;
+			const summary = document.createElement("summary");
+			summary.textContent = "表層の割り当てを調整";
+			details.append(summary, buildAlignEditor(line, span.arrStart, model));
+			details.addEventListener("toggle", () => {
+				alignEditorOpen = details.open;
+			});
+			panel.appendChild(details);
+		}
 	}
 
 	if (!db) {
@@ -2523,6 +2525,7 @@ function setupImportExport() {
 async function start() {
 	const empty = $id("editor-empty");
 	setupImportExport();
+	setupReadingFixDialog();
 
 	try {
 		data = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));

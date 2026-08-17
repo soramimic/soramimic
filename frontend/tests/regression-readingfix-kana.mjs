@@ -106,7 +106,7 @@ try {
 	await editor.fill(".panel-yomi .input", "ヘンカンスル");
 	await editor.click(".panel-yomi .btn-primary");
 	// 修正が受理された(=「かなで入力してください」等のエラー表示が出ない)こと。
-	// applyReadingFixが成功すると選択が張り直され panel-title が更新される。
+	// applyReadingFixが成功すると専用小窓と古い候補選択が閉じる。
 	await editor.waitForFunction(
 		() => {
 			const note = document.querySelector(".panel-yomi-note");
