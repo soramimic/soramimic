@@ -245,8 +245,12 @@ try {
 	await editor.click(".panel-yomi-toggle");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
 		"読み修正フォームを開いても読み入力欄にフォーカスされない");
+	assert(await editor.getAttribute(".panel-yomi .input", "enterkeyhint") === "done",
+		"読み入力欄のキーボード確定キーが完了になっていない");
 	await editor.fill(".panel-yomi .input", "ふるさと");
-	await editor.click(".panel-yomi .btn-primary");
+	// iOS Safariのキーボード上部にある✓は入力欄をblurする。その操作だけで
+	// 読みが確定され、ページ内の「修正」をもう一度押さずに済むこと。
+	await editor.locator(".panel-yomi .input").blur();
 	await editor.waitForFunction(
 		() => [...document.querySelectorAll(".chip-unit")].map((e) => e.textContent).join("")
 			=== "ワスレガタキフルサトシンヤイチニジヲスギタッテカンジ",
