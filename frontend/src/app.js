@@ -1,8 +1,12 @@
 // UIの配線。機能は旧 widget/(SettingArea, ConversionArea, NavigationButtons)と同等。
 import { fetchText, fetchJson } from "./api.js";
-import { loadEngine, buildDatabase, ORIGINAL_STORAGE_KEY } from "./appCore.js";
+import { loadEngine, buildDatabase } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { createYomiApi } from "./yomiApi.js";
+import {
+	createCustomWordlistRepository, customWordlistId, customWordlistValue,
+	CUSTOM_WORDLISTS_STORAGE_KEY,
+} from "./customWordlists.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
 
@@ -95,7 +99,9 @@ export async function startApp() {
 	const wordlistButtons = $id("wordlist-buttons");
 	const wordlistFacets = $id("wordlist-facets");
 	const originalDialog = $id("original-dialog");
+	const originalName = $id("original-name");
 	const originalText = $id("original-text");
+	const originalStatus = $id("original-status");
 
 	// 生成画面の状態は sessionStorage に保持し、編集ツール等から戻ってきても
 	// 入力・結果が消えないようにする。歌詞は初期化を待たずここで復元する
@@ -333,7 +339,7 @@ export async function startApp() {
 
 	// ボタン・プルダウンをまたいで選択状態を排他にする
 	function setWordlistControl(activeEl) {
-		for (const b of wordlistButtons.querySelectorAll("button")) {
+		for (const b of wordlistButtons.querySelectorAll("button[data-value]")) {
 			b.classList.toggle("active", b === activeEl);
 		}
 		for (const s of wordlistSelects) {
@@ -344,6 +350,17 @@ export async function startApp() {
 				s.capEl.hidden = true;
 			}
 			s.wrap.classList.toggle("active", isActive);
+		}
+		if (customTrigger) {
+			const isCustomActive = customTrigger === activeEl;
+			customTrigger.classList.toggle("active", isCustomActive);
+			if (!isCustomActive) {
+				customTextEl.textContent = "自作リスト";
+				customCapEl.hidden = true;
+				for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+					item.setAttribute("aria-checked", "false");
+				}
+			}
 		}
 	}
 
@@ -410,10 +427,220 @@ export async function startApp() {
 		wordlistButtons.appendChild(wrap);
 		wordlistSelects.push({ sel, wrap, textEl, capEl, label: item.label });
 	}
-	const originalBtn = addWordlistButton({
-		value: "ORIGINAL",
-		text: "自作の単語リストを使用",
+
+	// 自作リストは名前付きで複数保存し、行ごとに選択・編集・削除できるメニューから選ぶ。
+	const customRepository = createCustomWordlistRepository(localStorage);
+	let customLists = [];
+	let customLoadError = null;
+	try {
+		customLists = customRepository.list();
+	} catch (err) {
+		console.warn("自作リストの読み込みに失敗:", err);
+		customLoadError = err;
+	}
+	const defaultWordlist = selectedWordlist;
+	const customWrap = document.createElement("span");
+	customWrap.className = "custom-wordlist-picker";
+	const customTrigger = document.createElement("button");
+	customTrigger.type = "button";
+	customTrigger.className = "btn custom-wordlist-trigger";
+	customTrigger.setAttribute("aria-haspopup", "menu");
+	customTrigger.setAttribute("aria-expanded", "false");
+	customTrigger.setAttribute("aria-controls", "custom-wordlist-menu");
+	const customCapEl = document.createElement("span");
+	customCapEl.className = "wordlist-select-caption";
+	customCapEl.textContent = "自作";
+	customCapEl.hidden = true;
+	const customTextEl = document.createElement("span");
+	customTextEl.textContent = "自作リスト";
+	const customMenu = document.createElement("div");
+	customMenu.id = "custom-wordlist-menu";
+	customMenu.className = "custom-wordlist-menu";
+	customMenu.setAttribute("role", "menu");
+	customMenu.setAttribute("aria-label", "自作リスト");
+	customMenu.hidden = true;
+	customTrigger.append(customCapEl, customTextEl);
+	customWrap.append(customTrigger, customMenu);
+	wordlistButtons.appendChild(customWrap);
+
+	function customEntry(list) {
+		return {
+			value: customWordlistValue(list.id),
+			text: list.name,
+			customId: list.id,
+			originalText: list.text,
+			updatedAt: list.updatedAt,
+		};
+	}
+
+	function customMenuIcon(type) {
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.classList.add("custom-wordlist-menu-icon");
+		svg.setAttribute("viewBox", "0 0 24 24");
+		svg.setAttribute("aria-hidden", "true");
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", type === "edit"
+			? "M4 20h4L19 9l-4-4L4 16v4zm10-13 4 4M4 20l4-1"
+			: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5");
+		path.setAttribute("fill", "none");
+		path.setAttribute("stroke", "currentColor");
+		path.setAttribute("stroke-width", "1.8");
+		path.setAttribute("stroke-linecap", "round");
+		path.setAttribute("stroke-linejoin", "round");
+		svg.appendChild(path);
+		return svg;
+	}
+
+	function renderCustomOptions() {
+		for (const value of [...wordlistByValue.keys()]) {
+			if (customWordlistId(value)) wordlistByValue.delete(value);
+		}
+		customMenu.replaceChildren();
+		const selectedValue = selectedWordlist && selectedWordlist.value;
+		for (const list of customLists) {
+			const entry = customEntry(list);
+			const row = document.createElement("div");
+			row.className = "custom-wordlist-menu-row";
+			const choose = document.createElement("button");
+			choose.type = "button";
+			choose.className = "custom-wordlist-menu-select";
+			choose.setAttribute("role", "menuitemradio");
+			choose.setAttribute("aria-label", entry.text);
+			choose.setAttribute("aria-checked", String(entry.value === selectedValue));
+			choose.textContent = entry.text;
+			choose.__config = entry;
+			choose.addEventListener("click", (event) => {
+				event.stopPropagation();
+				const found = wordlistByValue.get(entry.value);
+				if (!found) return;
+				found.activate();
+				selectedWordlist = found.entry;
+				renderFacets(selectedWordlist);
+				closeCustomMenu();
+				saveMainState();
+			});
+			const edit = document.createElement("button");
+			edit.type = "button";
+			edit.className = "custom-wordlist-menu-action";
+			edit.setAttribute("role", "menuitem");
+			edit.setAttribute("aria-label", `「${list.name}」を編集`);
+			edit.appendChild(customMenuIcon("edit"));
+			edit.addEventListener("click", (event) => {
+				event.stopPropagation();
+				closeCustomMenu(false);
+				openOriginalDialog(list);
+			});
+			const remove = document.createElement("button");
+			remove.type = "button";
+			remove.className = "custom-wordlist-menu-action custom-wordlist-menu-delete";
+			remove.setAttribute("role", "menuitem");
+			remove.setAttribute("aria-label", `「${list.name}」を削除`);
+			remove.appendChild(customMenuIcon("delete"));
+			remove.addEventListener("click", (event) => {
+				event.stopPropagation();
+				if (deleteCustomWordlist(list)) closeCustomMenu();
+			});
+			row.append(choose, edit, remove);
+			customMenu.appendChild(row);
+			wordlistByValue.set(entry.value, {
+				entry,
+				activate: () => {
+					setWordlistControl(customTrigger);
+					customTextEl.textContent = entry.text;
+					customCapEl.hidden = false;
+					for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+						item.setAttribute("aria-checked", String(item.__config.value === entry.value));
+					}
+				},
+			});
+		}
+		const add = document.createElement("button");
+		add.type = "button";
+		add.className = "custom-wordlist-menu-new";
+		add.setAttribute("role", "menuitem");
+		add.textContent = "＋ 新しいリスト";
+		add.addEventListener("click", (event) => {
+			event.stopPropagation();
+			closeCustomMenu(false);
+			openOriginalDialog();
+		});
+		customMenu.appendChild(add);
+		positionCustomMenu();
+	}
+	renderCustomOptions();
+
+	function positionCustomMenu() {
+		if (customMenu.hidden) return;
+		const triggerRect = customTrigger.getBoundingClientRect();
+		const gutter = 8;
+		const width = Math.min(352, window.innerWidth - gutter * 2);
+		customMenu.style.width = `${width}px`;
+		customMenu.style.left = `${Math.max(gutter, Math.min(
+			triggerRect.left, window.innerWidth - width - gutter))}px`;
+		const below = triggerRect.bottom + 4;
+		const above = triggerRect.top - customMenu.offsetHeight - 4;
+		customMenu.style.top = `${Math.max(gutter, below + customMenu.offsetHeight <= window.innerHeight - gutter
+			? below : above)}px`;
+	}
+
+	function closeCustomMenu(focusTrigger = true) {
+		if (customMenu.hidden) return;
+		customMenu.hidden = true;
+		customTrigger.setAttribute("aria-expanded", "false");
+		if (focusTrigger) customTrigger.focus();
+	}
+
+	function openCustomMenu({ focus = true, last = false } = {}) {
+		customMenu.hidden = false;
+		customTrigger.setAttribute("aria-expanded", "true");
+		positionCustomMenu();
+		if (!focus) return;
+		const items = [...customMenu.querySelectorAll("button")];
+		const checked = customMenu.querySelector("[role='menuitemradio'][aria-checked='true']");
+		(last ? items.at(-1) : checked || items[0])?.focus();
+	}
+
+	customTrigger.addEventListener("click", (event) => {
+		event.stopPropagation();
+		if (customMenu.hidden) openCustomMenu();
+		else closeCustomMenu();
 	});
+	customTrigger.addEventListener("keydown", (event) => {
+		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+		event.preventDefault();
+		if (customMenu.hidden) openCustomMenu({ last: event.key === "ArrowUp" });
+	});
+	customMenu.addEventListener("keydown", (event) => {
+		const items = [...customMenu.querySelectorAll("button")];
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeCustomMenu();
+			return;
+		}
+		if (event.key === "Tab") {
+			closeCustomMenu(false);
+			return;
+		}
+		let index = items.indexOf(document.activeElement);
+		if (event.key === "ArrowDown") index = (index + 1) % items.length;
+		else if (event.key === "ArrowUp") index = (index - 1 + items.length) % items.length;
+		else if (event.key === "Home") index = 0;
+		else if (event.key === "End") index = items.length - 1;
+		else return;
+		event.preventDefault();
+		items[index]?.focus();
+	});
+	document.addEventListener("click", (event) => {
+		if (!customMenu.hidden && !customWrap.contains(event.target)) closeCustomMenu(false);
+	});
+	window.addEventListener("resize", positionCustomMenu);
+	window.addEventListener("scroll", positionCustomMenu, true);
+
+	if (savedMain && savedMain.lastConversion && savedMain.lastConversion.wordlist
+		&& savedMain.lastConversion.wordlist.value === "ORIGINAL"
+		&& customLists.length > 0) {
+		savedMain.lastConversion.wordlist = customEntry(customLists[0]);
+	}
 
 	// facet の1つの選択肢を where 断片に変換する。設定で述語を定義できる:
 	// - item.where があればそれをそのまま使う(任意の述語。SQL 的な自由度)
@@ -471,22 +698,125 @@ export async function startApp() {
 	}
 
 	setupButtonGroup(wordlistButtons, (btn) => {
+		if (!btn.__config) return;
 		setWordlistControl(btn); // プルダウン側の選択も解除する
 		selectedWordlist = btn.__config;
 		renderFacets(selectedWordlist);
-		if (btn === originalBtn) {
-			originalText.value = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-			originalDialog.showModal();
-		}
 		saveMainState();
 	});
 	renderFacets(selectedWordlist);
 
+	let editingCustomId = null;
+	let editingCustomUpdatedAt = null;
+	function showOriginalStatus(message) {
+		originalStatus.textContent = message || "";
+		originalStatus.hidden = !message;
+	}
+	function openOriginalDialog(list = null) {
+		editingCustomId = list ? list.id : null;
+		editingCustomUpdatedAt = list ? list.updatedAt : null;
+		$id("original-dialog-title").textContent = list
+			? "自作単語リストの編集" : "自作単語リストの保存";
+		originalName.value = list ? list.name : "";
+		originalText.value = list ? list.text : "";
+		$id("original-delete").hidden = !list;
+		showOriginalStatus(customLoadError ? customLoadError.message : "");
+		originalDialog.showModal();
+		originalName.focus();
+	}
+
+	function restoreSelectedWordlistControl() {
+		const found = selectedWordlist && wordlistByValue.get(selectedWordlist.value);
+		if (found) found.activate();
+	}
+
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
 	$id("original-register").addEventListener("click", () => {
-		localStorage.setItem(ORIGINAL_STORAGE_KEY, originalText.value);
-		track("wordlist_original", {});
-		originalDialog.close();
+		const name = originalName.value.trim();
+		const text = originalText.value;
+		if (!name) {
+			showOriginalStatus("リスト名を入力してください");
+			originalName.focus();
+			return;
+		}
+		try {
+			const selectedValueBeforeSave = selectedWordlist && selectedWordlist.value;
+			const wasCreating = !editingCustomId;
+			const saved = editingCustomId
+				? customRepository.update(editingCustomId, { name, text }, {
+					expectedUpdatedAt: editingCustomUpdatedAt,
+				})
+				: customRepository.create({ name, text });
+			customLoadError = null;
+			customLists = customRepository.list();
+			renderCustomOptions();
+			const valueToRestore = wasCreating || selectedValueBeforeSave === customWordlistValue(saved.id)
+				? customWordlistValue(saved.id) : selectedValueBeforeSave;
+			const found = wordlistByValue.get(valueToRestore);
+			if (found) {
+				found.activate();
+				selectedWordlist = found.entry;
+			}
+			renderFacets(selectedWordlist);
+			saveMainState();
+			track("wordlist_original", { action: editingCustomId ? "update" : "create" });
+			originalDialog.close();
+		} catch (err) {
+			console.warn("自作リストの保存に失敗:", err);
+			showOriginalStatus("保存できませんでした: " + err.message);
+		}
+	});
+
+	function deleteCustomWordlist(list) {
+		if (!list || !confirm(`「${list.name}」を削除しますか？`)) return false;
+		try {
+			customRepository.remove(list.id);
+			customLists = customRepository.list();
+			const deletingSelected = customWordlistId(selectedWordlist && selectedWordlist.value) === list.id;
+			renderCustomOptions();
+			if (deletingSelected && defaultWordlist) {
+				const fallback = wordlistByValue.get(defaultWordlist.value);
+				if (fallback) fallback.activate();
+				selectedWordlist = defaultWordlist;
+				renderFacets(selectedWordlist);
+				saveMainState();
+			} else {
+				restoreSelectedWordlistControl();
+			}
+			track("wordlist_original", { action: "delete" });
+			return true;
+		} catch (err) {
+			console.warn("自作リストの削除に失敗:", err);
+			showOriginalStatus("削除できませんでした: " + err.message);
+			return false;
+		}
+	}
+
+	$id("original-delete").addEventListener("click", () => {
+		const list = customLists.find((item) => item.id === editingCustomId);
+		if (deleteCustomWordlist(list)) originalDialog.close();
+	});
+
+	window.addEventListener("storage", (event) => {
+		if (event.key !== CUSTOM_WORDLISTS_STORAGE_KEY) return;
+		try {
+			const selectedId = customWordlistId(selectedWordlist && selectedWordlist.value);
+			customLists = customRepository.list();
+			renderCustomOptions();
+			const current = selectedId && wordlistByValue.get(customWordlistValue(selectedId));
+			if (current) {
+				current.activate();
+				selectedWordlist = current.entry;
+			} else if (selectedId && defaultWordlist) {
+				const fallback = wordlistByValue.get(defaultWordlist.value);
+				if (fallback) fallback.activate();
+				selectedWordlist = defaultWordlist;
+				renderFacets(selectedWordlist);
+				saveMainState();
+			}
+		} catch (err) {
+			console.warn("別タブの自作リスト更新を反映できませんでした:", err);
+		}
 	});
 
 	// ---- サンプル(歌詞 × 単語リスト) ----
@@ -511,9 +841,9 @@ export async function startApp() {
 
 	async function getDatabase(entry, where) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
-		// キーは内容で構成する(ORIGINALは登録テキスト自体をキーにする)
-		if (entry.value === "ORIGINAL") {
-			const key = "ORIGINAL|" + (localStorage.getItem(ORIGINAL_STORAGE_KEY) || "");
+		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
+		if (customWordlistId(entry.value)) {
+			const key = [entry.value, entry.originalText || ""].join("|");
 			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry));
 			return dbCache.get(key);
 		}
@@ -662,7 +992,9 @@ export async function startApp() {
 			}
 		}
 		if (savedMain.wordlistValue) {
-			const found = wordlistByValue.get(savedMain.wordlistValue);
+			const restoredValue = savedMain.wordlistValue === "ORIGINAL" && customLists.length > 0
+				? customWordlistValue(customLists[0].id) : savedMain.wordlistValue;
+			const found = wordlistByValue.get(restoredValue);
 			if (found) {
 				found.activate();
 				selectedWordlist = found.entry;
@@ -706,7 +1038,9 @@ export async function startApp() {
 				app = engine.appFor(param.VOWEL_RATIO);
 				// ファセットのチェック状態は変換後も操作できるため、
 				// DB構築に実際使ったwhereをここで確定して編集画面へ引き継ぐ
-				const entry = selectedWordlist;
+				// 本文込みのentryを変換時点のスナップショットとして編集画面へ引き継ぐ。
+				const entry = customWordlistId(selectedWordlist && selectedWordlist.value)
+					? { ...selectedWordlist } : selectedWordlist;
 				const where = compileWhere(entry);
 				const db = await getDatabase(entry, where);
 				const tokensList = await tokenizePhrases(phrases);

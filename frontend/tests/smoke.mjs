@@ -53,6 +53,139 @@ try {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
 
+	// ---- 名前付き自作リスト: 旧データ移行と行内の選択・編集・削除 ----
+	await page.evaluate(() => {
+		localStorage.removeItem("soramimic-custom-wordlists");
+		localStorage.setItem("originalWordlist", "山田,ヤマダ");
+		sessionStorage.removeItem("soramimic-main");
+	});
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	const migrated = await page.evaluate(() => ({
+		legacy: localStorage.getItem("originalWordlist"),
+		state: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")),
+	}));
+	if (migrated.legacy !== null || migrated.state.lists.length !== 1
+		|| migrated.state.lists[0].text !== "山田,ヤマダ") {
+		throw new Error("旧自作リストの移行に失敗: " + JSON.stringify(migrated));
+	}
+
+	await page.emulateMedia({ colorScheme: "dark" });
+	await page.setViewportSize({ width: 320, height: 568 });
+	const customTrigger = page.locator(".custom-wordlist-trigger");
+	const customMenu = page.locator("#custom-wordlist-menu");
+	if (await customTrigger.getAttribute("aria-haspopup") !== "menu"
+		|| await customTrigger.getAttribute("aria-expanded") !== "false") {
+		throw new Error("自作リストtriggerのARIA属性が不正");
+	}
+	await customTrigger.click();
+	const row = customMenu.locator(".custom-wordlist-menu-row").first();
+	const rowState = await row.evaluate((el) => ({
+		roles: [...el.children].map((child) => child.getAttribute("role")),
+		labels: [...el.children].map((child) => child.getAttribute("aria-label")),
+		right: el.getBoundingClientRect().right,
+		heights: [...el.children].map((child) => child.getBoundingClientRect().height),
+	}));
+	if (rowState.roles.join(",") !== "menuitemradio,menuitem,menuitem"
+		|| !rowState.labels[1].includes("編集") || !rowState.labels[2].includes("削除")
+		|| rowState.right > 320 || rowState.heights.some((height) => height < 43)) {
+		throw new Error("自作リスト行の操作・狭幅配置が不正: " + JSON.stringify(rowState));
+	}
+	await page.keyboard.press("End");
+	if ((await page.locator(":focus").textContent()).trim() !== "＋ 新しいリスト") {
+		throw new Error("自作リストメニューのEndキー操作に失敗");
+	}
+	await page.keyboard.press("Home");
+	await page.keyboard.press("Escape");
+	if (!await customMenu.isHidden() || !await customTrigger.evaluate((el) => el === document.activeElement)) {
+		throw new Error("Escapeでメニューを閉じてtriggerへfocusしない");
+	}
+
+	await customTrigger.click();
+	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
+	await page.fill("#original-name", "食べ物");
+	await page.fill("#original-text", "林檎,リンゴ");
+	await page.click("#original-register");
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("新規自作リストが選択されない");
+	}
+	await page.fill("#input-text", "りんご");
+	await page.click("#btn-convert");
+	await page.waitForFunction(
+		() => !document.getElementById("output-field").hidden
+			&& document.getElementById("output-text").value.length > 0,
+		{ timeout: 120000 },
+	);
+	const customOutput = await page.inputValue("#output-text");
+	if (!customOutput.includes("リンゴ") || customOutput.includes("エラーが発生しました")) {
+		throw new Error("保存済み自作リストで変換できない: " + customOutput);
+	}
+	const [customEditor] = await Promise.all([
+		page.waitForEvent("popup"),
+		page.click("#btn-open-editor"),
+	]);
+	customEditor.on("pageerror", (e) => pageErrors.push(e));
+	await customEditor.waitForFunction(
+		() => !document.getElementById("btn-regenerate").disabled,
+		{ timeout: 120000 },
+	);
+	const editorWordlist = await customEditor.evaluate(() =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).wordlist);
+	if (!editorWordlist.value.startsWith("CUSTOM:") || editorWordlist.originalText !== "林檎,リンゴ") {
+		throw new Error("自作リストの編集ツール受け渡しが不正: " + JSON.stringify(editorWordlist));
+	}
+	await customEditor.click("#btn-regenerate");
+	await customEditor.waitForFunction(
+		() => !document.getElementById("btn-regenerate").disabled,
+		{ timeout: 120000 },
+	);
+	await customEditor.close();
+
+	// 非選択行の編集・削除では現在の選択を維持する。
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "「自作リスト」を編集" }).click();
+	await page.fill("#original-name", "名字");
+	await page.fill("#original-text", "佐藤,サトウ");
+	await page.click("#original-register");
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リスト編集後に選択が変わった");
+	}
+	await customTrigger.click();
+	page.once("dialog", (dialog) => dialog.accept());
+	await customMenu.getByRole("menuitem", { name: "「名字」を削除" }).click();
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リスト削除後に選択が変わった");
+	}
+
+	// sessionStorageからCUSTOM:idを復元し、選択中削除は既定リストへ戻す。
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	if (!await page.locator(".custom-wordlist-trigger").evaluate((el) =>
+		el.classList.contains("active") && el.textContent.includes("食べ物"))) {
+		throw new Error("自作リスト選択の復元に失敗");
+	}
+	await page.locator(".custom-wordlist-trigger").click();
+	page.once("dialog", (dialog) => dialog.accept());
+	await page.locator("#custom-wordlist-menu").getByRole(
+		"menuitem", { name: "「食べ物」を削除" }).click();
+	const afterDelete = await page.evaluate(() => ({
+		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
+		active: document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+	}));
+	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL") {
+		throw new Error("選択中自作リスト削除後の状態が不正: " + JSON.stringify(afterDelete));
+	}
+	await page.emulateMedia({ colorScheme: "light" });
+	await page.setViewportSize({ width: 1280, height: 720 });
+
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
 
