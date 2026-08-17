@@ -289,9 +289,10 @@ function rangeSurface(line, start, end) {
 	return unitsOf(line).slice(start, end).map((u) => u.surface_form).join("");
 }
 
-function makeLockIcon() {
+function makeLockIcon(locked = false) {
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 	svg.classList.add("chip-lock-icon");
+	if (locked) svg.classList.add("is-locked");
 	svg.setAttribute("viewBox", "0 0 24 24");
 	svg.setAttribute("aria-hidden", "true");
 	const body = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1077,13 +1078,16 @@ function buildPanel() {
 		`選択範囲: ${rangeSurface(line, start, end)}(${rangeKana(line, start, end)})`;
 	header.appendChild(title);
 	// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
-	// (チップ上の🔒はスマホだと小さいため)
+	// (チップ上の鍵はスマホだと小さいため)
 	const word = (data.results[line] || []).find(
 		(w) => w.period[0] === start && w.period[1] === end);
 	if (word) {
 		const lockBtn = document.createElement("button");
 		lockBtn.className = "btn panel-lock";
-		lockBtn.textContent = word.locked ? "🔒 固定を解除" : "🔓 固定する";
+		lockBtn.setAttribute("aria-pressed", String(!!word.locked));
+		const lockLabel = document.createElement("span");
+		lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
+		lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
 		lockBtn.addEventListener("click", () => toggleLock(line, word));
 		header.appendChild(lockBtn);
 	}

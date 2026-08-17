@@ -165,11 +165,17 @@
 	color: #d97706;
 }
 
-.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-open {
+.chip-lock-icon.is-locked {
+	color: #d97706;
+}
+
+.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-open,
+.chip-lock-icon.is-locked .chip-lock-icon-open {
 	display: none;
 }
 
-.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-closed {
+.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-closed,
+.chip-lock-icon.is-locked .chip-lock-icon-closed {
 	display: initial;
 }
 
@@ -323,6 +329,9 @@
 }
 
 .panel-lock {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
 	white-space: nowrap;
 	padding: 0.15rem 0.5rem;
 }

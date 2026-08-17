@@ -138,6 +138,27 @@ try {
 		"鍵アイコンの押下で候補パネルが開いた");
 	await firstWord.locator(".chip-lock-input").click(); // 初期状態へ戻す
 
+	// 選択パネルもチップと同じ単色の開錠／施錠アイコンを使う
+	await firstWord.click();
+	await editor.waitForSelector(".editor-panel.open .panel-lock");
+	const panelLock = editor.locator(".panel-lock");
+	assert(!/[🔒🔓]/u.test(await panelLock.textContent()),
+		"選択パネルに絵文字の鍵が残っている");
+	assert(await panelLock.locator(".chip-lock-icon").count() === 1,
+		"選択パネルに共通の鍵アイコンがない");
+	const panelInitiallyLocked = await panelLock.getAttribute("aria-pressed") === "true";
+	await panelLock.click();
+	assert((await editor.locator(".panel-lock").getAttribute("aria-pressed") === "true") === !panelInitiallyLocked,
+		"選択パネルから固定状態を切り替えられない");
+	const panelIconAfter = await editor.locator(".panel-lock").evaluate((el) => ({
+		open: getComputedStyle(el.querySelector(".chip-lock-icon-open")).display !== "none",
+		closed: getComputedStyle(el.querySelector(".chip-lock-icon-closed")).display !== "none",
+	}));
+	assert(panelIconAfter.open === panelInitiallyLocked && panelIconAfter.closed === !panelInitiallyLocked,
+		"選択パネルの鍵の形が固定状態に追従しない: " + JSON.stringify(panelIconAfter));
+	await editor.locator(".panel-lock").click(); // 初期状態へ戻す
+	await editor.locator(".panel-close").click();
+
 	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
 	// 12は1トークンだが、表示上は複数ユニット。どれをタップしても対象全体が
 	// 12(イチニ)へスナップし、ジュウニへの修正後もジュウ/ニの2音節になる。
