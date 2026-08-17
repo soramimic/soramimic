@@ -199,7 +199,21 @@ try {
 		"鉛筆に読み修正のアクセシブルな名前がない");
 	await editor.click(".panel-yomi-toggle");
 	await editor.fill(".panel-yomi .input", "ジュウニ");
-	await editor.click(".panel-yomi .btn-primary");
+	const beforeImeCommit = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).tokensList));
+	await editor.locator(".panel-yomi .input").evaluate((input) => {
+		input.dispatchEvent(new KeyboardEvent("keydown", {
+			key: "Enter", code: "Enter", keyCode: 13, isComposing: true, bubbles: true,
+		}));
+	});
+	assert(await editor.locator(".panel-yomi .input").count() === 1 &&
+		await editor.inputValue(".panel-yomi .input") === "ジュウニ",
+		"IME変換確定のEnterで読み修正フォームが確定された");
+	const afterImeCommit = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).tokensList));
+	assert(afterImeCommit === beforeImeCommit,
+		"IME変換確定のEnterで読みデータが更新された");
+	await editor.press(".panel-yomi .input", "Enter");
 	await editor.waitForFunction(() =>
 		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
 			.map((e) => e.textContent).join("|") === "シン|ヤ|ジュウ|ニ|ジ|ヲ|ス|ギ|タッ|テ",
