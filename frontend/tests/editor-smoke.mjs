@@ -223,12 +223,17 @@ try {
 		JSON.stringify({ before: numberPanelBefore, after: numberPanelWhileDialog }));
 	assert(await editor.textContent("#reading-fix-target") === "12",
 		"読み修正小窓に実際の対象が表示されない");
-	assert(await editor.textContent(".reading-fix-unit-note") === "読みは単語単位で修正します。",
+	assert(await editor.textContent(".reading-fix-description") ===
+		"選択部分を含む単語全体を修正します",
 		"読みを単語単位で修正する説明が表示されない");
-	const numberScopeNote = await editor.textContent(".panel-yomi-scope-note");
-	assert(numberScopeNote.includes(`選択部分「${numberPanelBefore.surface}」`) &&
-		numberScopeNote.includes("含む単語が対象"),
-		"読み修正範囲を広げた理由が表示されない: " + numberScopeNote);
+	assert((await editor.textContent("#reading-fix-target .reading-fix-selection")) !== "",
+		"読み修正小窓で選択部分が示されない");
+	assert(JSON.stringify(await editor.locator(
+		"#editor-reading-dialog .panel-yomi-label").allTextContents()) ===
+		JSON.stringify(["元歌詞", "元歌詞読み"]),
+		"読み修正小窓の項目名が想定外");
+	assert(await editor.textContent("#reading-fix-align-details > summary") ===
+		"文字ごとの読みを調整", "文字ごとの読み調整の表記が想定外");
 	await editor.fill(".panel-yomi .input", "abc");
 	await editor.click(".panel-yomi .btn-primary");
 	assert(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open) &&
@@ -283,8 +288,6 @@ try {
 		"読み更新後に小窓または古い候補パネルが残っている: " + JSON.stringify(readingUiAfterApply));
 	assert(await editor.locator(".chip-unit.selected").count() === 0,
 		"読み更新後も古い候補範囲が選択されたままになっている");
-	assert(await editor.locator(".panel-yomi-scope-note").isHidden(),
-		"読み修正の確定後も範囲拡張の説明が残っている");
 	await editor.click("#btn-undo"); // 後続テストに影響させない
 	await editor.waitForTimeout(300);
 	const numberReadingAfterUndo = await editor.$$eval(
@@ -358,10 +361,8 @@ try {
 		"複数単語の読み修正を開いただけで候補範囲が変わった");
 	assert(await editor.textContent("#reading-fix-target") === "深夜12時を",
 		"複数単語の読み修正対象が小窓に表示されない");
-	const mixedScopeNote = await editor.textContent(".panel-yomi-scope-note");
-	assert(mixedScopeNote.includes(`選択部分「${mixedSelectedSurface}」`) &&
-		mixedScopeNote.includes("含む単語が対象"),
-		"複数の単語区切りにまたがる範囲拡張の理由が表示されない: " + mixedScopeNote);
+	assert(await editor.textContent("#reading-fix-target .reading-fix-selection") ===
+		mixedSelectedSurface, "複数単語の読み修正で元の選択部分が示されない");
 	assert(!(await editor.locator("#reading-fix-align-details").evaluate((el) => el.open)) &&
 		await editor.locator("#editor-reading-dialog .panel-align").isHidden(),
 		"文字ごとの対応調整が初期状態で閉じていない");
@@ -429,8 +430,6 @@ try {
 		(els) => els.map((e) => e.textContent).join(""));
 	assert(mixedReadingAfterUndo === "シンヤイチニジヲスギタッテ",
 		"戻る操作で複数単語の読みが復元されない: " + mixedReadingAfterUndo);
-	assert(await editor.locator(".panel-yomi-scope-note").isHidden(),
-		"戻る操作後も範囲拡張の説明が残っている");
 
 	// ---- 回帰ガード: かな区間の読みを長くしてもサーフェスが重複しないこと ----
 	// (getYomiAndPhraseBreakは読み>サーフェスのモーラ数だとかなサーフェスを複製する。
