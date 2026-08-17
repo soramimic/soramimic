@@ -110,15 +110,16 @@
         <section id="editor-panel" class="editor-panel"></section>
       </main>
 
-      <!-- 候補選択とは独立した元歌詞の読み修正。選択範囲を裏で変更せず、
-           実際に更新する単語区切りと理由をこの小窓だけで示す。 -->
+      <!-- 候補選択とは独立した元歌詞の読み修正。実際の修正対象を簡潔に示す。 -->
       <dialog id="editor-reading-dialog" class="reading-fix-dialog" aria-labelledby="reading-fix-title">
         <div class="dialog-header">
           <h2 id="reading-fix-title">元歌詞の読みを修正</h2>
           <button id="btn-reading-fix-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
-        <p id="reading-fix-target" class="reading-fix-target"></p>
+        <p class="reading-fix-unit-note">読みは単語単位で修正します。</p>
         <div class="panel-yomi reading-fix-form">
+          <span class="panel-yomi-label">元歌詞</span>
+          <span id="reading-fix-target" class="reading-fix-target"></span>
           <p id="reading-fix-scope-note" class="panel-yomi-scope-note" role="status" hidden></p>
           <label class="panel-yomi-label" for="reading-fix-input">読み</label>
           <input id="reading-fix-input" class="input" autocomplete="off" />

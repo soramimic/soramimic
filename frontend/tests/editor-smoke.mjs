@@ -221,11 +221,13 @@ try {
 	assert(JSON.stringify(numberPanelWhileDialog) === JSON.stringify(numberPanelBefore),
 		"読み修正を開いただけで背後の選択または候補が変わった: " +
 		JSON.stringify({ before: numberPanelBefore, after: numberPanelWhileDialog }));
-	assert(await editor.textContent("#reading-fix-target") === "「12」の読み",
+	assert(await editor.textContent("#reading-fix-target") === "12",
 		"読み修正小窓に実際の対象が表示されない");
+	assert(await editor.textContent(".reading-fix-unit-note") === "読みは単語単位で修正します。",
+		"読みを単語単位で修正する説明が表示されない");
 	const numberScopeNote = await editor.textContent(".panel-yomi-scope-note");
-	assert(numberScopeNote.includes(`選んだ「${numberPanelBefore.surface}」`) &&
-		numberScopeNote.includes("「12」全体") && numberScopeNote.includes("単語区切り"),
+	assert(numberScopeNote.includes(`選択部分「${numberPanelBefore.surface}」`) &&
+		numberScopeNote.includes("含む単語が対象"),
 		"読み修正範囲を広げた理由が表示されない: " + numberScopeNote);
 	await editor.fill(".panel-yomi .input", "abc");
 	await editor.click(".panel-yomi .btn-primary");
@@ -354,14 +356,17 @@ try {
 	}));
 	assert(JSON.stringify(mixedPanelWhileDialog) === JSON.stringify(mixedPanelBefore),
 		"複数単語の読み修正を開いただけで候補範囲が変わった");
-	assert(await editor.textContent("#reading-fix-target") === "「深夜12時を」の読み",
+	assert(await editor.textContent("#reading-fix-target") === "深夜12時を",
 		"複数単語の読み修正対象が小窓に表示されない");
 	const mixedScopeNote = await editor.textContent(".panel-yomi-scope-note");
-	assert(mixedScopeNote.includes(`選んだ「${mixedSelectedSurface}」`) &&
-		mixedScopeNote.includes("「深夜12時を」全体"),
+	assert(mixedScopeNote.includes(`選択部分「${mixedSelectedSurface}」`) &&
+		mixedScopeNote.includes("含む単語が対象"),
 		"複数の単語区切りにまたがる範囲拡張の理由が表示されない: " + mixedScopeNote);
-	assert(await editor.locator("#editor-reading-dialog .panel-align").isVisible(),
-		"複数単語の読み修正小窓に文字ごとの対応調整が表示されない");
+	assert(!(await editor.locator("#reading-fix-align-details").evaluate((el) => el.open)) &&
+		await editor.locator("#editor-reading-dialog .panel-align").isHidden(),
+		"文字ごとの対応調整が初期状態で閉じていない");
+	await editor.click("#reading-fix-align-details > summary");
+	await editor.waitForSelector("#editor-reading-dialog .panel-align", { timeout: 10000 });
 	// 範囲全体の文字対応だけを変えても、背後の替え歌候補は維持する。
 	const mixedAlignBefore = await editor.$$eval(".panel-align .align-cell",
 		(els) => els.map((e) => e.textContent).join("|"));
@@ -464,6 +469,9 @@ try {
 	const alignSelectionBefore = await editor.$$eval(".chip-unit.selected",
 		(els) => els.map((e) => e.textContent).join(""));
 	await editor.click(".panel-yomi-toggle");
+	assert(!(await editor.locator("#reading-fix-align-details").evaluate((el) => el.open)),
+		"文字ごとの対応調整が初期状態で閉じていない");
+	await editor.click("#reading-fix-align-details > summary");
 	await editor.waitForSelector("#editor-reading-dialog[open] .panel-align", { timeout: 10000 });
 	const alignBefore = await editor.textContent(".panel-align .align-cell");
 	assert(alignBefore.includes("忘") && alignBefore.includes("ワス"),
@@ -490,6 +498,7 @@ try {
 
 	// 改めて同じ変更を作り、「変更を適用」で読みと一緒に1履歴として確定する。
 	await editor.click(".panel-yomi-toggle");
+	await editor.click("#reading-fix-align-details > summary");
 	await editor.locator(".align-boundary .align-arrow").nth(1).click();
 	await editor.click("#btn-reading-fix-apply");
 	await editor.waitForFunction(() => {
