@@ -502,17 +502,24 @@
 	flex-direction: column;
 }
 
+.reading-fix-description {
+	margin: 0 0 0.8rem;
+	color: var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.5;
+}
+
 .reading-fix-target {
 	font-weight: 600;
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
 
-.reading-fix-unit-note {
-	margin: 0.2rem 0 0.8rem;
-	color: var(--muted);
-	font-size: 0.82rem;
-	line-height: 1.5;
+.reading-fix-selection {
+	padding: 0 0.08em;
+	border-radius: 0.2em;
+	background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+	color: inherit;
 }
 
 .panel-yomi {
@@ -531,14 +538,6 @@
 	color: inherit;
 	font-size: 1rem;
 	cursor: pointer;
-}
-
-.panel-yomi-scope-note {
-	grid-column: 1 / -1;
-	margin: 0;
-	color: var(--muted);
-	font-size: 0.82rem;
-	line-height: 1.5;
 }
 
 .panel-yomi-label {
@@ -569,7 +568,11 @@
 }
 
 .reading-fix-align-details > summary {
-	font-weight: 600;
+	color: var(--muted);
+	font-size: 0.82rem;
+	font-weight: 400;
+	line-height: 1.5;
+	padding-block: 0.2rem;
 	cursor: pointer;
 }
 
