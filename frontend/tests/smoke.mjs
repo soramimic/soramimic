@@ -3,6 +3,7 @@
 // 実行: npm run build && node tests/smoke.mjs
 // 形態素解析はkuromoji.jsでブラウザ内完結(外部API通信なし)。
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { buildXfMidi } from "../../tests/xfmidi-fixture.mjs";
 
@@ -109,12 +110,14 @@ try {
 	await customTrigger.click();
 	await customMenu.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
 	await page.fill("#original-name", "食べ物");
-	await page.fill("#original-text", "林檎,リンゴ");
+	const tidyCustomText = readFileSync(
+		new URL("../../wordlists/nations.csv", import.meta.url), "utf8");
+	await page.fill("#original-text", tidyCustomText);
 	await page.click("#original-register");
 	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
 		throw new Error("新規自作リストが選択されない");
 	}
-	await page.fill("#input-text", "りんご");
+	await page.fill("#input-text", "にほん");
 	await page.click("#btn-convert");
 	await page.waitForFunction(
 		() => !document.getElementById("output-field").hidden
@@ -122,7 +125,7 @@ try {
 		{ timeout: 120000 },
 	);
 	const customOutput = await page.inputValue("#output-text");
-	if (!customOutput.includes("リンゴ") || customOutput.includes("エラーが発生しました")) {
+	if (!customOutput.includes("ニホン") || customOutput.includes("エラーが発生しました")) {
 		throw new Error("保存済み自作リストで変換できない: " + customOutput);
 	}
 	const [customEditor] = await Promise.all([
@@ -136,7 +139,7 @@ try {
 	);
 	const editorWordlist = await customEditor.evaluate(() =>
 		JSON.parse(sessionStorage.getItem("soramimic-editor")).wordlist);
-	if (!editorWordlist.value.startsWith("CUSTOM:") || editorWordlist.originalText !== "林檎,リンゴ") {
+	if (!editorWordlist.value.startsWith("CUSTOM:") || editorWordlist.originalText !== tidyCustomText) {
 		throw new Error("自作リストの編集ツール受け渡しが不正: " + JSON.stringify(editorWordlist));
 	}
 	await customEditor.click("#btn-regenerate");
