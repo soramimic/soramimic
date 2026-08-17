@@ -341,6 +341,8 @@ try {
 		candidates: [...document.querySelectorAll(".candidate")]
 			.map((e) => e.dataset.candidateId || e.textContent).join("|"),
 	}));
+	const mixedResultsBefore = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
 	await editor.click(".panel-yomi-toggle");
 	const mixedPanelWhileDialog = await editor.evaluate(() => ({
 		surface: document.querySelector(".panel-original-surface")?.textContent,
@@ -358,12 +360,51 @@ try {
 	assert(mixedScopeNote.includes(`選んだ「${mixedSelectedSurface}」`) &&
 		mixedScopeNote.includes("「深夜12時を」全体"),
 		"複数の単語区切りにまたがる範囲拡張の理由が表示されない: " + mixedScopeNote);
+	assert(await editor.locator("#editor-reading-dialog .panel-align").isVisible(),
+		"複数単語の読み修正小窓に文字ごとの対応調整が表示されない");
+	// 範囲全体の文字対応だけを変えても、背後の替え歌候補は維持する。
+	const mixedAlignBefore = await editor.$$eval(".panel-align .align-cell",
+		(els) => els.map((e) => e.textContent).join("|"));
+	const mixedAlignArrows = editor.locator(".panel-align .align-arrow");
+	let mixedAlignChanged = false;
+	for (let i = 0; i < await mixedAlignArrows.count(); i += 1) {
+		await mixedAlignArrows.nth(i).click();
+		const after = await editor.$$eval(".panel-align .align-cell",
+			(els) => els.map((e) => e.textContent).join("|"));
+		if (after !== mixedAlignBefore) {
+			mixedAlignChanged = true;
+			break;
+		}
+	}
+	assert(mixedAlignChanged, "複数単語の文字対応を矢印で変更できない");
+	await editor.click("#btn-reading-fix-apply");
+	await editor.waitForFunction(() => {
+		const tokens = JSON.parse(sessionStorage.getItem("soramimic-editor")).tokensList[1];
+		return Array.isArray(tokens.find((t) => t.surface_form === "深夜12時を")?.manualAlign);
+	}, undefined, { timeout: 10000 });
+	assert(await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)
+	) === mixedResultsBefore, "文字対応だけの変更で替え歌候補が変わった");
+	await editor.click("#btn-undo");
+	await editor.waitForTimeout(300);
+
+	// 同じ範囲を選び直し、今度は読みそのものを更新する。
+	await mixedLineUnits.nth(1).click();
+	await editor.waitForTimeout(300);
+	await mixedLineUnits.nth(6).click({ modifiers: ["Shift"] });
+	await editor.waitForFunction(() =>
+		document.querySelector(".panel-yomi-toggle")?.getAttribute("aria-label")?.includes(
+			"深夜12時を（シンヤイチニジヲ）"),
+		undefined, { timeout: 10000 });
+	await editor.click(".panel-yomi-toggle");
 	await editor.fill(".panel-yomi .input", "シンヤジューニジヲ");
 	await editor.click(".panel-yomi .btn-primary");
-	await editor.waitForFunction(() =>
-		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
-			.map((e) => e.textContent).join("|") === "シン|ヤ|ジュー|ニ|ジ|ヲ|ス|ギ|タッ|テ",
-		undefined, { timeout: 10000 });
+	await editor.waitForTimeout(300);
+	const mixedUnitsAfterReading = await editor.$$eval(
+		'.editor-line[data-line="1"] .chip-unit',
+		(els) => els.map((e) => e.textContent).join("|"));
+	assert(mixedUnitsAfterReading === "シン|ヤ|ジュー|ニ|ジ|ヲ|ス|ギ|タッ|テ",
+		"複数単語の読み修正後の単位が想定外: " + mixedUnitsAfterReading);
 	const mixedTokenAfter = await editor.evaluate(() => {
 		const tokens = JSON.parse(sessionStorage.getItem("soramimic-editor")).tokensList[1];
 		return {
@@ -415,22 +456,56 @@ try {
 	// 「忘れ」(ワスレ)を選択 → 自動では 忘=ワス/れ=レ。▶で 忘 を1モーラ減らすと
 	// 忘=ワ になり、そのモーラのチップ表層が付け替わること
 	await editor.locator(".chip-unit", { hasText: "ワ" }).first().click();
-	// 読み修正とは独立した詳細を開き、候補範囲を変えずに調整する。
-	await editor.waitForSelector(".editor-panel.open .panel-align-details", { timeout: 10000 });
-	await editor.click(".panel-align-details > summary");
-	await editor.waitForSelector(".editor-panel.open .panel-align", { timeout: 10000 });
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	const alignStateBefore = await editor.evaluate(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return JSON.stringify({ tokens: state.tokensList, history: state.history });
+	});
+	const alignSelectionBefore = await editor.$$eval(".chip-unit.selected",
+		(els) => els.map((e) => e.textContent).join(""));
+	await editor.click(".panel-yomi-toggle");
+	await editor.waitForSelector("#editor-reading-dialog[open] .panel-align", { timeout: 10000 });
 	const alignBefore = await editor.textContent(".panel-align .align-cell");
 	assert(alignBefore.includes("忘") && alignBefore.includes("ワス"),
 		"手動割当の初期表示が想定外: " + alignBefore);
-	// 境界の▶(右の文字へ1モーラ寄せる)を押す
+	// 境界の▶は小窓内の下書きだけを変え、背景や保存データにはまだ反映しない。
 	await editor.locator(".align-boundary .align-arrow").nth(1).click();
 	await editor.waitForFunction(() => {
 		const cell = document.querySelector(".panel-align .align-cell");
 		return cell && cell.textContent.includes("忘") && cell.textContent.includes("ワ") &&
 			!cell.textContent.includes("ワス");
 	}, undefined, { timeout: 10000 });
+	assert(await editor.evaluate(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return JSON.stringify({ tokens: state.tokensList, history: state.history });
+	}) === alignStateBefore, "文字対応の下書きだけで保存データが変わった");
+	assert(await editor.$$eval(".chip-unit.selected",
+		(els) => els.map((e) => e.textContent).join("")) === alignSelectionBefore,
+		"文字対応の下書きだけで背後の選択が変わった");
+	await editor.click("#btn-reading-fix-cancel");
+	assert(await editor.evaluate(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return JSON.stringify({ tokens: state.tokensList, history: state.history });
+	}) === alignStateBefore, "文字対応をキャンセルしても変更が残った");
+
+	// 改めて同じ変更を作り、「変更を適用」で読みと一緒に1履歴として確定する。
+	await editor.click(".panel-yomi-toggle");
+	await editor.locator(".align-boundary .align-arrow").nth(1).click();
+	await editor.click("#btn-reading-fix-apply");
+	await editor.waitForFunction(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		const token = state.tokensList[0].find((t) => t.surface_form === "忘れ");
+		return JSON.stringify(token?.manualAlign) === JSON.stringify([["忘", "ワ"], ["れ", "スレ"]]);
+	}, undefined, { timeout: 10000 });
+	assert(!(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open)) &&
+		await editor.locator(".chip-unit.selected").count() === 0,
+		"文字対応の適用後に小窓または古い選択が残った");
 	await editor.click("#btn-undo"); // 後続テストに影響させないため戻す
-	await editor.waitForTimeout(300);
+	await editor.waitForFunction(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		const token = state.tokensList[0].find((t) => t.surface_form === "忘れ");
+		return token && !token.manualAlign;
+	}, undefined, { timeout: 10000 });
 
 	// ---- 読み修正: コキョー → フルサト ----
 	// 「コ」のユニットをタップ → トークン境界スナップで対象が「故郷」になる

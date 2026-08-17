@@ -122,10 +122,15 @@
           <p id="reading-fix-scope-note" class="panel-yomi-scope-note" role="status" hidden></p>
           <label class="panel-yomi-label" for="reading-fix-input">読み</label>
           <input id="reading-fix-input" class="input" autocomplete="off" />
+          <details id="reading-fix-align-details" class="reading-fix-align-details" hidden>
+            <summary>文字ごとの読み対応を調整</summary>
+            <p class="reading-fix-align-help">矢印で、どの読みをどの文字に対応させるか調整できます。</p>
+            <div id="reading-fix-align"></div>
+          </details>
           <p id="reading-fix-error" class="panel-yomi-note" role="alert"></p>
           <div class="dialog-buttons">
             <button id="btn-reading-fix-cancel" class="btn" type="button">キャンセル</button>
-            <button id="btn-reading-fix-apply" class="btn btn-primary" type="button">読みを更新</button>
+            <button id="btn-reading-fix-apply" class="btn btn-primary" type="button">変更を適用</button>
           </div>
         </div>
       </dialog>

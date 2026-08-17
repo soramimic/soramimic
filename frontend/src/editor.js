@@ -61,8 +61,7 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
-let readingFixContext = null; // 読み修正ダイアログの {line, span}
-let alignEditorOpen = false; // 表層↔モーラの割り当て詳細の開閉
+let readingFixContext = null; // 読み修正ダイアログの下書き {line, span, draftAlign, alignMode}
 let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
@@ -474,7 +473,6 @@ function toggleLock(line, word) {
 function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
-	alignEditorOpen = false;
 	candidateDraft = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
@@ -812,24 +810,25 @@ function tokenSpanForSelection(line, start, end) {
 	};
 }
 
-// 読みを修正し、ユニット列を作り直して後続単語のperiodをずらす。
-// 修正範囲に重なっていた単語は読みが変わるため外す(再選択・再生成で入れ直せる)
-function applyReadingFix(line, span, newYomiRaw) {
+// 読みと文字ごとの対応を正データへ触れずに導出する。ダイアログ内のプレビューと
+// 確定で同じ経路を使い、キャンセル時に履歴や候補を変えない。
+function deriveReadingFix(
+	line, span, newYomiRaw, alignMode = "untouched", draftAlign = null, preview = false) {
 	// 手入力の読みも「ウッセェ」のような小書きカナを吸収してから使う
 	// (単独の小書きは単語リスト側に存在せず、候補0件の行になってしまうため)
 	const kata = absorbSmallKana(hiraToKata(newYomiRaw.trim()));
-	if (kata === "" || !/^[ァ-ヴー]+$/.test(kata)) return false;
-	// derive-before-commit: 正データ(tokensList)を書き換える前に、変更を反映した候補
-	// トークン列を別に作り、そこからユニット導出まで通してから確定する。途中で導出が
-	// 失敗しても正データ・履歴・unitsListを不整合なまま残さない(以前は先にpushHistory＆
-	// pronunciation書き換えをしてから導出していたため、導出が投げるとtokensListだけ
-	// 汚染され、undo/redoでその不整合が保存・再露出していた)。
+	if (kata === "" || !/^[ァ-ヴー]+$/.test(kata)) return null;
 	const tokens = data.tokensList[line].map((t) => Object.assign({}, t));
-	if (span.arrEnd - span.arrStart === 1) {
+	const multipleTokens = span.arrEnd - span.arrStart !== 1;
+	const readingChanged = kata !== span.yomi;
+	// プレビューでは複数tokenを仮に束ね、範囲全体の文字対応を描画する。
+	// 確定時は読みまたは対応が変わる時だけ束ね、無変更の適用では元tokenを保つ。
+	const mergeTokens = multipleTokens &&
+		(preview || readingChanged || alignMode !== "untouched");
+	if (!multipleTokens) {
 		tokens[span.arrStart].pronunciation = kata;
-		// 読みが変わると手動割当は陳腐化するので破棄(自動割当に戻す)
-		delete tokens[span.arrStart].manualAlign;
-	} else {
+		if (readingChanged) delete tokens[span.arrStart].manualAlign;
+	} else if (mergeTokens) {
 		// 複数トークンにまたがる場合は1トークンに束ねて読みを付け直す
 		const merged = Object.assign({}, tokens[span.arrStart], {
 			surface_form: tokens.slice(span.arrStart, span.arrEnd)
@@ -839,6 +838,12 @@ function applyReadingFix(line, span, newYomiRaw) {
 		delete merged.manualAlign; // 束ね直したので旧割当は破棄
 		tokens.splice(span.arrStart, span.arrEnd - span.arrStart, merged);
 	}
+	// 複数トークンも直前で1つに束ね済みなので、同じarrStartへ対応を保存できる。
+	if (alignMode === "set") {
+		tokens[span.arrStart].manualAlign = draftAlign.map((pair) => pair.slice());
+	} else if (alignMode === "reset") {
+		delete tokens[span.arrStart].manualAlign;
+	}
 	// 編集後のトークンからユニット列を導出し直す(tokensListを唯一の正とし、
 	// 生成時と同じ関数で導出するので表示と再生成が一致する)。
 	let derived;
@@ -846,7 +851,7 @@ function applyReadingFix(line, span, newYomiRaw) {
 		derived = app.textAnalyzer.getYomiAndPhraseBreak(tokens);
 	} catch (e) {
 		console.error("applyReadingFix: 読みの導出に失敗したため変更を中止しました", e);
-		return false;
+		return null;
 	}
 	const newUnits = derived.map((u) => ({
 		surface_form: u.surface_form,
@@ -858,29 +863,73 @@ function applyReadingFix(line, span, newYomiRaw) {
 	const newSpanEnd = newUnits.length - unitsAfter;
 	// 有効な読みを入力したのに対象範囲のユニットが消えるのは導出失敗。
 	// 空の選択と候補ゼロ件を正データへ保存せず、入力フォームに留める。
-	if (newSpanEnd <= span.unitStart) return false;
+	if (newSpanEnd <= span.unitStart) return null;
+	return {
+		tokens, newUnits, newSpanEnd, readingChanged,
+		changed: readingChanged || alignMode !== "untouched",
+	};
+}
+
+// 読みと文字ごとの対応を一度に確定する。読みが変わった時だけ、重なっていた
+// 替え歌候補を外して後続periodをずらす。対応だけの変更では候補を維持する。
+function applyReadingFix(line, span, newYomiRaw, alignMode = "untouched", draftAlign = null) {
+	const draft = deriveReadingFix(line, span, newYomiRaw, alignMode, draftAlign);
+	if (!draft) return false;
+	const { tokens, newUnits, newSpanEnd, readingChanged, changed } = draft;
+	if (!changed) return true;
 	// ここから確定: 履歴を積んでから正データ(tokensList)を差し替える
 	pushHistory();
 	markDirty(line);
 	data.tokensList[line] = tokens;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
-	data.results[line] = (data.results[line] || [])
-		.filter((w) => w.period[1] <= span.unitStart || w.period[0] >= span.unitEnd)
-		.map((w) => w.period[0] >= span.unitEnd
-			? Object.assign({}, w, { period: [w.period[0] + delta, w.period[1] + delta] })
-			: w);
+	if (readingChanged) {
+		data.results[line] = (data.results[line] || [])
+			.filter((w) => w.period[1] <= span.unitStart || w.period[0] >= span.unitEnd)
+			.map((w) => w.period[0] >= span.unitEnd
+				? Object.assign({}, w, { period: [w.period[0] + delta, w.period[1] + delta] })
+				: w);
+	}
 	saveData();
 	return true;
 }
 
 // 読み修正は候補選択と別の作業として扱う。小窓を開いている間は背後の
 // selection・候補・未確定ドラフトを一切変更しない。
+function refreshReadingFixAlign(resetForReading = false) {
+	const details = $id("reading-fix-align-details");
+	const container = $id("reading-fix-align");
+	container.textContent = "";
+	if (!readingFixContext) {
+		details.hidden = true;
+		return;
+	}
+	if (resetForReading) {
+		readingFixContext.alignMode = "untouched";
+		readingFixContext.draftAlign = null;
+	}
+	const { line, span, alignMode, draftAlign } = readingFixContext;
+	const draft = deriveReadingFix(
+		line, span, $id("reading-fix-input").value, alignMode, draftAlign, true);
+	const model = draft ? alignModel(line, span.arrStart, draft.tokens) : null;
+	if (!model) {
+		details.hidden = true;
+		return;
+	}
+	details.hidden = false;
+	details.open = true;
+	container.appendChild(buildAlignEditor(model, (align) => {
+		readingFixContext.alignMode = align ? "set" : "reset";
+		readingFixContext.draftAlign = align;
+		refreshReadingFixAlign();
+	}));
+}
+
 function openReadingFixDialog(line, start, end, span) {
 	const dialog = $id("editor-reading-dialog");
 	const selectedSurface = rangeSurface(line, start, end);
 	const expanded = span.unitStart !== start || span.unitEnd !== end;
-	readingFixContext = { line, span };
+	readingFixContext = { line, span, alignMode: "untouched", draftAlign: null };
 	$id("reading-fix-target").textContent = `「${span.surface}」の読み`;
 	$id("reading-fix-input").value = span.yomi;
 	$id("reading-fix-error").textContent = "";
@@ -890,14 +939,16 @@ function openReadingFixDialog(line, start, end, span) {
 		? `読みは元歌詞の単語区切りごとに修正するため、選んだ「${selectedSurface}」を含む` +
 			`「${span.surface}」全体を編集します。`
 		: "";
+	refreshReadingFixAlign();
 	dialog.showModal();
 	focusReadingInput($id("reading-fix-input"), dialog);
 }
 
 function applyReadingFixFromDialog() {
 	if (!readingFixContext) return;
-	const { line, span } = readingFixContext;
-	if (!applyReadingFix(line, span, $id("reading-fix-input").value)) {
+	const { line, span, alignMode, draftAlign } = readingFixContext;
+	if (!applyReadingFix(
+		line, span, $id("reading-fix-input").value, alignMode, draftAlign)) {
 		$id("reading-fix-error").textContent = "かなで入力してください";
 		return;
 	}
@@ -922,10 +973,16 @@ function setupReadingFixDialog() {
 			applyReadingFixFromDialog();
 		}
 	});
+	input.addEventListener("input", (e) => {
+		if (!e.isComposing) refreshReadingFixAlign(true);
+	});
+	input.addEventListener("compositionend", () => refreshReadingFixAlign(true));
 	dialog.addEventListener("close", () => {
 		readingInputLayoutCleanup?.();
 		readingFixContext = null;
 		$id("reading-fix-error").textContent = "";
+		$id("reading-fix-align").textContent = "";
+		$id("reading-fix-align-details").hidden = true;
 	});
 	// バックドロップのクリックはキャンセル扱い。ダイアログ内の余白では閉じない。
 	dialog.addEventListener("click", (e) => {
@@ -971,35 +1028,6 @@ function renderPanel() {
 }
 
 // ---- 表層↔モーラの手動割当 ----
-
-// トークンの手動割当を設定/解除し、ユニット列を導出し直す。
-// 割当はモーラ数を変えない(表層の帰属だけ変える)ので period はそのまま。
-function applyManualAlign(line, arrIndex, align) {
-	// applyReadingFix と同じ derive-before-commit。正データを書き換える前にコピー上で
-	// ユニット導出まで通し、途中で投げても tokensList / unitsList / 履歴を不整合に
-	// しない。
-	const tokens = data.tokensList[line].map((t) => Object.assign({}, t));
-	if (align) tokens[arrIndex].manualAlign = align;
-	else delete tokens[arrIndex].manualAlign;
-	let derived;
-	try {
-		derived = app.textAnalyzer.getYomiAndPhraseBreak(tokens);
-	} catch (e) {
-		console.error("applyManualAlign: 読みの導出に失敗したため変更を中止しました", e);
-		return;
-	}
-	pushHistory();
-	markDirty(line);
-	data.tokensList[line] = tokens;
-	data.unitsList[line] = derived.map((u) => ({
-		surface_form: u.surface_form,
-		pronunciation: u.pronunciation,
-		phrase: u.phrase,
-	}));
-	saveData();
-	rerenderLine(line);
-	renderPanel();
-}
 
 // 手動割当[[表層,読み],...]から、各表層文字が持つモーラ数(counts)を復元する。
 // atoms はトークンのモーラ列。整合しなければ null。
@@ -1051,8 +1079,7 @@ function countsFromAtoms(scChars, atoms) {
 // 割当エディタの対象かを判定し、対象なら描画に要る材料を返す。
 // 対象外(かな語・表層1文字・モーラ数不足)なら null。renderPanel から呼ばれるため、
 // 導出が投げてもパネル全体を巻き込まないよう握りつぶして「対象外」に倒す。
-function alignModel(line, arrIndex) {
-	const tokens = data.tokensList[line];
+function alignModel(line, arrIndex, tokens = data.tokensList[line]) {
 	const tok = tokens[arrIndex];
 	const scChars = [...(tok.surface_form || "")];
 	if (scChars.length < 2) return null;
@@ -1079,7 +1106,7 @@ function alignModel(line, arrIndex) {
 }
 
 // 表層文字ごとの割当を◀▶で調整するパネル本体。model は alignModel の結果。
-function buildAlignEditor(line, arrIndex, model) {
+function buildAlignEditor(model, onChange) {
 	const { tok, scChars, atoms, counts } = model;
 
 	const buildAlign = (cs) => {
@@ -1096,7 +1123,7 @@ function buildAlignEditor(line, arrIndex, model) {
 		if (dir === -1 && cs[b + 1] > 1) { cs[b] += 1; cs[b + 1] -= 1; }
 		else if (dir === 1 && cs[b] > 1) { cs[b] -= 1; cs[b + 1] += 1; }
 		else return;
-		applyManualAlign(line, arrIndex, buildAlign(cs));
+		onChange(buildAlign(cs));
 	};
 
 	const box = document.createElement("div");
@@ -1115,13 +1142,17 @@ function buildAlignEditor(line, arrIndex, model) {
 			ctrl.className = "align-boundary";
 			const left = document.createElement("button");
 			left.className = "btn align-arrow";
+			left.type = "button";
 			left.textContent = "◀";
 			left.title = "左の文字へ1モーラ寄せる";
+			left.setAttribute("aria-label", `${scChars[i - 1]}へ読みを1つ移す`);
 			left.addEventListener("click", () => moveBoundary(i - 1, -1));
 			const right = document.createElement("button");
 			right.className = "btn align-arrow";
+			right.type = "button";
 			right.textContent = "▶";
 			right.title = "右の文字へ1モーラ寄せる";
+			right.setAttribute("aria-label", `${scChars[i]}へ読みを1つ移す`);
 			right.addEventListener("click", () => moveBoundary(i - 1, 1));
 			ctrl.append(left, right);
 			row.appendChild(ctrl);
@@ -1142,8 +1173,9 @@ function buildAlignEditor(line, arrIndex, model) {
 	if (tok.manualAlign) {
 		const reset = document.createElement("button");
 		reset.className = "btn align-reset";
+		reset.type = "button";
 		reset.textContent = "自動に戻す";
-		reset.addEventListener("click", () => applyManualAlign(line, arrIndex, null));
+		reset.addEventListener("click", () => onChange(null));
 		box.appendChild(reset);
 	}
 	return box;
@@ -1358,24 +1390,6 @@ function buildPanel() {
 	headerActions.appendChild(close);
 	header.appendChild(headerActions);
 	panel.appendChild(header);
-
-	// 表層↔モーラの割り当ては読み修正と別操作として残す。候補選択を変えず、
-	// 必要な人だけ詳細を開けるようにする。
-	if (span && span.arrEnd - span.arrStart === 1) {
-		const model = alignModel(line, span.arrStart);
-		if (model) {
-			const details = document.createElement("details");
-			details.className = "panel-align-details";
-			details.open = alignEditorOpen;
-			const summary = document.createElement("summary");
-			summary.textContent = "表層の割り当てを調整";
-			details.append(summary, buildAlignEditor(line, span.arrStart, model));
-			details.addEventListener("toggle", () => {
-				alignEditorOpen = details.open;
-			});
-			panel.appendChild(details);
-		}
-	}
 
 	if (!db) {
 		const note = document.createElement("p");
