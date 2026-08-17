@@ -82,18 +82,27 @@ try {
 
 	const cdp = await context.newCDPSession(editor);
 
-	// iPhoneでは「読みを修正」を開いただけで入力欄へフォーカスせず、Safariの
-	// キーボードと入力アシスタントを勝手に表示しない。欄を直接タップすれば入力できる。
+	// iPhoneでも「読みを修正」を開くと入力欄へ自動フォーカスする。
+	// 実機ではvisualViewportに合わせてパネルを持ち上げ、入力欄への重なりを防ぐ。
 	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
 	await editor.locator(".panel-yomi-toggle").tap();
 	assert(await editor.locator(".panel-yomi .input").count() === 1,
 		"読み修正の入力欄が表示されない");
-	assert(!await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
-		"iPhoneで読み修正を開いただけなのに入力欄へフォーカスされた");
-	await editor.locator(".panel-yomi .input").tap();
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
-		"iPhoneで読み入力欄を直接タップしてもフォーカスされない");
+		"iPhoneで読み修正を開いても入力欄へ自動フォーカスされない");
+	const panelViewportPosition = await editor.evaluate(() => {
+		const viewport = window.visualViewport;
+		const expected = Math.max(
+			0, window.innerHeight - viewport.height - viewport.offsetTop);
+		return {
+			actual: document.getElementById("editor-panel").style.bottom,
+			expected: `${expected}px`,
+		};
+	});
+	assert(panelViewportPosition.actual === panelViewportPosition.expected,
+		"iPhoneの表示領域に合わせてパネル位置が調整されない: " +
+		JSON.stringify(panelViewportPosition));
 	await editor.locator(".panel-close").tap();
 	await editor.waitForFunction(() =>
 		!document.getElementById("editor-panel").classList.contains("open"));
