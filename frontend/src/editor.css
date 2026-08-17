@@ -573,6 +573,12 @@
 }
 
 @media (max-width: 640px) {
+	.reading-fix-dialog {
+		/* 内容の開閉で高さが変わっても、中央基準で上下に跳ねないよう上端を固定する。 */
+		margin-block-start: max(1rem, env(safe-area-inset-top));
+		margin-block-end: auto;
+	}
+
 	.panel-source-row {
 		grid-template-columns: 7rem minmax(0, auto) auto;
 	}
