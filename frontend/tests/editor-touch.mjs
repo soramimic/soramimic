@@ -107,11 +107,11 @@ try {
 	await editor.waitForFunction(() =>
 		!document.getElementById("editor-panel").classList.contains("open"));
 
-	// 固定チェックは3行目を増やさず、指で直接切り替えられる大きさにする
+	// 固定アイコンは3行目を増やさず、指で直接切り替えられる大きさにする
 	const firstLock = editor.locator(".chip-word:not(.filler) .chip-lock").first();
 	const lockBox = await firstLock.boundingBox();
 	assert(lockBox && lockBox.width >= 28 && lockBox.height >= 28,
-		`固定チェックがタッチには小さい: ${lockBox?.width}x${lockBox?.height}`);
+		`固定アイコンがタッチには小さい: ${lockBox?.width}x${lockBox?.height}`);
 	const lockInput = firstLock.locator(".chip-lock-input");
 	const initiallyLocked = await lockInput.isChecked();
 	await editor.touchscreen.tap(lockBox.x + lockBox.width / 2, lockBox.y + lockBox.height / 2);
@@ -119,7 +119,7 @@ try {
 		document.querySelector(".chip-word:not(.filler) .chip-lock-input")?.checked === expected,
 		!initiallyLocked, { timeout: 5000 });
 	assert(!await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
-		"固定チェックのタップで候補パネルが開いた");
+		"固定アイコンのタップで候補パネルが開いた");
 	const toggledLock = await editor.locator(".chip-word:not(.filler) .chip-lock").first().boundingBox();
 	await editor.touchscreen.tap(
 		toggledLock.x + toggledLock.width / 2,

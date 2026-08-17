@@ -97,7 +97,7 @@ try {
 	assert(wordTitle && wordTitle.includes("→") && wordTitle.includes("ID:"),
 		"替え歌単語チップの詳細が想定外: " + wordTitle);
 
-	// 固定操作は3行目を増やさず、単語と同じ行のチェックで完結する
+	// 固定操作は3行目を増やさず、単語と同じ行の鍵アイコンで完結する
 	const firstWord = editor.locator(".chip-word:not(.filler)").first();
 	assert(await firstWord.locator(":scope > .chip-word-main + .chip-word-kana").count() === 1,
 		"単語チップが表記／読みの2行構造になっていない");
@@ -114,18 +114,28 @@ try {
 		"表記と読みが2段に並んでいない: " + JSON.stringify(chipRows));
 	assert(chipRows.lockCenter >= chipRows.surfaceTop - 2 &&
 		chipRows.lockCenter <= chipRows.surfaceBottom + 2,
-		"固定チェックが3段目に配置されている: " + JSON.stringify(chipRows));
+		"固定アイコンが3段目に配置されている: " + JSON.stringify(chipRows));
 	const firstLock = firstWord.locator(".chip-lock-input");
 	const initiallyLocked = await firstLock.isChecked();
+	const iconState = () => firstWord.evaluate((el) => ({
+		open: getComputedStyle(el.querySelector(".chip-lock-icon-open")).display !== "none",
+		closed: getComputedStyle(el.querySelector(".chip-lock-icon-closed")).display !== "none",
+	}));
+	const iconBefore = await iconState();
+	assert(iconBefore.open === !initiallyLocked && iconBefore.closed === initiallyLocked,
+		"固定状態と鍵アイコンが一致しない: " + JSON.stringify(iconBefore));
 	await firstLock.click();
 	assert(await firstWord.locator(".chip-lock-input").isChecked() === !initiallyLocked,
-		"チェックで固定状態を切り替えられない");
+		"鍵アイコンで固定状態を切り替えられない");
+	const iconAfter = await iconState();
+	assert(iconAfter.open === initiallyLocked && iconAfter.closed === !initiallyLocked,
+		"固定切り替え後に鍵の形が変わらない: " + JSON.stringify(iconAfter));
 	assert(await firstWord.evaluate((el) => el.classList.contains("locked")) === !initiallyLocked,
-		"チェックと固定中の見た目が一致しない");
+		"鍵アイコンと固定中の見た目が一致しない");
 	assert(await firstWord.locator(".chip-lock-input").evaluate((el) => el === document.activeElement),
-		"固定切り替え後にチェックからフォーカスが失われた");
+		"固定切り替え後に鍵アイコンからフォーカスが失われた");
 	assert(!(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open"))),
-		"固定チェックの押下で候補パネルが開いた");
+		"鍵アイコンの押下で候補パネルが開いた");
 	await firstWord.locator(".chip-lock-input").click(); // 初期状態へ戻す
 
 	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
@@ -261,7 +271,7 @@ try {
 	await editor.click(".panel-candidates .candidate");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	assert(await editor.isChecked(".chip-word.locked .chip-lock-input"),
-		"差し替え後の自動固定がチェックに反映されない");
+		"差し替え後の自動固定が鍵アイコンに反映されない");
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`差し替えた単語がチップに反映されていない: 候補=${candSurface} チップ=${lockedSurface}`);
