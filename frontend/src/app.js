@@ -67,8 +67,6 @@ export async function startApp() {
 	const originalText = $id("original-text");
 	const originalStatus = $id("original-status");
 	const originalFile = $id("original-file");
-	const customWordlistActions = $id("custom-wordlist-actions");
-	const btnCustomWordlistEdit = $id("btn-custom-wordlist-edit");
 
 	// 生成画面の状態は sessionStorage に保持し、編集ツール等から戻ってきても
 	// 入力・結果が消えないようにする。歌詞は初期化を待たずここで復元する
@@ -236,7 +234,7 @@ export async function startApp() {
 
 	// ボタン・プルダウンをまたいで選択状態を排他にする
 	function setWordlistControl(activeEl) {
-		for (const b of wordlistButtons.querySelectorAll("button")) {
+		for (const b of wordlistButtons.querySelectorAll("button[data-value]")) {
 			b.classList.toggle("active", b === activeEl);
 		}
 		for (const s of wordlistSelects) {
@@ -247,6 +245,17 @@ export async function startApp() {
 				s.capEl.hidden = true;
 			}
 			s.wrap.classList.toggle("active", isActive);
+		}
+		if (customTrigger) {
+			const isCustomActive = customTrigger === activeEl;
+			customTrigger.classList.toggle("active", isCustomActive);
+			if (!isCustomActive) {
+				customTextEl.textContent = "自作リスト";
+				customCapEl.hidden = true;
+				for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+					item.setAttribute("aria-checked", "false");
+				}
+			}
 		}
 	}
 
@@ -307,7 +316,6 @@ export async function startApp() {
 			capEl.hidden = false;
 			selectedWordlist = opt.__config;
 			renderFacets(selectedWordlist);
-			customWordlistActions.hidden = true;
 			saveMainState();
 		});
 		wrap.append(capEl, textEl, sel);
@@ -315,7 +323,7 @@ export async function startApp() {
 		wordlistSelects.push({ sel, wrap, textEl, capEl, label: item.label });
 	}
 
-	// 自作リストは名前付きで複数保存し、既存のグループ型UIと同じselectから選ぶ。
+	// 自作リストは名前付きで複数保存し、行ごとに選択・編集・削除できるメニューから選ぶ。
 	// 保存本文はentryにもスナップショットとして持たせ、変換・編集ツールが
 	// localStorageの「現在値」に依存しないようにする。
 	const customRepository = createCustomWordlistRepository(localStorage);
@@ -329,24 +337,28 @@ export async function startApp() {
 	}
 	const defaultWordlist = selectedWordlist;
 	const customWrap = document.createElement("span");
-	customWrap.className = "btn wordlist-select-wrap";
+	customWrap.className = "custom-wordlist-picker";
+	const customTrigger = document.createElement("button");
+	customTrigger.type = "button";
+	customTrigger.className = "btn custom-wordlist-trigger";
+	customTrigger.setAttribute("aria-haspopup", "menu");
+	customTrigger.setAttribute("aria-expanded", "false");
+	customTrigger.setAttribute("aria-controls", "custom-wordlist-menu");
 	const customCapEl = document.createElement("span");
 	customCapEl.className = "wordlist-select-caption";
 	customCapEl.textContent = "自作";
 	customCapEl.hidden = true;
 	const customTextEl = document.createElement("span");
 	customTextEl.textContent = "自作リスト";
-	const customSelect = document.createElement("select");
-	customSelect.setAttribute("aria-label", "自作リスト");
-	customWrap.append(customCapEl, customTextEl, customSelect);
+	const customMenu = document.createElement("div");
+	customMenu.id = "custom-wordlist-menu";
+	customMenu.className = "custom-wordlist-menu";
+	customMenu.setAttribute("role", "menu");
+	customMenu.setAttribute("aria-label", "自作リスト");
+	customMenu.hidden = true;
+	customTrigger.append(customCapEl, customTextEl);
+	customWrap.append(customTrigger, customMenu);
 	wordlistButtons.appendChild(customWrap);
-	// 選択中リストの管理導線は、設定欄の下に離して置くと見落としやすい。
-	// 自作リストのピッカー直後へ移し、「編集・削除」が同じ操作だと示す。
-	wordlistButtons.appendChild(customWordlistActions);
-	wordlistSelects.push({
-		sel: customSelect, wrap: customWrap, textEl: customTextEl,
-		capEl: customCapEl, label: "自作リスト",
-	});
 
 	function customEntry(list) {
 		return {
@@ -358,38 +370,168 @@ export async function startApp() {
 		};
 	}
 
+	function customMenuIcon(type) {
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.classList.add("custom-wordlist-menu-icon");
+		svg.setAttribute("viewBox", "0 0 24 24");
+		svg.setAttribute("aria-hidden", "true");
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", type === "edit"
+			? "M4 20h4L19 9l-4-4L4 16v4zm10-13 4 4M4 20l4-1"
+			: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5");
+		path.setAttribute("fill", "none");
+		path.setAttribute("stroke", "currentColor");
+		path.setAttribute("stroke-width", "1.8");
+		path.setAttribute("stroke-linecap", "round");
+		path.setAttribute("stroke-linejoin", "round");
+		svg.appendChild(path);
+		return svg;
+	}
+
 	function renderCustomOptions() {
 		for (const value of [...wordlistByValue.keys()]) {
 			if (customWordlistId(value)) wordlistByValue.delete(value);
 		}
-		customSelect.replaceChildren();
-		const group = document.createElement("optgroup");
-		group.label = "保存済み";
+		customMenu.replaceChildren();
+		const selectedValue = selectedWordlist && selectedWordlist.value;
 		for (const list of customLists) {
 			const entry = customEntry(list);
-			const opt = document.createElement("option");
-			opt.value = entry.value;
-			opt.textContent = entry.text;
-			opt.__config = entry;
-			group.appendChild(opt);
+			const row = document.createElement("div");
+			row.className = "custom-wordlist-menu-row";
+			const choose = document.createElement("button");
+			choose.type = "button";
+			choose.className = "custom-wordlist-menu-select";
+			choose.setAttribute("role", "menuitemradio");
+			choose.setAttribute("aria-label", entry.text);
+			choose.setAttribute("aria-checked", String(entry.value === selectedValue));
+			choose.textContent = entry.text;
+			choose.__config = entry;
+			choose.addEventListener("click", (event) => {
+				event.stopPropagation();
+				const found = wordlistByValue.get(entry.value);
+				if (!found) return;
+				found.activate();
+				selectedWordlist = found.entry;
+				renderFacets(selectedWordlist);
+				closeCustomMenu();
+				saveMainState();
+			});
+			const edit = document.createElement("button");
+			edit.type = "button";
+			edit.className = "custom-wordlist-menu-action";
+			edit.setAttribute("role", "menuitem");
+			edit.setAttribute("aria-label", `「${list.name}」を編集`);
+			edit.appendChild(customMenuIcon("edit"));
+			edit.addEventListener("click", (event) => {
+				event.stopPropagation();
+				closeCustomMenu(false);
+				openOriginalDialog(list);
+			});
+			const remove = document.createElement("button");
+			remove.type = "button";
+			remove.className = "custom-wordlist-menu-action custom-wordlist-menu-delete";
+			remove.setAttribute("role", "menuitem");
+			remove.setAttribute("aria-label", `「${list.name}」を削除`);
+			remove.appendChild(customMenuIcon("delete"));
+			remove.addEventListener("click", (event) => {
+				event.stopPropagation();
+				if (deleteCustomWordlist(list)) closeCustomMenu();
+			});
+			row.append(choose, edit, remove);
+			customMenu.appendChild(row);
 			wordlistByValue.set(entry.value, {
 				entry,
 				activate: () => {
-					customSelect.value = entry.value;
-					setWordlistControl(customSelect);
+					setWordlistControl(customTrigger);
 					customTextEl.textContent = entry.text;
 					customCapEl.hidden = false;
+					for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+						item.setAttribute("aria-checked", String(item.__config.value === entry.value));
+					}
 				},
 			});
 		}
-		if (customLists.length > 0) customSelect.appendChild(group);
-		const add = document.createElement("option");
-		add.value = "__NEW_CUSTOM_WORDLIST__";
+		const add = document.createElement("button");
+		add.type = "button";
+		add.className = "custom-wordlist-menu-new";
+		add.setAttribute("role", "menuitem");
 		add.textContent = "＋ 新しいリスト";
-		customSelect.appendChild(add);
-		customSelect.selectedIndex = -1;
+		add.addEventListener("click", (event) => {
+			event.stopPropagation();
+			closeCustomMenu(false);
+			openOriginalDialog();
+		});
+		customMenu.appendChild(add);
+		positionCustomMenu();
 	}
 	renderCustomOptions();
+
+	function positionCustomMenu() {
+		if (customMenu.hidden) return;
+		const triggerRect = customTrigger.getBoundingClientRect();
+		const gutter = 8;
+		const width = Math.min(352, window.innerWidth - gutter * 2);
+		customMenu.style.width = `${width}px`;
+		customMenu.style.left = `${Math.max(gutter, Math.min(
+			triggerRect.left, window.innerWidth - width - gutter))}px`;
+		const below = triggerRect.bottom + 4;
+		const above = triggerRect.top - customMenu.offsetHeight - 4;
+		customMenu.style.top = `${Math.max(gutter, below + customMenu.offsetHeight <= window.innerHeight - gutter
+			? below : above)}px`;
+	}
+
+	function closeCustomMenu(focusTrigger = true) {
+		if (customMenu.hidden) return;
+		customMenu.hidden = true;
+		customTrigger.setAttribute("aria-expanded", "false");
+		if (focusTrigger) customTrigger.focus();
+	}
+
+	function openCustomMenu({ focus = true, last = false } = {}) {
+		customMenu.hidden = false;
+		customTrigger.setAttribute("aria-expanded", "true");
+		positionCustomMenu();
+		if (!focus) return;
+		const items = [...customMenu.querySelectorAll("button")];
+		const checked = customMenu.querySelector("[role='menuitemradio'][aria-checked='true']");
+		(last ? items.at(-1) : checked || items[0])?.focus();
+	}
+
+	customTrigger.addEventListener("click", (event) => {
+		event.stopPropagation();
+		if (customMenu.hidden) openCustomMenu();
+		else closeCustomMenu();
+	});
+	customTrigger.addEventListener("keydown", (event) => {
+		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+		event.preventDefault();
+		if (customMenu.hidden) openCustomMenu({ last: event.key === "ArrowUp" });
+	});
+	customMenu.addEventListener("keydown", (event) => {
+		const items = [...customMenu.querySelectorAll("button")];
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeCustomMenu();
+			return;
+		}
+		if (event.key === "Tab") {
+			closeCustomMenu(false);
+			return;
+		}
+		let index = items.indexOf(document.activeElement);
+		if (event.key === "ArrowDown") index = (index + 1) % items.length;
+		else if (event.key === "ArrowUp") index = (index - 1 + items.length) % items.length;
+		else if (event.key === "Home") index = 0;
+		else if (event.key === "End") index = items.length - 1;
+		else return;
+		event.preventDefault();
+		items[index]?.focus();
+	});
+	document.addEventListener("click", (event) => {
+		if (!customMenu.hidden && !customWrap.contains(event.target)) closeCustomMenu(false);
+	});
+	window.addEventListener("resize", positionCustomMenu);
+	window.addEventListener("scroll", positionCustomMenu, true);
 	// 旧版で変換済みの結果をsessionStorageから復元する場合、選択値だけでなく
 	// 編集ツールへ渡す変換時リストも移行する。旧キーは新形式保存後に消えるため、
 	// ここを直さないと「編集ツールで開く」で候補DBが空になる。
@@ -406,10 +548,12 @@ export async function startApp() {
 	const compileWhere = (entry) => compileWhereIn(wordlistFacets, entry);
 
 	setupButtonGroup(wordlistButtons, (btn) => {
+		// 自作メニュー内のbuttonは個別ハンドラで伝播を止める。このガードも残し、
+		// 通常リスト用の委譲が将来メニュー操作を選択として扱わないようにする。
+		if (!btn.__config) return;
 		setWordlistControl(btn); // プルダウン側の選択も解除する
 		selectedWordlist = btn.__config;
 		renderFacets(selectedWordlist);
-		customWordlistActions.hidden = true;
 		saveMainState();
 	});
 	renderFacets(selectedWordlist);
@@ -438,30 +582,6 @@ export async function startApp() {
 		const found = selectedWordlist && wordlistByValue.get(selectedWordlist.value);
 		if (found) found.activate();
 	}
-
-	customSelect.addEventListener("change", () => {
-		if (customSelect.value === "__NEW_CUSTOM_WORDLIST__") {
-			customSelect.selectedIndex = -1;
-			restoreSelectedWordlistControl();
-			openOriginalDialog();
-			return;
-		}
-		const found = wordlistByValue.get(customSelect.value);
-		if (!found) return;
-		found.activate();
-		selectedWordlist = found.entry;
-		renderFacets(selectedWordlist);
-		customWordlistActions.hidden = false;
-		saveMainState();
-	});
-
-	btnCustomWordlistEdit.addEventListener("click", (event) => {
-		// wordlistButtons 内へ配置しているため、通常リスト用の委譲clickを止める。
-		event.stopPropagation();
-		const id = customWordlistId(selectedWordlist && selectedWordlist.value);
-		const list = id && customLists.find((item) => item.id === id);
-		if (list) openOriginalDialog(list);
-	});
 
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
 	const originalDropzone = $id("btn-original-file");
@@ -531,6 +651,8 @@ export async function startApp() {
 			return;
 		}
 		try {
+			const selectedValueBeforeSave = selectedWordlist && selectedWordlist.value;
+			const wasCreating = !editingCustomId;
 			const saved = editingCustomId
 				? customRepository.update(editingCustomId, { name, text }, {
 					expectedUpdatedAt: editingCustomUpdatedAt,
@@ -539,11 +661,14 @@ export async function startApp() {
 			customLoadError = null;
 			customLists = customRepository.list();
 			renderCustomOptions();
-			const found = wordlistByValue.get(customWordlistValue(saved.id));
-			found.activate();
-			selectedWordlist = found.entry;
+			const valueToRestore = wasCreating || selectedValueBeforeSave === customWordlistValue(saved.id)
+				? customWordlistValue(saved.id) : selectedValueBeforeSave;
+			const found = wordlistByValue.get(valueToRestore);
+			if (found) {
+				found.activate();
+				selectedWordlist = found.entry;
+			}
 			renderFacets(selectedWordlist);
-			customWordlistActions.hidden = false;
 			saveMainState();
 			track("wordlist_original", { action: editingCustomId ? "update" : "create" });
 			originalDialog.close();
@@ -553,9 +678,8 @@ export async function startApp() {
 		}
 	});
 
-	$id("original-delete").addEventListener("click", () => {
-		const list = customLists.find((item) => item.id === editingCustomId);
-		if (!list || !confirm(`「${list.name}」を削除しますか？`)) return;
+	function deleteCustomWordlist(list) {
+		if (!list || !confirm(`「${list.name}」を削除しますか？`)) return false;
 		try {
 			customRepository.remove(list.id);
 			customLists = customRepository.list();
@@ -566,15 +690,22 @@ export async function startApp() {
 				if (fallback) fallback.activate();
 				selectedWordlist = defaultWordlist;
 				renderFacets(selectedWordlist);
-				customWordlistActions.hidden = true;
 				saveMainState();
+			} else {
+				restoreSelectedWordlistControl();
 			}
 			track("wordlist_original", { action: "delete" });
-			originalDialog.close();
+			return true;
 		} catch (err) {
 			console.warn("自作リストの削除に失敗:", err);
 			showOriginalStatus("削除できませんでした: " + err.message);
+			return false;
 		}
+	}
+
+	$id("original-delete").addEventListener("click", () => {
+		const list = customLists.find((item) => item.id === editingCustomId);
+		if (deleteCustomWordlist(list)) originalDialog.close();
 	});
 
 	// 別タブでの作成・更新・削除を一覧へ反映する。編集中のtextareaは上書きせず、
@@ -593,7 +724,6 @@ export async function startApp() {
 				const fallback = wordlistByValue.get(defaultWordlist.value);
 				if (fallback) fallback.activate();
 				selectedWordlist = defaultWordlist;
-				customWordlistActions.hidden = true;
 				renderFacets(selectedWordlist);
 				saveMainState();
 			}
@@ -616,7 +746,6 @@ export async function startApp() {
 			found.activate();
 			selectedWordlist = found.entry;
 			renderFacets(selectedWordlist);
-			customWordlistActions.hidden = !customWordlistId(selectedWordlist.value);
 		}
 		inputText.value = await fetchText(btn.dataset.path);
 		saveMainState();
@@ -801,7 +930,6 @@ export async function startApp() {
 				found.activate();
 				selectedWordlist = found.entry;
 				renderFacets(selectedWordlist);
-				customWordlistActions.hidden = !customWordlistId(selectedWordlist.value);
 			}
 		}
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
