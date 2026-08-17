@@ -170,12 +170,20 @@
       </dialog>
 
       <dialog id="original-dialog">
-        <h2>単語リストの登録</h2>
+        <h2 id="original-dialog-title">自作単語リストの保存</h2>
+        <label class="custom-wordlist-name">
+          <span>リスト名</span>
+          <input id="original-name" class="input" type="text" maxlength="100"
+            placeholder="例: 歴代レスラー" autocomplete="off" />
+        </label>
         <textarea id="original-text" class="input" rows="16"
           placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます"></textarea>
-        <div class="dialog-buttons">
+        <p id="original-status" class="custom-wordlist-status" role="status" hidden></p>
+        <div class="dialog-buttons custom-wordlist-dialog-buttons">
+          <button id="original-delete" class="btn btn-danger" type="button" hidden>削除</button>
+          <span class="dialog-button-spacer"></span>
           <button id="original-cancel" class="btn">キャンセル</button>
-          <button id="original-register" class="btn btn-primary">登録</button>
+          <button id="original-register" class="btn btn-primary">保存して使用</button>
         </div>
       </dialog>
     </div>

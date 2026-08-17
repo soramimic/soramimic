@@ -34,6 +34,8 @@ jobs:
         run: node tests/small-kana.mjs
       - name: ユニット位置別の重み付きスコアリングのテスト
         run: node tests/unit-weights.mjs
+      - name: 名前付き自作リスト保存・旧データ移行のテスト
+        run: node tests/custom-wordlists.mjs
       - name: XF MIDI取り込みのテスト
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
