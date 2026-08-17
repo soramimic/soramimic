@@ -67,6 +67,11 @@ function $id(id) {
 	return document.getElementById(id);
 }
 
+function isIOSDevice() {
+	return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 // videoのapp shell内に埋め込まれたときだけ、ブランドを親画面へ戻る導線にする。
 // 単体のeditor.htmlではHTMLの href="./" を変更せず、従来どおり生成画面へ戻る。
 function setupEmbedNavigation() {
@@ -1064,9 +1069,13 @@ function buildPanel() {
 				readingFixOpen = true;
 				rerenderLine(line); // 読みが変わるトークン範囲をチップ側にも反映
 				renderPanel();
-				// renderPanelで作り直した読み入力欄へ、クリック操作の中で直接フォーカスする。
-				// モバイルでもソフトウェアキーボードを開き、そのまま修正を始められる。
-				$id("editor-panel").querySelector(".panel-yomi .input")?.focus({ preventScroll: true });
+				// 非iOSでは、renderPanelで作り直した読み入力欄へ直接フォーカスする。
+				// iOSはSafariの入力アシスタントまで即座に開いて画面を塞ぐため、入力欄を
+				// 表示するだけにし、ユーザーが欄をタップしたときにキーボードを開く。
+				if (!isIOSDevice()) {
+					$id("editor-panel").querySelector(".panel-yomi .input")
+						?.focus({ preventScroll: true });
+				}
 			});
 			yomiRow.appendChild(toggle);
 		} else {
@@ -1076,8 +1085,6 @@ function buildPanel() {
 			const yomiInput = document.createElement("input");
 			yomiInput.className = "input";
 			yomiInput.value = span.yomi;
-			yomiInput.enterKeyHint = "done";
-			const initialYomi = yomiInput.value;
 			const yomiApply = document.createElement("button");
 			yomiApply.className = "btn btn-primary";
 			yomiApply.textContent = "修正";
@@ -1088,22 +1095,7 @@ function buildPanel() {
 					note.textContent = "かなで入力してください";
 				}
 			};
-			// iOS Safariのキーボード上部にある✓は入力欄をblurするだけなので、
-			// 値が変わっていればその操作を「修正」の確定として扱う。
-			// ページ内の修正ボタンを押す場合はclick側で確定し、二重適用を避ける。
-			let applyButtonPressed = false;
-			yomiApply.addEventListener("pointerdown", () => {
-				applyButtonPressed = true;
-			});
-			yomiApply.addEventListener("click", () => {
-				applyButtonPressed = false;
-				applyYomi();
-			});
-			yomiInput.addEventListener("blur", () => {
-				const normalizedYomi = absorbSmallKana(hiraToKata(yomiInput.value.trim()));
-				const initialNormalizedYomi = absorbSmallKana(hiraToKata(initialYomi.trim()));
-				if (!applyButtonPressed && normalizedYomi !== initialNormalizedYomi) applyYomi();
-			});
+			yomiApply.addEventListener("click", applyYomi);
 			yomiInput.addEventListener("keydown", (e) => {
 				if (e.key === "Enter") applyYomi();
 			});

@@ -42,6 +42,8 @@ try {
 		viewport: { width: 390, height: 844 },
 		hasTouch: true,
 		isMobile: true,
+		userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) " +
+			"AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
 	});
 	// 外部リクエスト(読みAPI・GA)を遮断して決定的なトークナイズに固定
 	await context.route(
@@ -79,6 +81,22 @@ try {
 	);
 
 	const cdp = await context.newCDPSession(editor);
+
+	// iPhoneでは「読みを修正」を開いただけで入力欄へフォーカスせず、Safariの
+	// キーボードと入力アシスタントを勝手に表示しない。欄を直接タップすれば入力できる。
+	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	await editor.locator(".panel-yomi-toggle").tap();
+	assert(await editor.locator(".panel-yomi .input").count() === 1,
+		"読み修正の入力欄が表示されない");
+	assert(!await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
+		"iPhoneで読み修正を開いただけなのに入力欄へフォーカスされた");
+	await editor.locator(".panel-yomi .input").tap();
+	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
+		"iPhoneで読み入力欄を直接タップしてもフォーカスされない");
+	await editor.locator(".panel-close").tap();
+	await editor.waitForFunction(() =>
+		!document.getElementById("editor-panel").classList.contains("open"));
 
 	// 固定チェックは3行目を増やさず、指で直接切り替えられる大きさにする
 	const firstLock = editor.locator(".chip-word:not(.filler) .chip-lock").first();
