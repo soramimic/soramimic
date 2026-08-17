@@ -244,8 +244,22 @@
 	max-height: 45vh;
 	overflow-y: auto;
 	overflow-x: hidden;
+	overscroll-behavior-y: contain;
 	transform: translateY(105%);
 	transition: transform 0.22s ease;
+}
+
+/* 自由入力は独立した操作画面として扱い、パネル端から背面ページへ
+   スクロールが連鎖したり、背面の選択範囲が変わったりしないようにする。 */
+html.editor-free-input-open,
+html.editor-free-input-open body {
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
+html.editor-free-input-open .editor-lines,
+html.editor-free-input-open .editor-toolbar {
+	pointer-events: none;
 }
 
 .editor-panel.open {

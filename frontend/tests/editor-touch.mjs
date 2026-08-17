@@ -265,6 +265,37 @@ try {
 	assert(await editor.locator(".panel-candidates").count() === 0,
 		"自由入力中にも候補一覧が表示されている");
 	await editor.fill(".panel-free-surface", "仮入力");
+	assert(await editor.locator("html").evaluate((html) =>
+		html.classList.contains("editor-free-input-open")),
+		"自由入力中に背面スクロールが固定されていない");
+	// 戻るボタン上からスクロールを始めても、戻る操作とは判定せず、
+	// パネル端から背面ページへスクロールを連鎖させない。
+	await editor.locator("#editor-panel").evaluate((panel) => {
+		panel.style.maxHeight = "180px"; // 境界スクロールを確実に再現する
+	});
+	await editor.locator(".panel-free-back").scrollIntoViewIfNeeded();
+	assert(await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.scrollHeight > panel.clientHeight && panel.scrollTop > 0),
+		"自由入力画面がパネル内でスクロールできない");
+	await editor.waitForTimeout(600);
+	const pageScrollBeforeFreeDrag = await editor.evaluate(() => window.scrollY);
+	const freeBackDrag = await editor.locator(".panel-free-back").boundingBox();
+	const freeBackX = freeBackDrag.x + freeBackDrag.width / 2;
+	const freeBackY = freeBackDrag.y + freeBackDrag.height / 2;
+	await cdp.send("Input.dispatchTouchEvent", {
+		type: "touchStart", touchPoints: [{ x: freeBackX, y: freeBackY }],
+	});
+	await cdp.send("Input.dispatchTouchEvent", {
+		type: "touchMove", touchPoints: [{ x: freeBackX, y: freeBackY - 60 }],
+	});
+	await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	await editor.waitForTimeout(300);
+	assert(await editor.locator(".panel-free").count() === 1,
+		"戻るボタン上からのスクロールで自由入力画面が閉じた");
+	assert(await editor.inputValue(".panel-free-surface") === "仮入力",
+		"自由入力画面のスクロールで入力途中の内容が消えた");
+	assert(await editor.evaluate(() => window.scrollY) === pageScrollBeforeFreeDrag,
+		"自由入力画面のスクロールが背面ページへ連鎖した");
 	const freeBack = await editor.locator(".panel-free-back").boundingBox();
 	await editor.touchscreen.tap(
 		freeBack.x + freeBack.width / 2,
@@ -273,6 +304,8 @@ try {
 	assert(await editor.locator(".panel-free").count() === 0 &&
 		await editor.locator(".panel-candidates").count() === 1,
 		"候補選択へ戻るボタンの1回のタップで候補一覧へ戻らない");
+	await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.style.removeProperty("max-height"));
 
 	// ---- タップで候補を選び、明示確定で差し替えられること ----
 	// ×N付き(同名グループ)は個別選択リストが開くため、単独候補を選ぶ
