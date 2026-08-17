@@ -224,14 +224,6 @@
 	outline-offset: 1px;
 }
 
-/* 読み修正フォームを開いている間、実際に読みが変わるトークン範囲のうち
-   選択外のユニットを破線で薄く示す(選択との違いを可視化する) */
-.chip-unit.reading-scope {
-	outline: 2px dashed var(--accent);
-	outline-offset: 1px;
-	opacity: 0.85;
-}
-
 /* 候補パネル: 画面下部のオーバーレイ(fixed)。レイアウトに参加しないので
    出し入れしてもページの高さが変わらず、ドラッグ中の座標がずれない。
    .open の付け外しで下からせり上がる/滑り降りる */
@@ -500,13 +492,26 @@
 	pointer-events: none;
 }
 
-/* 元歌詞の読み修正 */
-.panel-yomi {
+/* 元歌詞の読み修正。候補パネルとは独立した小窓で扱う */
+.reading-fix-dialog {
+	width: min(90vw, 32rem);
+}
+
+.reading-fix-dialog[open] {
 	display: flex;
+	flex-direction: column;
+}
+
+.reading-fix-target {
+	margin: 0.4rem 0 0.8rem;
+	font-weight: 600;
+}
+
+.panel-yomi {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
-	flex-wrap: wrap;
 	gap: 0.5rem;
-	margin-bottom: 0.6rem;
 }
 
 .panel-yomi-toggle {
@@ -521,7 +526,7 @@
 }
 
 .panel-yomi-scope-note {
-	flex-basis: 100%;
+	grid-column: 1 / -1;
 	margin: 0;
 	color: var(--muted);
 	font-size: 0.82rem;
@@ -534,14 +539,20 @@
 }
 
 .panel-yomi .input {
-	flex: 1;
 	min-width: 8em;
-	width: auto;
+	width: 100%;
 }
 
 .panel-yomi-note {
+	grid-column: 1 / -1;
+	min-height: 1.2em;
+	margin: 0;
 	color: #b91c1c;
 	font-size: 0.78rem;
+}
+
+.reading-fix-form .dialog-buttons {
+	grid-column: 1 / -1;
 }
 
 @media (max-width: 640px) {
@@ -627,6 +638,14 @@
 	flex-wrap: wrap;
 	gap: 8px;
 	margin: 6px 0;
+}
+.panel-align-details {
+	margin: 0 0 0.65rem;
+}
+.panel-align-details > summary {
+	color: var(--muted);
+	font-size: 0.85rem;
+	cursor: pointer;
 }
 .panel-align-label { color: var(--muted, #888); font-size: 0.9em; }
 .panel-align-row { display: flex; align-items: stretch; gap: 4px; }
