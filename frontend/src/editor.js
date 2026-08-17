@@ -1231,13 +1231,21 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		const actions = document.createElement("div");
 		actions.className = "panel-free-actions";
 		const back = document.createElement("button");
-		back.className = "btn btn-ghost panel-free-back";
+		back.className = "btn panel-free-back";
+		back.type = "button";
 		back.textContent = "← 候補選択に戻る";
-		back.addEventListener("click", () => {
+		const closeFreeInput = () => {
+			if (!freeInputOpen) return;
 			freeInputOpen = false;
 			freeInputDraft = { surface: "", reading: "" };
 			renderPanel();
+		};
+		// ソフトウェアキーボード表示中でも、最初のタップで確実に戻れるよう
+		// touch の pointerdown 時点でフォームを閉じる。キーボード操作とマウスは click を使う。
+		back.addEventListener("pointerdown", (event) => {
+			if (event.pointerType === "touch" && event.isPrimary) closeFreeInput();
 		});
+		back.addEventListener("click", closeFreeInput);
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
 		apply.textContent = "この歌詞で差し替え";
@@ -1435,7 +1443,11 @@ function buildPanel() {
 		renderGroupPicker(panel, byKey.get(openGroupKey), used);
 		return;
 	}
-	if (candidateDraft || freeInputOpen) {
+	if (freeInputOpen) {
+		appendReplacementControls(panel, target, rangeWeights);
+		return;
+	}
+	if (candidateDraft) {
 		appendReplacementControls(panel, target, rangeWeights);
 	}
 

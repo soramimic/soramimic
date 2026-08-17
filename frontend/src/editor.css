@@ -329,6 +329,17 @@
 	margin-top: 0.5rem;
 }
 
+.panel-free-back {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+	color: var(--text);
+	font-weight: 600;
+}
+
+.panel-free-back:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+}
+
 .panel-free-toggle {
 	margin-top: 0.55rem;
 	padding: 0.2rem 0;

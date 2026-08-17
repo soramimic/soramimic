@@ -166,6 +166,32 @@ try {
 	const beforeFree = await editor.evaluate(() =>
 		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
 	await editor.click(".panel-free-toggle");
+	assert(await editor.locator(".panel-candidates").count() === 0,
+		"自由入力中にも候補一覧が表示されている");
+	const freeBackStyle = await editor.locator(".panel-free-back").evaluate((button) => {
+		const style = getComputedStyle(button);
+		const muted = document.createElement("span");
+		muted.style.color = "var(--muted)";
+		document.body.appendChild(muted);
+		const mutedColor = getComputedStyle(muted).color;
+		muted.remove();
+		return {
+			disabled: button.disabled,
+			borderColor: style.borderColor,
+			color: style.color,
+			cursor: style.cursor,
+			mutedColor,
+		};
+	});
+	assert(!freeBackStyle.disabled && freeBackStyle.cursor === "pointer" &&
+		freeBackStyle.borderColor !== "rgba(0, 0, 0, 0)" &&
+		freeBackStyle.color !== freeBackStyle.mutedColor,
+		"候補選択へ戻るボタンが押せる見た目ではない: " + JSON.stringify(freeBackStyle));
+	await editor.click(".panel-free-back");
+	assert(await editor.locator(".panel-free").count() === 0 &&
+		await editor.locator(".panel-candidates").count() === 1,
+		"候補選択へ戻るボタンの1回のクリックで候補一覧へ戻らない");
+	await editor.click(".panel-free-toggle");
 	await editor.fill(".panel-free-surface", "あ");
 	await editor.fill(".panel-free-reading", "あ");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-free-reading")),
