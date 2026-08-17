@@ -31,9 +31,55 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
 let readingFixOpen = false; // 元歌詞の読み修正フォームの開閉
+let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
 
 function $id(id) {
 	return document.getElementById(id);
+}
+
+function isIOSDevice() {
+	return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function focusReadingInput(input) {
+	if (!input) return;
+	readingInputLayoutCleanup?.();
+	if (!isIOSDevice() || !window.visualViewport) {
+		input.focus({ preventScroll: true });
+		return;
+	}
+
+	// iOS Safariの固定パネルはキーボードに隠れるため、visual viewportの下端まで
+	// パネルを持ち上げる。入力アシスタント(↑↓✓)もこの不可視領域に含まれる。
+	const panel = $id("editor-panel");
+	const viewport = window.visualViewport;
+	let cleaned = false;
+	const cleanup = () => {
+		if (cleaned) return;
+		cleaned = true;
+		viewport.removeEventListener("resize", syncPanelPosition);
+		viewport.removeEventListener("scroll", syncPanelPosition);
+		input.removeEventListener("blur", cleanup);
+		panel.style.removeProperty("bottom");
+		if (readingInputLayoutCleanup === cleanup) readingInputLayoutCleanup = null;
+	};
+	const syncPanelPosition = () => {
+		if (document.activeElement !== input) {
+			cleanup();
+			return;
+		}
+		const hiddenBottom = Math.max(
+			0, window.innerHeight - viewport.height - viewport.offsetTop);
+		panel.style.bottom = `${hiddenBottom}px`;
+	};
+	viewport.addEventListener("resize", syncPanelPosition);
+	viewport.addEventListener("scroll", syncPanelPosition);
+	input.addEventListener("blur", cleanup);
+	readingInputLayoutCleanup = cleanup;
+	// preventScrollを付けず、Safari自身にもフォーカス欄を見える位置へ移動させる。
+	input.focus();
+	syncPanelPosition();
 }
 
 function saveData() {
@@ -817,6 +863,7 @@ function buildAlignEditor(line, arrIndex, model) {
 }
 
 function buildPanel() {
+	readingInputLayoutCleanup?.();
 	const panel = $id("editor-panel");
 	hidePopover();
 	if (!selection) {
@@ -889,9 +936,8 @@ function buildPanel() {
 				readingFixOpen = true;
 				rerenderLine(line); // 読みが変わるトークン範囲をチップ側にも反映
 				renderPanel();
-				// renderPanelで作り直した読み入力欄へ、クリック操作の中で直接フォーカスする。
-				// モバイルでもソフトウェアキーボードを開き、そのまま修正を始められる。
-				$id("editor-panel").querySelector(".panel-yomi .input")?.focus({ preventScroll: true });
+				// 自動フォーカスは維持しつつ、iOSではキーボードにパネルが隠れないようにする。
+				focusReadingInput($id("editor-panel").querySelector(".panel-yomi .input"));
 			});
 			yomiRow.appendChild(toggle);
 		} else {
