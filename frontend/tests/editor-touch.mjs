@@ -136,8 +136,10 @@ try {
 	async function selTitle() {
 		return editor.evaluate(() => {
 			const panel = document.getElementById("editor-panel");
-			const t = panel.querySelector(".panel-title");
-			return panel.classList.contains("open") && t ? t.textContent : "(選択なし)";
+			const surface = panel.querySelector(".panel-original-surface");
+			const reading = panel.querySelector(".panel-original-reading");
+			return panel.classList.contains("open") && surface && reading
+				? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
 		});
 	}
 
@@ -148,9 +150,10 @@ try {
 		try {
 			await editor.waitForFunction((exp) => {
 				const panel = document.getElementById("editor-panel");
-				const t = panel.querySelector(".panel-title");
-				const title = panel.classList.contains("open") && t
-					? t.textContent : "(選択なし)";
+				const surface = panel.querySelector(".panel-original-surface");
+				const reading = panel.querySelector(".panel-original-reading");
+				const title = panel.classList.contains("open") && surface && reading
+					? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
 				return exp === "(選択なし)" ? title === exp : title.includes(exp);
 			}, expected, { timeout: 5000 });
 		} catch {
@@ -162,9 +165,9 @@ try {
 	}
 
 	// ---- タップでの選択の伸縮(実タッチ) ----
-	await tapAndExpect(0, "選択範囲: 忘(", "タップで新規選択されない");
+	await tapAndExpect(0, "忘(", "タップで新規選択されない");
 	await tapAndExpect(1, "ワス", "隣接タップで拡張されない");
-	await tapAndExpect(1, "選択範囲: 忘(", "端タップで縮小されない");
+	await tapAndExpect(1, "忘(", "端タップで縮小されない");
 	await tapAndExpect(0, "(選択なし)", "単独再タップで解除されない");
 
 	// ---- タッチドラッグでの範囲選択 ----
@@ -189,7 +192,7 @@ try {
 	assert(!openDuringDrag, "ドラッグ中にパネルが表示されている");
 	try {
 		await editor.waitForFunction(() => {
-			const t = document.querySelector("#editor-panel.open .panel-title");
+			const t = document.querySelector("#editor-panel.open .panel-original-reading");
 			return t && t.textContent.includes("ワスレガ");
 		}, undefined, { timeout: 5000 });
 	} catch {
@@ -218,12 +221,35 @@ try {
 	const lockedAfter = await editor.locator(".chip-word.locked").count();
 	assert(lockedAfter === lockedBefore, "長押しなのに差し替えが発火した");
 
-	// ---- タップでの差し替えは通常どおり動くこと ----
+	// ---- タップで候補を選び、明示確定で差し替えられること ----
 	// ×N付き(同名グループ)は個別選択リストが開くため、単独候補を選ぶ
 	const single = editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first();
 	const candSurface = await single.locator(".candidate-surface").textContent();
 	const cand2 = await single.boundingBox();
 	await editor.touchscreen.tap(cand2.x + 10, cand2.y + 10);
+	await editor.waitForSelector(".panel-candidate-apply", { timeout: 10000 });
+	assert(await editor.locator(".chip-word.locked").count() === lockedBefore,
+		"候補タップだけで差し替えが確定した");
+	const panelFits = await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.scrollWidth <= panel.clientWidth);
+	assert(panelFits, "狭い画面で差し替えパネルが横にはみ出した");
+	await editor.locator(".panel-draft-reading").tap();
+	const draftViewportPosition = await editor.evaluate(() => {
+		const viewport = window.visualViewport;
+		const expected = Math.max(
+			0, window.innerHeight - viewport.height - viewport.offsetTop);
+		return {
+			actual: document.getElementById("editor-panel").style.bottom,
+			expected: `${expected}px`,
+		};
+	});
+	assert(draftViewportPosition.actual === draftViewportPosition.expected,
+		"候補読み入力時にiPhoneの表示領域へパネルが追従しない: " +
+		JSON.stringify(draftViewportPosition));
+	const applyBox = await editor.locator(".panel-candidate-apply").boundingBox();
+	assert(applyBox.width >= 28 && applyBox.height >= 28,
+		`差し替えボタンがタッチには小さい: ${applyBox.width}x${applyBox.height}`);
+	await editor.locator(".panel-candidate-apply").tap();
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),

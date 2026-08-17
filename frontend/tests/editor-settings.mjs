@@ -238,6 +238,7 @@ try {
 
 	// 固定した単語は絞り込みの対象外になっても残る
 	await editor.click(".panel-candidates .candidate");
+	await editor.click(".panel-candidate-apply");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	await openSettings(editor);

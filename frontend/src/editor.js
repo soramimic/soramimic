@@ -62,6 +62,9 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
 let readingFixOpen = false; // 元歌詞の読み修正フォームの開閉
+let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
+let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
+let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
 
 function $id(id) {
@@ -483,6 +486,9 @@ function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
 	readingFixOpen = false;
+	candidateDraft = null;
+	freeInputOpen = false;
+	freeInputDraft = { surface: "", reading: "" };
 	const prev = selection;
 	selection = next;
 	if (prev) rerenderLine(prev.line);
@@ -637,17 +643,54 @@ function replaceSelection(word) {
 	setSelection(null);
 }
 
-// 自由入力から結果単語オブジェクトを作る(読みはトークナイザで付与)
-function makeCustomWord(text) {
-	const yomi = mecab.getYomi(text) || text;
-	return {
+// 候補の読みを、通常の単語DBと同じ経路で選択範囲へ合わせ直す。
+// id/surface/original は維持し、video が使う kana と pronunciation を必ず同期する。
+function wordWithReading(word, rawReading, target, weights) {
+	const kana = app.textAnalyzer.formatKana(rawReading.trim());
+	if (kana === "" || kana.length > 100 || !/^[ァ-ヴー]+$/.test(kana)) return null;
+	if (kana === word.kana && Array.isArray(word.pronunciation)) {
+		return Object.assign({}, word);
+	}
+	// 選択元の発音変種が取りうる最大ユニット数より長い読みは一致しない。
+	// 上限なしの直積は「ン」「ッ」の連続で指数的に増えるため、生成前に枝数も抑える。
+	const maxTargetUnits = target.reduce((sum, syllable) => {
+		const variants = app.textAnalyzer.syllableToVariation([syllable]);
+		return sum + Math.max(0, ...variants.map((v) => v.length));
+	}, 0);
+	const syllables = app.textAnalyzer.yomiToSyllable(kana);
+	if (!Array.isArray(syllables) || maxTargetUnits === 0) return null;
+	let variationCount = 1;
+	for (const syllable of syllables) {
+		// 単独の削除変種は空配列として除外されるので、固定音節を番兵にして枝数を数える。
+		variationCount *= app.textAnalyzer.syllableToVariation(
+			[syllable, "ア"], maxTargetUnits + 1).length;
+		if (variationCount > 16384) return null;
+	}
+	const variants = app.textAnalyzer.yomiToVariation(kana, maxTargetUnits);
+	const oneWordDb = {};
+	for (const pronunciation of variants) {
+		if (!Array.isArray(pronunciation) || pronunciation.length === 0) continue;
+		if (!(pronunciation.length in oneWordDb)) oneWordDb[pronunciation.length] = [];
+		oneWordDb[pronunciation.length].push(Object.assign({}, word, {
+			kana,
+			pronunciation,
+			vcost: pronunciation.vcost || 0,
+		}));
+	}
+	return app.soramimiMaker.getCandidates(oneWordDb, target, data.param, 1, weights)[0] || null;
+}
+
+// 自由入力から候補相当のオブジェクトを作る。読み欄が空なら従来どおり推定する。
+function makeCustomWord(text, rawReading, target, weights) {
+	const reading = rawReading.trim() || mecab.getYomi(text) || text;
+	const base = {
 		id: "custom-" + Date.now(),
 		surface: text,
-		pronunciation: yomi,
-		kana: yomi,
+		kana: "",
 		original: text,
 		sim: 0,
 	};
+	return wordWithReading(base, reading, target, weights);
 }
 
 // ---- 候補の詳細(長押しポップオーバー / PCはホバーのツールチップ) ----
@@ -1056,6 +1099,146 @@ function buildAlignEditor(line, arrIndex, model) {
 	return box;
 }
 
+function selectCandidateDraft(cand) {
+	candidateDraft = { word: Object.assign({}, cand), reading: cand.kana };
+	freeInputOpen = false;
+	openGroupKey = null;
+	renderPanel();
+	queueMicrotask(() => {
+		const input = $id("editor-panel").querySelector(".panel-draft-reading");
+		input?.scrollIntoView({ block: "nearest" });
+	});
+}
+
+function appendReplacementControls(panel, target, rangeWeights) {
+	if (freeInputOpen) {
+		const free = document.createElement("div");
+		free.className = "panel-free";
+		const heading = document.createElement("h3");
+		heading.className = "panel-free-title";
+		heading.textContent = "候補にない歌詞を入力";
+		const fields = document.createElement("div");
+		fields.className = "panel-free-fields";
+		const surfaceLabel = document.createElement("label");
+		surfaceLabel.className = "panel-replacement-field";
+		surfaceLabel.innerHTML = '<span>替え歌歌詞</span>';
+		const surfaceInput = document.createElement("input");
+		surfaceInput.className = "input panel-free-surface";
+		surfaceInput.value = freeInputDraft.surface;
+		surfaceLabel.appendChild(surfaceInput);
+		const readingLabel = document.createElement("label");
+		readingLabel.className = "panel-replacement-field";
+		readingLabel.innerHTML = '<span>替え歌の読み</span>';
+		const readingInput = document.createElement("input");
+		readingInput.className = "input panel-free-reading";
+		readingInput.placeholder = "未入力なら自動で推定";
+		readingInput.value = freeInputDraft.reading;
+		readingLabel.appendChild(readingInput);
+		fields.append(surfaceLabel, readingLabel);
+		const note = document.createElement("span");
+		note.className = "panel-replacement-note";
+		note.setAttribute("role", "alert");
+		const actions = document.createElement("div");
+		actions.className = "panel-free-actions";
+		const back = document.createElement("button");
+		back.className = "btn btn-ghost panel-free-back";
+		back.textContent = "← 候補選択に戻る";
+		back.addEventListener("click", () => {
+			freeInputOpen = false;
+			freeInputDraft = { surface: "", reading: "" };
+			renderPanel();
+		});
+		const apply = document.createElement("button");
+		apply.className = "btn btn-primary panel-free-apply";
+		apply.textContent = "この歌詞で差し替え";
+		const applyFree = () => {
+			const text = surfaceInput.value.trim();
+			if (text === "") {
+				note.textContent = "替え歌歌詞を入力してください";
+				return;
+			}
+			const custom = makeCustomWord(text, readingInput.value, target, rangeWeights);
+			if (!custom) {
+				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
+				return;
+			}
+			replaceSelection(custom);
+		};
+		apply.addEventListener("click", applyFree);
+		for (const input of [surfaceInput, readingInput]) {
+			input.addEventListener("input", () => {
+				freeInputDraft = { surface: surfaceInput.value, reading: readingInput.value };
+			});
+			input.addEventListener("focus", () => {
+				if (isIOSDevice() && !readingInputLayoutCleanup) focusReadingInput(input);
+			});
+			input.addEventListener("keydown", (e) => {
+				if (e.key === "Enter") applyFree();
+			});
+		}
+		actions.append(back, apply);
+		free.append(heading, fields, note, actions);
+		panel.appendChild(free);
+		queueMicrotask(() => focusReadingInput(surfaceInput));
+		return;
+	}
+
+	if (candidateDraft) {
+		const draft = document.createElement("div");
+		draft.className = "panel-replacement-draft";
+		const surface = document.createElement("span");
+		surface.className = "panel-draft-surface";
+		surface.textContent = candidateDraft.word.surface;
+		const field = document.createElement("label");
+		field.className = "panel-replacement-field";
+		field.innerHTML = '<span>替え歌の読み</span>';
+		const input = document.createElement("input");
+		input.className = "input panel-draft-reading";
+		input.value = candidateDraft.reading;
+		input.addEventListener("input", () => {
+			candidateDraft.reading = input.value;
+		});
+		input.addEventListener("focus", () => {
+			if (isIOSDevice() && !readingInputLayoutCleanup) focusReadingInput(input);
+		});
+		field.appendChild(input);
+		const apply = document.createElement("button");
+		apply.className = "btn btn-primary panel-candidate-apply";
+		apply.textContent = "差し替え";
+		const note = document.createElement("span");
+		note.className = "panel-replacement-note";
+		note.setAttribute("role", "alert");
+		const applyCandidate = () => {
+			const fitted = wordWithReading(
+				candidateDraft.word, candidateDraft.reading, target, rangeWeights);
+			if (!fitted) {
+				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
+				return;
+			}
+			replaceSelection(fitted);
+		};
+		apply.addEventListener("click", applyCandidate);
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") applyCandidate();
+		});
+		draft.append(surface, field, apply, note);
+		panel.appendChild(draft);
+	}
+
+	const freeToggle = document.createElement("button");
+	freeToggle.className = "panel-free-toggle";
+	freeToggle.type = "button";
+	freeToggle.textContent = "候補にない歌詞を自由入力する";
+	freeToggle.setAttribute("aria-expanded", "false");
+	freeToggle.addEventListener("click", () => {
+		candidateDraft = null;
+		freeInputOpen = true;
+		freeInputDraft = { surface: "", reading: "" };
+		renderPanel();
+	});
+	panel.appendChild(freeToggle);
+}
+
 function buildPanel() {
 	readingInputLayoutCleanup?.();
 	const panel = $id("editor-panel");
@@ -1068,15 +1251,49 @@ function buildPanel() {
 	panel.textContent = "";
 	panel.classList.add("open");
 	const { line, start, end } = selection;
+	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
 	const header = document.createElement("div");
 	header.className = "panel-header";
-	const title = document.createElement("span");
-	title.className = "panel-title";
-	// 「元歌詞の読みを修正」表示や元歌詞(よみ)と同じ 表記(よみ) の並びに揃える
-	title.textContent =
-		`選択範囲: ${rangeSurface(line, start, end)}(${rangeKana(line, start, end)})`;
-	header.appendChild(title);
+	const source = document.createElement("div");
+	source.className = "panel-source";
+	const sourceSurface = document.createElement("div");
+	sourceSurface.className = "panel-source-row";
+	sourceSurface.innerHTML =
+		'<span class="panel-source-label">元歌詞</span><span class="panel-original-surface"></span>';
+	sourceSurface.querySelector(".panel-original-surface").textContent =
+		rangeSurface(line, start, end);
+	const sourceReading = document.createElement("div");
+	sourceReading.className = "panel-source-row";
+	const sourceReadingLabel = document.createElement("span");
+	sourceReadingLabel.className = "panel-source-label";
+	sourceReadingLabel.textContent = "元歌詞の読み";
+	const sourceReadingValue = document.createElement("span");
+	sourceReadingValue.className = "panel-original-reading";
+	sourceReadingValue.textContent = rangeKana(line, start, end);
+	sourceReading.append(sourceReadingLabel, sourceReadingValue);
+	if (span) {
+		const toggle = document.createElement("button");
+		toggle.className = "panel-yomi-toggle";
+		toggle.type = "button";
+		toggle.textContent = "✏️";
+		const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
+		toggle.title = editLabel;
+		toggle.setAttribute("aria-label", editLabel);
+		toggle.addEventListener("click", () => {
+			readingFixOpen = true;
+			candidateDraft = null;
+			freeInputOpen = false;
+			rerenderLine(line);
+			renderPanel();
+			focusReadingInput($id("editor-panel").querySelector(".panel-yomi .input"));
+		});
+		sourceReading.appendChild(toggle);
+	}
+	source.append(sourceSurface, sourceReading);
+	header.appendChild(source);
+	const headerActions = document.createElement("div");
+	headerActions.className = "panel-header-actions";
 	// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
 	// (チップ上の鍵はスマホだと小さいため)
 	const word = (data.results[line] || []).find(
@@ -1089,77 +1306,46 @@ function buildPanel() {
 		lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
 		lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
 		lockBtn.addEventListener("click", () => toggleLock(line, word));
-		header.appendChild(lockBtn);
+		headerActions.appendChild(lockBtn);
 	}
 	const close = document.createElement("button");
 	close.className = "btn panel-close";
 	close.textContent = "✕";
 	close.addEventListener("click", () => setSelection(null));
-	header.appendChild(close);
+	headerActions.appendChild(close);
+	header.appendChild(headerActions);
 	panel.appendChild(header);
 
-	// 自由入力
-	const free = document.createElement("div");
-	free.className = "panel-free";
-	const input = document.createElement("input");
-	input.className = "input";
-	input.placeholder = "自由入力で差し替え(読みは自動付与)";
-	const apply = document.createElement("button");
-	apply.className = "btn btn-primary";
-	apply.textContent = "差し替え";
-	apply.disabled = !db;
-	const applyFree = () => {
-		const text = input.value.trim();
-		if (text === "") return;
-		replaceSelection(makeCustomWord(text));
-	};
-	apply.addEventListener("click", applyFree);
-	input.addEventListener("keydown", (e) => {
-		if (e.key === "Enter") applyFree();
-	});
-	free.append(input, apply);
-
 	// 元歌詞の読み修正(読み推定ミスをここで直せる)。対象はトークン境界にスナップ。
-	// 「元の読みを直す」→「差し替えを選ぶ」の流れが自然なので、自由入力より上に置く
-	const span = db ? tokenSpanForSelection(line, start, end) : null;
-	if (span) {
+	// 通常時は上の鉛筆だけを見せ、構造変更を伴う入力欄は編集時だけ開く。
+	if (span && readingFixOpen) {
 		const yomiRow = document.createElement("div");
 		yomiRow.className = "panel-yomi";
-		if (!readingFixOpen) {
-			const toggle = document.createElement("button");
-			toggle.className = "btn panel-yomi-toggle";
-			toggle.textContent = `元歌詞の読みを修正: ${span.surface}(${span.yomi})`;
-			toggle.addEventListener("click", () => {
-				readingFixOpen = true;
-				rerenderLine(line); // 読みが変わるトークン範囲をチップ側にも反映
-				renderPanel();
-				// 自動フォーカスは維持しつつ、iOSではキーボードにパネルが隠れないようにする。
-				focusReadingInput($id("editor-panel").querySelector(".panel-yomi .input"));
-			});
-			yomiRow.appendChild(toggle);
-		} else {
-			const label = document.createElement("span");
-			label.className = "panel-yomi-label";
-			label.textContent = `「${span.surface}」の読み:`;
-			const yomiInput = document.createElement("input");
-			yomiInput.className = "input";
-			yomiInput.value = span.yomi;
-			const yomiApply = document.createElement("button");
-			yomiApply.className = "btn btn-primary";
-			yomiApply.textContent = "修正";
-			const note = document.createElement("span");
-			note.className = "panel-yomi-note";
-			const applyYomi = () => {
-				if (!applyReadingFix(line, span, yomiInput.value)) {
-					note.textContent = "かなで入力してください";
-				}
-			};
-			yomiApply.addEventListener("click", applyYomi);
-			yomiInput.addEventListener("keydown", (e) => {
-				if (e.key === "Enter") applyYomi();
-			});
-			yomiRow.append(label, yomiInput, yomiApply, note);
+		const label = document.createElement("span");
+		label.className = "panel-yomi-label";
+		label.textContent = "元歌詞の読み";
+		const yomiInput = document.createElement("input");
+		yomiInput.className = "input";
+		yomiInput.value = span.yomi;
+		const yomiApply = document.createElement("button");
+		yomiApply.className = "btn btn-primary";
+		yomiApply.textContent = "読みを更新";
+		const note = document.createElement("span");
+		note.className = "panel-yomi-note";
+		const applyYomi = () => {
+			if (!applyReadingFix(line, span, yomiInput.value)) {
+				note.textContent = "かなで入力してください";
+			}
+		};
+		yomiApply.addEventListener("click", applyYomi);
+		yomiInput.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") applyYomi();
+		});
+		if (span.surface !== rangeSurface(line, start, end)) {
+			label.textContent = `「${span.surface}」の読み`;
 		}
+		note.setAttribute("role", "alert");
+		yomiRow.append(label, yomiInput, yomiApply, note);
 		panel.appendChild(yomiRow);
 	}
 
@@ -1169,9 +1355,6 @@ function buildPanel() {
 		const model = alignModel(line, span.arrStart);
 		if (model) panel.appendChild(buildAlignEditor(line, span.arrStart, model));
 	}
-
-	// 差し替え手段(自由入力)は読み修正の下・候補リストの直上にまとめる
-	panel.appendChild(free);
 
 	if (!db) {
 		const note = document.createElement("p");
@@ -1209,12 +1392,15 @@ function buildPanel() {
 		renderGroupPicker(panel, byKey.get(openGroupKey), used);
 		return;
 	}
+	if (candidateDraft || freeInputOpen) {
+		appendReplacementControls(panel, target, rangeWeights);
+	}
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
 	const listTitle = document.createElement("h3");
 	listTitle.className = "panel-candidates-title";
-	listTitle.textContent = "差し替え候補";
+	listTitle.textContent = "候補から選ぶ";
 	list.appendChild(listTitle);
 	const shown = groups.slice(0, Math.min(panelShown, GROUP_MAX));
 	if (shown.length === 0) {
@@ -1228,6 +1414,12 @@ function buildPanel() {
 		const allUsed = g.cands.every((c) => used.has(c.id));
 		const btn = document.createElement("button");
 		btn.className = "btn candidate";
+		btn.dataset.candidateId = String(cand.id);
+		const selected = candidateDraft && g.cands.some((item) =>
+			String(candidateDraft.word.id) === String(item.id) &&
+			candidateDraft.word.surface === item.surface);
+		btn.setAttribute("aria-pressed", String(!!selected));
+		if (selected) btn.classList.add("selected");
 		if (allUsed) btn.classList.add("used");
 		const surface = document.createElement("span");
 		surface.className = "candidate-surface";
@@ -1245,7 +1437,7 @@ function buildPanel() {
 		if (g.cands.length === 1) {
 			btn.title = candidateDetail(cand, used.has(cand.id));
 			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
-			btn.addEventListener("click", () => replaceSelection(cand));
+			btn.addEventListener("click", () => selectCandidateDraft(cand));
 		} else {
 			btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
 			attachLongPress(btn, () =>
@@ -1271,6 +1463,9 @@ function buildPanel() {
 		list.appendChild(more);
 	}
 	panel.appendChild(list);
+	if (!candidateDraft && !freeInputOpen) {
+		appendReplacementControls(panel, target, rangeWeights);
+	}
 }
 
 // 同名候補(id違い)の個別選択リスト
@@ -1297,6 +1492,7 @@ function renderGroupPicker(panel, group, used) {
 		const isUsed = used.has(cand.id);
 		const row = document.createElement("button");
 		row.className = "btn group-entry";
+		row.dataset.candidateId = String(cand.id);
 		if (isUsed) row.classList.add("used");
 		const main = document.createElement("span");
 		main.textContent = cand.original || cand.surface;
@@ -1306,7 +1502,7 @@ function renderGroupPicker(panel, group, used) {
 		row.append(main, sub);
 		row.title = candidateDetail(cand, isUsed);
 		attachLongPress(row, () => candidateDetail(cand, isUsed));
-		row.addEventListener("click", () => replaceSelection(cand));
+		row.addEventListener("click", () => selectCandidateDraft(cand));
 		list.appendChild(row);
 	}
 	panel.appendChild(list);

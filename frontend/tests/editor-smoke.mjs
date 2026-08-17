@@ -159,14 +159,44 @@ try {
 	await editor.locator(".panel-lock").click(); // 初期状態へ戻す
 	await editor.locator(".panel-close").click();
 
+	// ---- 自由入力は通常時には畳み、歌詞と読みを一緒に確定できる ----
+	await editor.locator('.editor-line[data-line="0"] .chip-unit').first().click();
+	assert(await editor.locator(".panel-free-surface").count() === 0,
+		"希少な自由入力欄が最初から表示されている");
+	const beforeFree = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
+	await editor.click(".panel-free-toggle");
+	await editor.fill(".panel-free-surface", "あ");
+	await editor.fill(".panel-free-reading", "あ");
+	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-free-reading")),
+		"自由入力の読み欄を編集できない");
+	const afterFreeDraft = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
+	assert(afterFreeDraft === beforeFree,
+		"自由入力の確定前に編集結果が変更された");
+	await editor.click(".panel-free-apply");
+	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
+	const custom = await editor.evaluate(() =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).results.flat()
+			.find((w) => w.surface === "あ" && w.locked));
+	assert(custom && String(custom.id).startsWith("custom-") && custom.kana === "ア" &&
+		Array.isArray(custom.pronunciation),
+		"自由入力の歌詞と読みがcustom語として保存されない: " + JSON.stringify(custom));
+	await editor.click("#btn-undo");
+	await editor.waitForTimeout(300);
+
 	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
 	// 12は1トークンだが、表示上は複数ユニット。どれをタップしても対象全体が
 	// 12(イチニ)へスナップし、ジュウニへの修正後もジュウ/ニの2音節になる。
 	await editor.locator('.editor-line[data-line="1"] .chip-unit').nth(2).click();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
-	const numberToggle = await editor.textContent(".panel-yomi-toggle");
-	assert(numberToggle.includes("12") && numberToggle.includes("イチニ"),
-		"複数桁数字が読み修正の対象になっていない: " + numberToggle);
+	const numberEditLabel = await editor.getAttribute(".panel-yomi-toggle", "aria-label");
+	assert(numberEditLabel.includes("12") && numberEditLabel.includes("イチニ"),
+		"複数桁数字が読み修正の対象になっていない: " + numberEditLabel);
+	assert(await editor.textContent(".panel-yomi-toggle") === "✏️",
+		"元歌詞の読み修正が鉛筆だけの表示になっていない");
+	assert((await editor.getAttribute(".panel-yomi-toggle", "aria-label")).includes("読みを修正"),
+		"鉛筆に読み修正のアクセシブルな名前がない");
 	await editor.click(".panel-yomi-toggle");
 	await editor.fill(".panel-yomi .input", "ジュウニ");
 	await editor.click(".panel-yomi .btn-primary");
@@ -191,7 +221,8 @@ try {
 		[...document.querySelectorAll('.editor-line[data-line="2"] .chip-unit')]
 			.map((e) => e.textContent).join("|") === "ジュウ",
 		undefined, { timeout: 10000 });
-	assert((await editor.textContent(".panel-title")).includes("漢字(ジュウ)"),
+	assert((await editor.textContent(".panel-original-surface")).includes("漢字") &&
+		(await editor.textContent(".panel-original-reading")).includes("ジュウ"),
 		"複数漢字の読み修正で表層順が変わった");
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	await editor.click("#btn-undo"); // 後続テストに影響させない
@@ -208,8 +239,8 @@ try {
 	await editor.waitForTimeout(300);
 	await mixedLineUnits.nth(6).click({ modifiers: ["Shift"] });
 	await editor.waitForFunction(() =>
-		document.querySelector(".panel-yomi-toggle")?.textContent.includes(
-			"深夜12時を(シンヤイチニジヲ)"),
+		document.querySelector(".panel-yomi-toggle")?.getAttribute("aria-label")?.includes(
+			"深夜12時を（シンヤイチニジヲ）"),
 		undefined, { timeout: 10000 });
 	await editor.click(".panel-yomi-toggle");
 	await editor.fill(".panel-yomi .input", "シンヤジューニジヲ");
@@ -218,7 +249,8 @@ try {
 		[...document.querySelectorAll('.editor-line[data-line="1"] .chip-unit')]
 			.map((e) => e.textContent).join("|") === "シン|ヤ|ジュー|ニ|ジ|ヲ|ス|ギ|タッ|テ",
 		undefined, { timeout: 10000 });
-	assert((await editor.textContent(".panel-title")).includes("深夜12時を(シンヤジューニジヲ)"),
+	assert((await editor.textContent(".panel-original-surface")).includes("深夜12時を") &&
+		(await editor.textContent(".panel-original-reading")).includes("シンヤジューニジヲ"),
 		"読み修正後に表層順が変わった");
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	assert(await editor.locator(".panel-candidates .candidate").count() > 0,
@@ -231,15 +263,13 @@ try {
 	//  例: したい+シタイシタイ → したいしたい。applyReadingFixはそれを避ける)
 	await editor.locator(".chip-unit", { hasText: "ガ" }).first().click();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
-	const kanaToggle = await editor.textContent(".panel-yomi-toggle");
-	const kanaSurface = kanaToggle.match(/元歌詞の読みを修正:\s*(.+?)\(/)[1]; // 対象サーフェス
+	const kanaEditLabel = await editor.getAttribute(".panel-yomi-toggle", "aria-label");
+	const kanaSurface = kanaEditLabel.match(/^「(.+?)（/)[1];
 	await editor.click(".panel-yomi-toggle");
 	await editor.fill(".panel-yomi .input", "ガタガタ"); // 元より長い読み
 	await editor.click(".panel-yomi .btn-primary");
-	await editor.waitForSelector(".panel-title", { timeout: 10000 });
-	const kanaSel = await editor.textContent(".panel-title");
-	// 選択範囲表示は「サーフェス(読み)」形式。サーフェスが重複していないこと
-	const kanaSelSurface = kanaSel.match(/選択範囲:\s*(.+?)\(/)[1];
+	await editor.waitForSelector(".panel-original-surface", { timeout: 10000 });
+	const kanaSelSurface = await editor.textContent(".panel-original-surface");
 	assert(kanaSelSurface === kanaSurface,
 		`かな読み修正でサーフェスが重複: 期待="${kanaSurface}" 実際="${kanaSelSurface}"`);
 	await editor.click("#btn-undo"); // 状態を戻して後続テストに影響させない
@@ -270,9 +300,9 @@ try {
 	// 「コ」のユニットをタップ → トークン境界スナップで対象が「故郷」になる
 	await editor.locator(".chip-unit", { hasText: "コ" }).first().click();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
-	const toggleText = await editor.textContent(".panel-yomi-toggle");
-	assert(toggleText.includes("故郷") && toggleText.includes("コキョー"),
-		"読み修正の対象が想定外: " + toggleText);
+	const sourceEditLabel = await editor.getAttribute(".panel-yomi-toggle", "aria-label");
+	assert(sourceEditLabel.includes("故郷") && sourceEditLabel.includes("コキョー"),
+		"読み修正の対象が想定外: " + sourceEditLabel);
 	await editor.click(".panel-yomi-toggle");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
 		"読み修正フォームを開いても読み入力欄にフォーカスされない");
@@ -283,19 +313,73 @@ try {
 			=== "ワスレガタキフルサトシンヤイチニジヲスギタッテカンジ",
 		undefined, { timeout: 10000 },
 	);
-	const selTitle = await editor.textContent(".panel-title");
-	assert(selTitle.includes("フルサト"), "読み修正後の選択範囲が想定外: " + selTitle);
+	const selectedReading = await editor.textContent(".panel-original-reading");
+	assert(selectedReading.includes("フルサト"),
+		"読み修正後の選択範囲が想定外: " + selectedReading);
 
-	// ---- 候補差し替え: 修正後の読みでの候補を選ぶと自動固定される ----
+	// ---- 候補差し替え: 候補選択はドラフト、読みと一緒に確定すると自動固定 ----
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
-	const candSurface = await editor.textContent(".candidate .candidate-surface");
-	await editor.click(".panel-candidates .candidate");
+	const candidate = editor.locator(".candidate:not(:has(.candidate-count))").first();
+	const candSurface = await candidate.locator(".candidate-surface").textContent();
+	const candKana = await candidate.locator(".candidate-kana").textContent();
+	const candId = await candidate.getAttribute("data-candidate-id");
+	assert(candId, "候補の安定IDをUIから取得できない");
+	const beforeDraft = await editor.evaluate(() => {
+		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return { results: JSON.stringify(data.results), history: data.history.length };
+	});
+	await candidate.click();
+	assert(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
+		"候補選択だけでパネルが閉じた");
+	assert(await editor.textContent(".panel-draft-surface") === candSurface,
+		"選択した候補がドラフトに反映されない");
+	assert(await editor.inputValue(".panel-draft-reading") === candKana.replace("・使用中", ""),
+		"候補の読みがドラフトに反映されない");
+	const draftVisible = await editor.locator(".panel-replacement-draft").evaluate((draft) => {
+		const panel = document.getElementById("editor-panel");
+		const d = draft.getBoundingClientRect();
+		const p = panel.getBoundingClientRect();
+		return d.top >= p.top && d.top < p.bottom && d.bottom <= p.bottom;
+	});
+	assert(draftVisible, "候補選択後の読み調整欄がパネル内に見えていない");
+	const afterDraft = await editor.evaluate(() => {
+		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return { results: JSON.stringify(data.results), history: data.history.length };
+	});
+	assert(afterDraft.results === beforeDraft.results && afterDraft.history === beforeDraft.history,
+		"候補選択だけで編集結果または履歴が変更された");
+	await editor.fill(".panel-draft-reading", "ふるさた");
+	if (await editor.locator(".panel-more").count()) {
+		await editor.click(".panel-more");
+		assert(await editor.inputValue(".panel-draft-reading") === "ふるさた",
+			"候補一覧の再描画で未確定の読みが消えた");
+	}
+	await editor.fill(".panel-draft-reading", "ン".repeat(20));
+	await editor.click(".panel-candidate-apply");
+	const invalidReadingNote = await editor.textContent(".panel-replacement-note");
+	assert(invalidReadingNote.includes("合わせられる読み"),
+		"発音候補が過大な読みを安全に拒否しない: " + invalidReadingNote);
+	const afterInvalid = await editor.evaluate(() => {
+		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return { results: JSON.stringify(data.results), history: data.history.length };
+	});
+	assert(afterInvalid.results === beforeDraft.results && afterInvalid.history === beforeDraft.history,
+		"無効な読みで編集結果または履歴が変更された");
+	await editor.fill(".panel-draft-reading", "ふるさた");
+	await editor.click(".panel-candidate-apply");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	assert(await editor.isChecked(".chip-word.locked .chip-lock-input"),
 		"差し替え後の自動固定が鍵アイコンに反映されない");
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`差し替えた単語がチップに反映されていない: 候補=${candSurface} チップ=${lockedSurface}`);
+	const committed = await editor.evaluate((surface) => {
+		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return data.results.flat().find((w) => w.surface === surface && w.locked);
+	}, lockedSurface);
+	assert(committed && String(committed.id) === candId && committed.kana === "フルサタ" &&
+		Array.isArray(committed.pronunciation) && committed.pronunciation.length > 0,
+		"候補IDを保った読み調整が保存されない: " + JSON.stringify(committed));
 
 	// ---- 固定中以外を再生成: 固定した単語が保持される ----
 	await editor.click("#btn-regenerate");

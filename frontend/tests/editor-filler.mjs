@@ -153,6 +153,11 @@ try {
 	const picked = await editor.locator(CANDIDATE + " .candidate-surface").first()
 		.evaluate((el) => el.textContent.replace(/×\d+$/, ""));
 	await editor.locator(CANDIDATE).first().click();
+	await editor.waitForSelector(".panel-candidate-apply", { timeout: 10000 });
+	assert((await readData(editor)).results[0].some((w) => w.filler &&
+		w.period[0] === replaceFiller.period[0] && w.period[1] === replaceFiller.period[1]),
+		"候補選択だけでfillerが差し替えられた");
+	await editor.click(".panel-candidate-apply");
 	await editor.waitForSelector(".editor-line[data-line='0'] .chip-word.locked", { timeout: 10000 });
 
 	const after = await readData(editor);
