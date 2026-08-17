@@ -96,10 +96,10 @@ try {
 	// ---- かなトークン「する」を選択(チップ「ス」をクリック→トークン境界スナップ) ----
 	await editor.locator(".chip-unit", { hasText: "ス" }).first().click();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
-	const toggleText = await editor.textContent(".panel-yomi-toggle");
+	const editLabel = await editor.getAttribute(".panel-yomi-toggle", "aria-label");
 	// 対象が かなトークン「する」(読みスル) であること = 先頭セグメントかな経路を通す前提
-	assert(toggleText.includes("する") && toggleText.includes("スル"),
-		"読み修正の対象が「する」でない: " + toggleText);
+	assert(editLabel.includes("する") && editLabel.includes("スル"),
+		"読み修正の対象が「する」でない: " + editLabel);
 
 	// ---- 読み修正: する に「ヘンカンスル」(するが末尾で途中一致する長い読み)を与える ----
 	await editor.click(".panel-yomi-toggle");

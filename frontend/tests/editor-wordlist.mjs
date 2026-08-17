@@ -195,6 +195,7 @@ try {
 	// ---- 切替前に単語をひとつ固定しておく ----
 	await openCandidates(editor);
 	await editor.click(CANDIDATE);
+	await editor.click(".panel-candidate-apply");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedBefore = await lockedOf(editor);
 	assert(lockedBefore.length > 0, "固定した単語がない");
