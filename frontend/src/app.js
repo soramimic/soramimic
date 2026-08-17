@@ -3,10 +3,12 @@ import { fetchText, fetchJson } from "./api.js";
 import { loadEngine, buildDatabase } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { createYomiApi } from "./yomiApi.js";
+import { originalTextToCsv } from "./wordlistInput.js";
 import {
 	createCustomWordlistRepository, customWordlistId, customWordlistValue,
 	CUSTOM_WORDLISTS_STORAGE_KEY,
 } from "./customWordlists.js";
+import { readCustomWordlistFile } from "./customWordlistFile.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
 
@@ -102,6 +104,7 @@ export async function startApp() {
 	const originalName = $id("original-name");
 	const originalText = $id("original-text");
 	const originalStatus = $id("original-status");
+	const originalFile = $id("original-file");
 
 	// 生成画面の状態は sessionStorage に保持し、編集ツール等から戻ってきても
 	// 入力・結果が消えないようにする。歌詞は初期化を待たずここで復元する
@@ -708,9 +711,10 @@ export async function startApp() {
 
 	let editingCustomId = null;
 	let editingCustomUpdatedAt = null;
-	function showOriginalStatus(message) {
+	function showOriginalStatus(message, isError = true) {
 		originalStatus.textContent = message || "";
 		originalStatus.hidden = !message;
+		originalStatus.classList.toggle("is-error", !!message && isError);
 	}
 	function openOriginalDialog(list = null) {
 		editingCustomId = list ? list.id : null;
@@ -731,12 +735,69 @@ export async function startApp() {
 	}
 
 	$id("original-cancel").addEventListener("click", () => originalDialog.close());
+	const originalDropzone = $id("btn-original-file");
+	async function loadOriginalFile(file) {
+		if (!file) return;
+		try {
+			const loaded = await readCustomWordlistFile(file);
+			const engine = await enginePromise;
+			originalTextToCsv(loaded.text, engine.app);
+			originalText.value = loaded.text;
+			if (!editingCustomId && !originalName.value.trim()) originalName.value = loaded.name;
+			showOriginalStatus(
+				`${file.name}: ${loaded.rows.toLocaleString()}語を入力欄へ読み込みました`, false);
+		} catch (err) {
+			console.warn("自作リストファイルの読み込みに失敗:", err);
+			showOriginalStatus("読み込めませんでした: " + err.message);
+		}
+	}
+	originalDropzone.addEventListener("click", () => originalFile.click());
+	originalFile.addEventListener("change", () => {
+		const file = originalFile.files && originalFile.files[0];
+		originalFile.value = "";
+		loadOriginalFile(file);
+	});
+	let originalDragDepth = 0;
+	originalDropzone.addEventListener("dragenter", (event) => {
+		if (!event.dataTransfer || !event.dataTransfer.types.includes("Files")) return;
+		event.preventDefault();
+		originalDragDepth += 1;
+		originalDropzone.classList.add("is-dragging");
+	});
+	originalDropzone.addEventListener("dragover", (event) => {
+		if (!event.dataTransfer || !event.dataTransfer.types.includes("Files")) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+	});
+	originalDropzone.addEventListener("dragleave", () => {
+		originalDragDepth = Math.max(0, originalDragDepth - 1);
+		if (originalDragDepth === 0) originalDropzone.classList.remove("is-dragging");
+	});
+	originalDropzone.addEventListener("dragend", () => {
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
+	});
+	originalDropzone.addEventListener("drop", (event) => {
+		event.preventDefault();
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
+		loadOriginalFile(event.dataTransfer && event.dataTransfer.files[0]);
+	});
+	originalDialog.addEventListener("close", () => {
+		originalDragDepth = 0;
+		originalDropzone.classList.remove("is-dragging");
+	});
 	$id("original-register").addEventListener("click", () => {
 		const name = originalName.value.trim();
 		const text = originalText.value;
 		if (!name) {
 			showOriginalStatus("リスト名を入力してください");
 			originalName.focus();
+			return;
+		}
+		if (!text.trim()) {
+			showOriginalStatus("単語を1つ以上入力してください");
+			originalText.focus();
 			return;
 		}
 		try {

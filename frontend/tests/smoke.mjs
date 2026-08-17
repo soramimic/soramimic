@@ -109,10 +109,51 @@ try {
 	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
 	await customTrigger.click();
 	await customMenu.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
-	await page.fill("#original-name", "食べ物");
+	const dropzoneText = await page.textContent("#btn-original-file");
+	if (!dropzoneText.includes("ここにドロップ") || !dropzoneText.includes("クリックして選択")) {
+		throw new Error("ファイルのドラッグ＆ドロップ案内が表示されない");
+	}
+	const droppedText = "surface,pronunciation\n葡萄,ブドウ";
+	await page.evaluate((text) => {
+		const file = new File([text], "果物.csv", { type: "text/csv" });
+		const transfer = new DataTransfer();
+		transfer.items.add(file);
+		const zone = document.getElementById("btn-original-file");
+		zone.dispatchEvent(new DragEvent("dragenter", {
+			bubbles: true, cancelable: true, dataTransfer: transfer,
+		}));
+		if (!zone.classList.contains("is-dragging")) {
+			throw new Error("ドラッグ中の表示にならない");
+		}
+		zone.dispatchEvent(new DragEvent("drop", {
+			bubbles: true, cancelable: true, dataTransfer: transfer,
+		}));
+	}, droppedText);
+	await page.waitForFunction(
+		(text) => document.getElementById("original-text").value === text,
+		droppedText, { timeout: 10000 });
+	if (!(await page.textContent("#original-status")).includes("果物.csv")) {
+		throw new Error("ドロップしたファイルの読み込み状態が表示されない");
+	}
+	await page.fill("#original-name", "");
 	const tidyCustomText = readFileSync(
 		new URL("../../wordlists/nations.csv", import.meta.url), "utf8");
-	await page.fill("#original-text", tidyCustomText);
+	const [chooser] = await Promise.all([
+		page.waitForEvent("filechooser"),
+		page.click("#btn-original-file"),
+	]);
+	await chooser.setFiles({
+		name: "nations.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.from(tidyCustomText),
+	});
+	await page.waitForFunction(
+		(text) => document.getElementById("original-text").value === text,
+		tidyCustomText, { timeout: 10000 });
+	if (await page.inputValue("#original-name") !== "nations") {
+		throw new Error("ファイル名から自作リスト名が補完されない");
+	}
+	await page.fill("#original-name", "食べ物");
 	await page.click("#original-register");
 	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
 		throw new Error("新規自作リストが選択されない");

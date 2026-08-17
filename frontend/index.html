@@ -139,6 +139,7 @@
           <p>単語リストを提供いただいた皆さま:野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、サッカー選手表-&gt;ヨロスーさま、駅名表-&gt;すきやきすきや様</p>
           <h2>更新履歴</h2>
           <div id="changelog">
+            <div>2026/08/11 自作の単語リストを名前付きで複数保存し、CSV・テキストファイルから読み込めるようにしました</div>
             <div>2026/07/26 「うっせぇ」「はぁ」など小書きカナを含む行が変換できない不具合を修正</div>
             <div>2026/07/20 v2を公開(サイトを全面リニューアル)</div>
             <div>2024/12/25 野球選手表更新(20240811ver)</div>
@@ -176,8 +177,19 @@
           <input id="original-name" class="input" type="text" maxlength="100"
             placeholder="例: 歴代レスラー" autocomplete="off" />
         </label>
+        <button id="btn-original-file" class="custom-wordlist-dropzone" type="button">
+          <svg class="custom-wordlist-dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5v3A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-3" />
+          </svg>
+          <span class="custom-wordlist-dropzone-copy">
+            <strong class="custom-wordlist-dropzone-desktop">CSV・TXTファイルをここにドロップ</strong>
+            <strong class="custom-wordlist-dropzone-mobile">CSV・TXTファイルを選択</strong>
+            <span>またはクリックして選択</span>
+          </span>
+        </button>
+        <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
         <textarea id="original-text" class="input" rows="16"
-          placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます"></textarea>
+          placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
         <p id="original-status" class="custom-wordlist-status" role="status" hidden></p>
         <div class="dialog-buttons custom-wordlist-dialog-buttons">
           <button id="original-delete" class="btn btn-danger" type="button" hidden>削除</button>

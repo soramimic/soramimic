@@ -38,6 +38,8 @@ jobs:
         run: node tests/custom-wordlists.mjs
       - name: 自作リスト入力形式のテスト
         run: node tests/wordlist-input.mjs
+      - name: 自作リストCSV・テキストファイル読み込みのテスト
+        run: node tests/custom-wordlist-file.mjs
       - name: XF MIDI取り込みのテスト
         run: node tests/xfmidi.mjs
       - name: 元歌詞アライメントのテスト
