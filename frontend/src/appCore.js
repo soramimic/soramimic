@@ -5,6 +5,7 @@ import kuromoji from "kuromoji/build/kuromoji.js";
 import { createSoramimic } from "./lib/index.js";
 import { KuromojiTokenizer } from "./lib/kuromojiTokenizer.js";
 import { fetchText, fetchJson } from "./api.js";
+import { originalTextToCsv } from "./wordlistInput.js";
 import { customWordlistId, LEGACY_ORIGINAL_STORAGE_KEY } from "./customWordlists.js";
 
 export const ORIGINAL_STORAGE_KEY = LEGACY_ORIGINAL_STORAGE_KEY;
@@ -80,11 +81,12 @@ export async function initSoramimicApp({ vowelRatio = 0.8 } = {}) {
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
 export async function buildDatabase(app, entry, where) {
 	if (customWordlistId(entry.value)) {
-		return app.wordList.parsePlain(entry.originalText || "");
+		return app.wordList.parseTidy(
+			originalTextToCsv(entry.originalText || "", app), "");
 	}
 	if (entry.value === "ORIGINAL") {
 		const text = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-		return app.wordList.parsePlain(text);
+		return app.wordList.parseTidy(originalTextToCsv(text, app), "");
 	}
 	const text = await fetchText(entry.filepath);
 	return entry.dbtype === "tidy"
