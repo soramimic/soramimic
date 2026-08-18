@@ -155,6 +155,11 @@ assert.equal(
 	"I love you",
 	"API token経路のformat 1で元表記を正確に出すこと",
 );
+assert.equal(
+	makeResultText(routedResults, "4").split("\n")[1].replaceAll("  ", ""),
+	"あいらゔゆー",
+	"API token経路の既定format 4で正しい読みを出すこと",
+);
 print("[ok] 読み推定API v2: 全行API経路で読みと原文表層を保持");
 
 // HTTPクライアントはv2 capabilityとlossless surfaceを検証する。不完全な旧APIは

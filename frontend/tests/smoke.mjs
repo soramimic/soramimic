@@ -53,6 +53,24 @@ try {
 	if (initState !== "変換") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
+	const defaultFormat = await page.inputValue("#format-select");
+	if (defaultFormat !== "4") {
+		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
+	}
+
+	// format 4を新しい既定にしても、保存済みのformat 1は従来どおり復元する
+	await page.evaluate(() => {
+		sessionStorage.setItem("soramimic-main", JSON.stringify({ format: "1" }));
+	});
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	const restoredFormat = await page.inputValue("#format-select");
+	if (restoredFormat !== "1") {
+		throw new Error("保存済みの出力形式を復元できない: " + restoredFormat);
+	}
 
 	// ---- 名前付き自作リスト: 旧データ移行と行内の選択・編集・削除 ----
 	await page.evaluate(() => {
