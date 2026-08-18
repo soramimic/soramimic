@@ -9,6 +9,37 @@ function toHankaku(s) {
 		String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 }
 
+// 読み推定APIは英字を記号品詞へ分割することがあり、空白tokenも返さない。
+// 英語辞書による読みと英語行の元表記を保つため、英字を含む行は
+// ブラウザ内tokenizerへ任せる（日本語行のAPI読み推定は従来どおり維持する）。
+function needsLocalTokenizer(text) {
+	return /[A-Za-zＡ-Ｚａ-ｚ]/u.test(text);
+}
+
+// API向きの行だけをまとめて問い合わせ、ローカル解析した行と元の順序で結合する。
+// 一部の英語行のために、同時入力された日本語行までAPIの読み推定を諦めない。
+export async function tokenizePhrasesWithYomiApi(textAnalyzer, yomiApi, phrases) {
+	const results = Array(phrases.length);
+	const localEntries = [];
+	const apiEntries = [];
+	phrases.forEach((text, index) => {
+		(needsLocalTokenizer(text) ? localEntries : apiEntries).push({ text, index });
+	});
+
+	if (localEntries.length > 0) {
+		const localTokens = textAnalyzer.tokenizeTogether(localEntries.map((v) => v.text));
+		localEntries.forEach((entry, i) => { results[entry.index] = localTokens[i]; });
+	}
+	if (apiEntries.length > 0) {
+		const { chunks, plan } = textAnalyzer.splitByRuby(apiEntries.map((v) => v.text));
+		const raw = await yomiApi.tokenize(chunks);
+		const apiTokens = textAnalyzer.formatTokensList(
+			textAnalyzer.mergeRubyTokens(raw, plan));
+		apiEntries.forEach((entry, i) => { results[entry.index] = apiTokens[i]; });
+	}
+	return results;
+}
+
 export function createYomiApi(baseUrl, { timeoutMs = 8000 } = {}) {
 	const url = (baseUrl || "").replace(/\/$/, "");
 

@@ -5,7 +5,7 @@ import {
 } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
 import { writeClipboard } from "./clipboard.js";
-import { createYomiApi } from "./yomiApi.js";
+import { createYomiApi, tokenizePhrasesWithYomiApi } from "./yomiApi.js";
 import { originalTextToCsv } from "./wordlistInput.js";
 import {
 	createCustomWordlistRepository, customWordlistId, customWordlistValue,
@@ -207,10 +207,7 @@ export async function startApp() {
 	async function tokenizePhrases(phrases) {
 		if (yomiApiReady) {
 			try {
-				const { chunks, plan } = app.textAnalyzer.splitByRuby(phrases);
-				const raw = await yomiApi.tokenize(chunks);
-				return app.textAnalyzer.formatTokensList(
-					app.textAnalyzer.mergeRubyTokens(raw, plan));
+				return await tokenizePhrasesWithYomiApi(app.textAnalyzer, yomiApi, phrases);
 			} catch (err) {
 				console.warn("yomi api失敗、kuromojiにフォールバック:", err);
 			}
