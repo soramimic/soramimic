@@ -223,18 +223,22 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 	}
 	
 	function concatMora(tokens){
-		
-		//２つめsurfaceをcharを消去する
-		tokens = tokens.map((token,i)=>{
-			//console.log(token);
-			if(i === 0)return token;
-			else if(token.char_index === tokens[i-1].char_index){
-				token.surface_form = "";
-				//console.log(token);
-				return token;
-			}else{
+		//1文字が複数モーラへ対応すると、各モーラに同じsurfaceが複製される。
+		//重複部分だけを除き、末尾に連結済みの空白・記号は元表記として残す。
+		const surfaceByChar = new Map();
+		tokens = tokens.map(token=>{
+			const charIndex = token.char_index;
+			const leadingSurface = token.leading_surface || "";
+			if(!surfaceByChar.has(charIndex)){
+				surfaceByChar.set(charIndex, token.surface_form);
+				token.surface_form = leadingSurface + token.surface_form;
 				return token;
 			}
+			const repeatedSurface = surfaceByChar.get(charIndex);
+			token.surface_form = token.surface_form.startsWith(repeatedSurface)
+				? token.surface_form.slice(repeatedSurface.length)
+				: "";
+			return token;
 		});
 		//console.log(1,tokens);
 		let mora = [];
@@ -260,7 +264,7 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 		tokens = character.tokenize(tokens);
 		tokens = tokens.map(token=>{
 			let obj = {}
-			for(let v of ["surface_form","token_index","phrase","pronunciation","subword","char_index"]){
+			for(let v of ["surface_form","token_index","phrase","pronunciation","subword","char_index","leading_surface"]){
 				obj[v]=token[v];
 			}
 			return obj;
