@@ -83,12 +83,15 @@ try {
 	const cdp = await context.newCDPSession(editor);
 
 	// iPhoneでも「読みを修正」を開くと入力欄へ自動フォーカスする。
-	// 実機ではvisualViewportに合わせてパネルを持ち上げ、入力欄への重なりを防ぐ。
+	// 実機ではvisualViewportに合わせて専用小窓を持ち上げ、入力欄への重なりを防ぐ。
 	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
+	const selectedBeforeReadingDialog = await editor.$$eval(".chip-unit.selected",
+		(els) => els.map((e) => e.textContent).join(""));
 	await editor.locator(".panel-yomi-toggle").tap();
-	assert(await editor.locator(".panel-yomi .input").count() === 1,
-		"読み修正の入力欄が表示されない");
+	assert(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open) &&
+		await editor.locator(".panel-yomi .input").isVisible(),
+		"読み修正専用の小窓が表示されない");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-yomi .input")),
 		"iPhoneで読み修正を開いても入力欄へ自動フォーカスされない");
 	const panelViewportPosition = await editor.evaluate(() => {
@@ -96,16 +99,71 @@ try {
 		const expected = Math.max(
 			0, window.innerHeight - viewport.height - viewport.offsetTop);
 		return {
-			actual: document.getElementById("editor-panel").style.bottom,
+			actual: document.getElementById("editor-reading-dialog").style.bottom,
 			expected: `${expected}px`,
 		};
 	});
 	assert(panelViewportPosition.actual === panelViewportPosition.expected,
 		"iPhoneの表示領域に合わせてパネル位置が調整されない: " +
 		JSON.stringify(panelViewportPosition));
+	// 入力から文字対応へ触れた時も、blurでiOS用の位置追従を早期解除せず、
+	// detailsの高さ変化でdialogの上端が跳ねない。
+	const readingDialogTop = await editor.locator("#editor-reading-dialog").evaluate(
+		(el) => el.getBoundingClientRect().top);
+	assert(!(await editor.locator("#reading-fix-align-details").evaluate((el) => el.open)),
+		"文字ごとの対応調整が初期状態で閉じていない");
+	await editor.locator("#reading-fix-align-details > summary").tap();
+	const readingDialogAfterAlign = await editor.locator("#editor-reading-dialog").evaluate((el) => ({
+		top: el.getBoundingClientRect().top,
+		bottomStyle: el.style.bottom,
+		alignVisible: !!el.querySelector(".panel-align")?.getClientRects().length,
+	}));
+	assert(Math.abs(readingDialogAfterAlign.top - readingDialogTop) < 2 &&
+		readingDialogAfterAlign.bottomStyle === panelViewportPosition.expected &&
+		readingDialogAfterAlign.alignVisible,
+		"文字対応の開閉で読み修正小窓がずれた: " + JSON.stringify({
+			beforeTop: readingDialogTop, after: readingDialogAfterAlign,
+		}));
+	await editor.locator("#btn-reading-fix-cancel").tap();
+	assert(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")) &&
+		await editor.$$eval(".chip-unit.selected",
+			(els) => els.map((e) => e.textContent).join("")) === selectedBeforeReadingDialog,
+		"読み修正のキャンセルで背後の候補選択が変わった");
+
+	// 適用で閉じたタップが背後の鉛筆へ遅れて届いても、dialogを開き直さない。
+	await editor.locator(".panel-yomi-toggle").tap();
+	await editor.locator("#btn-reading-fix-apply").tap();
+	await editor.waitForTimeout(500);
+	assert(!(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open)) &&
+		!(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open"))) &&
+		await editor.locator(".chip-unit.selected").count() === 0,
+		"変更適用後の遅延タップで読み修正小窓が開き直した");
+
+	// 後続のパネル閉じる操作のため、通常のタップが再び有効になってから選び直す。
+	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await editor.waitForSelector(".editor-panel.open", { timeout: 10000 });
 	await editor.locator(".panel-close").tap();
 	await editor.waitForFunction(() =>
 		!document.getElementById("editor-panel").classList.contains("open"));
+
+	// 固定アイコンは3行目を増やさず、指で直接切り替えられる大きさにする
+	const firstLock = editor.locator(".chip-word:not(.filler) .chip-lock").first();
+	const lockBox = await firstLock.boundingBox();
+	assert(lockBox && lockBox.width >= 28 && lockBox.height >= 28,
+		`固定アイコンがタッチには小さい: ${lockBox?.width}x${lockBox?.height}`);
+	const lockInput = firstLock.locator(".chip-lock-input");
+	const initiallyLocked = await lockInput.isChecked();
+	await editor.touchscreen.tap(lockBox.x + lockBox.width / 2, lockBox.y + lockBox.height / 2);
+	await editor.waitForFunction((expected) =>
+		document.querySelector(".chip-word:not(.filler) .chip-lock-input")?.checked === expected,
+		!initiallyLocked, { timeout: 5000 });
+	assert(!await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
+		"固定アイコンのタップで候補パネルが開いた");
+	const toggledLock = await editor.locator(".chip-word:not(.filler) .chip-lock").first().boundingBox();
+	await editor.touchscreen.tap(
+		toggledLock.x + toggledLock.width / 2,
+		toggledLock.y + toggledLock.height / 2,
+	); // 初期状態へ戻す
 
 	// ユニットチップの中心座標(再描画で要素が入れ替わるため毎回取り直す)
 	async function unitCenter(i) {
@@ -117,8 +175,10 @@ try {
 	async function selTitle() {
 		return editor.evaluate(() => {
 			const panel = document.getElementById("editor-panel");
-			const t = panel.querySelector(".panel-title");
-			return panel.classList.contains("open") && t ? t.textContent : "(選択なし)";
+			const surface = panel.querySelector(".panel-original-surface");
+			const reading = panel.querySelector(".panel-original-reading");
+			return panel.classList.contains("open") && surface && reading
+				? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
 		});
 	}
 
@@ -129,9 +189,10 @@ try {
 		try {
 			await editor.waitForFunction((exp) => {
 				const panel = document.getElementById("editor-panel");
-				const t = panel.querySelector(".panel-title");
-				const title = panel.classList.contains("open") && t
-					? t.textContent : "(選択なし)";
+				const surface = panel.querySelector(".panel-original-surface");
+				const reading = panel.querySelector(".panel-original-reading");
+				const title = panel.classList.contains("open") && surface && reading
+					? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
 				return exp === "(選択なし)" ? title === exp : title.includes(exp);
 			}, expected, { timeout: 5000 });
 		} catch {
@@ -143,9 +204,9 @@ try {
 	}
 
 	// ---- タップでの選択の伸縮(実タッチ) ----
-	await tapAndExpect(0, "選択範囲: 忘(", "タップで新規選択されない");
+	await tapAndExpect(0, "忘(", "タップで新規選択されない");
 	await tapAndExpect(1, "ワス", "隣接タップで拡張されない");
-	await tapAndExpect(1, "選択範囲: 忘(", "端タップで縮小されない");
+	await tapAndExpect(1, "忘(", "端タップで縮小されない");
 	await tapAndExpect(0, "(選択なし)", "単独再タップで解除されない");
 
 	// ---- タッチドラッグでの範囲選択 ----
@@ -170,7 +231,7 @@ try {
 	assert(!openDuringDrag, "ドラッグ中にパネルが表示されている");
 	try {
 		await editor.waitForFunction(() => {
-			const t = document.querySelector("#editor-panel.open .panel-title");
+			const t = document.querySelector("#editor-panel.open .panel-original-reading");
 			return t && t.textContent.includes("ワスレガ");
 		}, undefined, { timeout: 5000 });
 	} catch {
@@ -199,16 +260,120 @@ try {
 	const lockedAfter = await editor.locator(".chip-word.locked").count();
 	assert(lockedAfter === lockedBefore, "長押しなのに差し替えが発火した");
 
-	// ---- タップでの差し替えは通常どおり動くこと ----
+	// ---- 自由入力から候補選択へは、キーボード表示中でも1タップで戻れる ----
+	await editor.locator(".panel-free-toggle").tap();
+	assert(await editor.locator(".panel-candidates").count() === 0,
+		"自由入力中にも候補一覧が表示されている");
+	await editor.fill(".panel-free-surface", "仮入力");
+	assert(await editor.locator("html").evaluate((html) =>
+		html.classList.contains("editor-free-input-open")),
+		"自由入力中に背面スクロールが固定されていない");
+	// 戻るボタン上からスクロールを始めても、戻る操作とは判定せず、
+	// パネル端から背面ページへスクロールを連鎖させない。
+	await editor.locator("#editor-panel").evaluate((panel) => {
+		panel.style.maxHeight = "180px"; // 境界スクロールを確実に再現する
+	});
+	await editor.locator(".panel-free-back").scrollIntoViewIfNeeded();
+	assert(await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.scrollHeight > panel.clientHeight && panel.scrollTop > 0),
+		"自由入力画面がパネル内でスクロールできない");
+	await editor.waitForTimeout(600);
+	const pageScrollBeforeFreeDrag = await editor.evaluate(() => window.scrollY);
+	const freeBackDrag = await editor.locator(".panel-free-back").boundingBox();
+	const freeBackX = freeBackDrag.x + freeBackDrag.width / 2;
+	const freeBackY = freeBackDrag.y + freeBackDrag.height / 2;
+	await cdp.send("Input.dispatchTouchEvent", {
+		type: "touchStart", touchPoints: [{ x: freeBackX, y: freeBackY }],
+	});
+	await cdp.send("Input.dispatchTouchEvent", {
+		type: "touchMove", touchPoints: [{ x: freeBackX, y: freeBackY - 60 }],
+	});
+	await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	await editor.waitForTimeout(300);
+	assert(await editor.locator(".panel-free").count() === 1,
+		"戻るボタン上からのスクロールで自由入力画面が閉じた");
+	assert(await editor.inputValue(".panel-free-surface") === "仮入力",
+		"自由入力画面のスクロールで入力途中の内容が消えた");
+	assert(await editor.evaluate(() => window.scrollY) === pageScrollBeforeFreeDrag,
+		"自由入力画面のスクロールが背面ページへ連鎖した");
+	const freeBack = await editor.locator(".panel-free-back").boundingBox();
+	await editor.touchscreen.tap(
+		freeBack.x + freeBack.width / 2,
+		freeBack.y + freeBack.height / 2,
+	);
+	assert(await editor.locator(".panel-free").count() === 0 &&
+		await editor.locator(".panel-candidates").count() === 1,
+		"候補選択へ戻るボタンの1回のタップで候補一覧へ戻らない");
+	await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.style.removeProperty("max-height"));
+
+	// ---- タップで候補を選び、明示確定で差し替えられること ----
 	// ×N付き(同名グループ)は個別選択リストが開くため、単独候補を選ぶ
 	const single = editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first();
 	const candSurface = await single.locator(".candidate-surface").textContent();
 	const cand2 = await single.boundingBox();
 	await editor.touchscreen.tap(cand2.x + 10, cand2.y + 10);
+	await editor.waitForSelector(".panel-candidate-apply", { timeout: 10000 });
+	assert(await editor.locator(".chip-word.locked").count() === lockedBefore,
+		"候補タップだけで差し替えが確定した");
+	const panelFits = await editor.locator("#editor-panel").evaluate((panel) =>
+		panel.scrollWidth <= panel.clientWidth);
+	assert(panelFits, "狭い画面で差し替えパネルが横にはみ出した");
+	await editor.locator(".panel-draft-reading").tap();
+	const draftViewportPosition = await editor.evaluate(() => {
+		const viewport = window.visualViewport;
+		const expected = Math.max(
+			0, window.innerHeight - viewport.height - viewport.offsetTop);
+		return {
+			actual: document.getElementById("editor-panel").style.bottom,
+			expected: `${expected}px`,
+		};
+	});
+	assert(draftViewportPosition.actual === draftViewportPosition.expected,
+		"候補読み入力時にiPhoneの表示領域へパネルが追従しない: " +
+		JSON.stringify(draftViewportPosition));
+	const applyBox = await editor.locator(".panel-candidate-apply").boundingBox();
+	assert(applyBox.width >= 28 && applyBox.height >= 28,
+		`差し替えボタンがタッチには小さい: ${applyBox.width}x${applyBox.height}`);
+	await editor.locator(".panel-candidate-apply").tap();
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`タップ差し替えが反映されない: 候補=${candSurface} チップ=${lockedSurface}`);
+
+	// ---- 「変換のしかた」モーダルがタッチで開けて操作できること ----
+	// ツールバーの⚙・中のプリセット・×は、指でも押せる大きさで並んでいる必要がある
+	const gearEl = editor.locator("#btn-settings");
+	await gearEl.scrollIntoViewIfNeeded();
+	const gear = await gearEl.boundingBox();
+	assert(gear.width >= 28 && gear.height >= 28,
+		`⚙がタッチには小さい: ${gear.width}x${gear.height}`);
+	await editor.touchscreen.tap(gear.x + gear.width / 2, gear.y + gear.height / 2);
+	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
+	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+
+	// 狭い画面ではほぼ全画面(横幅いっぱい)になっていること
+	const dlg = await editor.locator("#editor-settings").boundingBox();
+	assert(dlg.width >= 390 * 0.95,
+		"狭い画面でモーダルが全画面になっていない(幅): " + dlg.width);
+	assert(dlg.height >= 844 * 0.9,
+		"狭い画面でモーダルが全画面になっていない(高さ): " + dlg.height);
+
+	const preset = await editor.locator("#editor-preset-buttons button:has-text('長い単語')").boundingBox();
+	assert(preset.height >= 28, "プリセットボタンがタッチには小さい: " + preset.height);
+	await editor.touchscreen.tap(preset.x + preset.width / 2, preset.y + preset.height / 2);
+	const wordnum = await editor.$$eval("#editor-param-area input[type=range]",
+		(els) => Number(els[2].value));
+	assert(wordnum === 6, "タッチでプリセットが適用されない: " + wordnum);
+
+	// ×のタップで閉じられること(Esc の使えないスマホでの主な閉じ方)
+	const close = await editor.locator("#btn-settings-close").boundingBox();
+	assert(close.width >= 20 && close.height >= 20,
+		`×がタッチには小さい: ${close.width}x${close.height}`);
+	await editor.touchscreen.tap(close.x + close.width / 2, close.y + close.height / 2);
+	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
+		undefined, { timeout: 10000 });
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

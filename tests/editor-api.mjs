@@ -22,7 +22,7 @@ const PARAM = {
 };
 
 const h = await buildApp({ tokenizer: "kuromoji" });
-const db = h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
+const db = await h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
 const { soramimiMaker, textAnalyzer } = h.app;
 
 // allocatorの最重要不変条件: 細分化の成否にかかわらず表層順は変えない。
@@ -219,5 +219,29 @@ const ids = regenLine.map((w) => w.id);
 assert.equal(new Set(ids).size, ids.length, "行内で単語IDが重複しないこと");
 print("[ok] 固定つき再生成: " +
 	regenLine.map((w) => (w === kept ? "🔒" : "") + w.surface).join(" / "));
+
+// ---- 自動生成の単語境界は文字の途中に入らない ----
+// 「赤とんぼ × 駅名」で実際に発生した回帰: 畑=ハ・タ・ケの途中で
+// 山の畑(ヤマノハ) / の、(タケノ) と分かれ、元歌詞読みが「は／のけ」に崩れていた。
+const stationDb = await h.buildWordlist({
+	file: "wordlists/stations.csv", dbtype: "tidy", where: "status=current",
+});
+const akatomboTokens = textAnalyzer.tokenizeTogether(["山の畑の、桑の実を"]);
+const akatomboUnits = textAnalyzer.getYomiAndPhraseBreak(akatomboTokens[0]);
+const akatombo = await new Promise((resolve) => {
+	soramimiMaker.generateFromTokens(
+		akatomboTokens, stationDb, { ...PARAM }, null, resolve);
+});
+for (const word of akatombo[0]) {
+	for (const boundary of word.period) {
+		if (boundary === 0 || boundary === akatomboUnits.length) continue;
+		assert.notEqual(
+			akatomboUnits[boundary - 1].char_index,
+			akatomboUnits[boundary].char_index,
+			`文字途中に単語境界がある: ${word.surface} ${JSON.stringify(word.period)}`,
+		);
+	}
+}
+print("[ok] 文字境界: 畑の読みを分割しない");
 
 print("編集ツールAPI: 全テスト通過");

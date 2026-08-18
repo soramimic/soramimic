@@ -30,13 +30,44 @@
   <body>
     <div id="app">
       <header class="site-header">
-        <a class="brand" href="./"><img class="brand-logo"
+        <a id="editor-brand" class="brand" href="./"><img class="brand-logo"
           src="/logo-soramimic-horizontal-v3.png" width="1900" height="467" alt=""
           aria-hidden="true" /><span class="visually-hidden">Soramimic</span></a>
         <span class="editor-title">編集ツール</span>
       </header>
 
       <main>
+        <!-- セットアップ画面(第1ステップ)。変換済みの results を持たずに開いたとき
+             (=phrasesだけ渡されたとき)と、ホストが setupFirst を立てたときに出る。
+             設定UIの中身は「変換のしかた」モーダルと同じ #editor-settings-body を
+             DOMごと付け替えて使い回す(両者は同時に出ないので実体は1つでよい) -->
+        <section id="editor-setup" class="editor-setup" hidden>
+          <!-- 曲。ホストが host.songs / host.canUploadSong を渡していれば曲を選べる
+               (曲データはホストが持つので、選択は hostRequest で依頼する)。
+               どちらも無い単体運用では従来どおり曲名の読み取り専用表示になる。
+               ここまで来て細かく編集したい人の目的は「自分の曲でやる」なので、
+               埋め込み元の詳細設定と同じ並びにする: いまの曲名は常に見せ、
+               「自分のMIDIを使う」を主役に置き、サンプル一覧は折りたたみに格下げする -->
+          <div class="field" id="setup-song-field" hidden>
+            <h3 class="field-label">曲</h3>
+            <p id="setup-song-title" class="setup-song-title"></p>
+            <div id="setup-song-actions" class="setup-song-actions" hidden>
+              <button id="btn-setup-song-upload" class="btn" type="button">自分のMIDIを使う</button>
+            </div>
+            <!-- ホストが曲一覧を渡さないときは、この details ごと出さない -->
+            <details id="setup-song-samples" class="setup-song-samples" hidden>
+              <summary>サンプルから選ぶ</summary>
+              <select id="setup-song-select" class="input" aria-label="曲"></select>
+            </details>
+            <p id="setup-song-status" class="editor-status setup-song-status" hidden></p>
+          </div>
+          <div id="setup-settings-slot"></div>
+          <div class="setup-actions">
+            <button id="btn-setup-convert" class="btn btn-primary" disabled>この設定で変換</button>
+            <button id="btn-setup-back" class="btn btn-ghost" hidden>編集画面へ戻る</button>
+            <span id="setup-progress" class="editor-status" hidden></span>
+          </div>
+        </section>
         <p id="editor-empty" class="editor-empty" hidden>
           編集する変換結果がありません。<a href="./">生成画面</a>で変換したあと、「編集ツールで開く」から開いてください。
           書き出したファイル(JSON)があれば
@@ -44,15 +75,15 @@
           から再開できます。
         </p>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
-        <p class="editor-hint">
-          単語チップをタップすると候補から差し替えられます。元歌詞のカナはドラッグで範囲選択、選択の端タップで縮小、隣のタップで拡張できます。
-          🔒で単語を固定し、「固定以外を再生成」でそれ以外を作り直せます(差し替えた単語は自動で固定されます)。替え歌単語や候補は長押し(PCはホバー)で詳細(フルネーム・ID等)が見られます。
-          元歌詞の読みの間違いは、範囲選択してパネルの「元歌詞の読みを修正」から直せます。
-        </p>
         <div id="editor-toolbar" class="editor-toolbar" hidden>
           <div class="toolbar-group">
-            <button id="btn-regenerate" class="btn btn-primary">固定以外を再生成</button>
+            <button id="btn-regenerate" class="btn btn-primary">固定中以外を再生成</button>
             <span id="regen-progress" class="editor-status" hidden></span>
+          </div>
+          <div class="toolbar-group">
+            <button id="btn-settings" class="btn btn-ghost btn-icon" type="button"
+              aria-label="変換のしかた" title="変換のしかた" aria-haspopup="dialog">⚙</button>
+            <span id="reconvert-progress" class="editor-status" hidden></span>
           </div>
           <div class="toolbar-group">
             <button id="btn-undo" class="btn btn-ghost" disabled title="直前の編集を取り消す">↩ 戻る</button>
@@ -77,6 +108,125 @@
         <section id="editor-lines" class="editor-lines"></section>
         <section id="editor-panel" class="editor-panel"></section>
       </main>
+
+      <!-- 候補選択とは独立した元歌詞の読み修正。実際の修正対象を簡潔に示す。 -->
+      <dialog id="editor-reading-dialog" class="reading-fix-dialog" aria-labelledby="reading-fix-title">
+        <div class="dialog-header">
+          <h2 id="reading-fix-title">元歌詞の読みを修正</h2>
+          <button id="btn-reading-fix-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <p class="reading-fix-description">選択部分を含む単語全体を修正します</p>
+        <div class="panel-yomi reading-fix-form">
+          <span class="panel-yomi-label">元歌詞</span>
+          <span id="reading-fix-target" class="reading-fix-target"></span>
+          <label class="panel-yomi-label" for="reading-fix-input">元歌詞読み</label>
+          <input id="reading-fix-input" class="input" autocomplete="off" />
+          <details id="reading-fix-align-details" class="reading-fix-align-details" hidden>
+            <summary>文字ごとの読みを調整</summary>
+            <p class="reading-fix-align-help">矢印で、どの読みをどの文字に対応させるか調整できます。</p>
+            <div id="reading-fix-align"></div>
+          </details>
+          <p id="reading-fix-error" class="panel-yomi-note" role="alert"></p>
+          <div class="dialog-buttons">
+            <button id="btn-reading-fix-cancel" class="btn" type="button">キャンセル</button>
+            <button id="btn-reading-fix-apply" class="btn btn-primary" type="button">変更を適用</button>
+          </div>
+        </div>
+      </dialog>
+
+      <!-- 変換のしかた(ツールバーの⚙から開く)。生成画面のダイアログと同じ流儀で、
+           Esc・×・外側クリックのどれでも閉じられる。中身は .field 単位の
+           セクションを並べるだけの構造 -->
+      <dialog id="editor-settings" class="editor-settings">
+        <div class="dialog-header">
+          <h2>変換のしかた</h2>
+          <button id="btn-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div id="editor-settings-body" class="editor-settings-body">
+          <!-- 単語リスト。conf/setting.json から組み立てるので、取れない環境
+               (スタンドアロン配置)ではセクションごと出さない -->
+          <div class="field" id="editor-wordlist-field" hidden>
+            <h3 class="field-label">単語リスト</h3>
+            <select id="editor-wordlist" class="input" aria-label="単語リスト"></select>
+            <button id="btn-original-edit" class="btn editor-original-edit" type="button" hidden>自作リストの内容を編集</button>
+          </div>
+          <div class="field">
+            <h3 class="field-label">パラメータ</h3>
+            <div id="editor-preset-buttons" class="btn-group-wrap"></div>
+            <div id="editor-param-area" class="param-grid"></div>
+          </div>
+          <!-- ノート長は曲データを渡したホストでだけ利用できる。設定と指数計算は
+               soramimic側が担当し、ホストはα=1の生重みだけを渡す。 -->
+          <div class="field" id="editor-note-length-field" hidden>
+            <h3 class="field-label">ノート長重視</h3>
+            <input id="editor-note-length-alpha" class="input" type="number"
+              min="0" max="2" step="0.05" value="0.25"
+              aria-label="ノート長重視 α(0でオフ)" />
+            <p class="field-note">長く伸ばす音符ほど音の一致を優先します。0でオフ、
+              0.25は候補が近いときだけ効く控えめな設定です。</p>
+          </div>
+          <div class="field">
+            <h3 class="field-label">単語重複</h3>
+            <div id="editor-duplicate-buttons" class="btn-group"></div>
+          </div>
+          <div class="field" id="editor-facet-field" hidden>
+            <h3 class="field-label">単語リストの絞り込み</h3>
+            <div id="editor-facets" class="wordlist-facets"></div>
+          </div>
+        </div>
+        <div class="dialog-buttons editor-settings-actions">
+          <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
+        </div>
+      </dialog>
+
+      <!-- 「自作リスト」を選んだときだけ開く登録画面。通常のリストを選んでいる間は
+           設定画面に貼り付け・ファイル操作を出さず、用途を混同させない。 -->
+      <dialog id="editor-original-dialog" class="editor-original-dialog">
+        <div class="dialog-header">
+          <h2>自作リストを使う</h2>
+          <button id="btn-original-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <p class="field-note">1行に「単語,読み」を入力します。入力欄へ直接貼り付けるか、CSV／テキストファイルを読み込めます。</p>
+        <textarea id="editor-original-text" class="input editor-original-text" rows="12"
+          aria-label="自作リスト"
+          placeholder="#使用する単語とその読みのセットを各行につき一セットずつカンマ(,)区切りで入力してください&#10;#ひとつの単語に複数の読み方を登録可能です&#10;#読み方が一つだけの場合は省略可能です。その場合、システムが自動的に読み方を決定しますが、間違っていることもあります&#10;#半角シャープ(#)でコメントアウトできます&#10;#1行目に列名(id,original,surface,pronunciation)を書けば、その形式のCSVも貼り付けられます"></textarea>
+        <div class="editor-original-file">
+          <button id="btn-original-paste" class="btn" type="button">クリップボードから貼り付け</button>
+          <button id="btn-original-file" class="btn" type="button">ファイルを読み込む</button>
+          <span id="original-file-status" class="editor-status" hidden></span>
+        </div>
+        <input id="original-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+        <div class="dialog-buttons">
+          <button id="btn-original-cancel" class="btn" type="button">キャンセル</button>
+          <button id="btn-original-register" class="btn btn-primary" type="button">このリストを使う</button>
+        </div>
+      </dialog>
+
+      <!-- 持ち込みMIDI専用の入力画面。サンプル曲では同梱の元歌詞を使うため、
+           字幕用の元歌詞欄を通常のセットアップ画面には常駐させない。 -->
+      <dialog id="editor-midi-dialog" class="editor-midi-dialog">
+        <div class="dialog-header">
+          <h2>自分のMIDIを使う</h2>
+          <button id="btn-setup-midi-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="field">
+          <h3 class="field-label">MIDIファイル</h3>
+          <p id="setup-midi-title" class="setup-song-title"></p>
+          <button id="btn-setup-midi-file" class="btn" type="button">MIDIファイルを選ぶ</button>
+          <p id="setup-midi-status" class="editor-status setup-song-status" hidden></p>
+        </div>
+        <div class="field" id="setup-lyrics-field" hidden>
+          <h3 class="field-label">元歌詞(字幕用)</h3>
+          <p class="field-note">任意です。MIDIの歌詞を漢字かな交じりの字幕に置き換えるときに使います。</p>
+          <textarea id="setup-lyrics" class="input setup-lyrics" rows="8"
+            aria-label="元歌詞(字幕用)"
+            placeholder="曲の元の歌詞(任意)。字幕に使われます"></textarea>
+          <p id="setup-lyrics-status" class="editor-status setup-lyrics-status" hidden></p>
+        </div>
+        <div class="dialog-buttons">
+          <button id="btn-setup-midi-done" class="btn btn-primary" type="button">閉じる</button>
+        </div>
+      </dialog>
     </div>
     <script type="module" src="/src/editor.js"></script>
   </body>
