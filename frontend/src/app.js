@@ -900,17 +900,20 @@ export async function startApp() {
 		btnConvert.click();
 	});
 
-	async function getDatabase(entry, where) {
+	async function getDatabase(entry, where, maxUnits) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
-		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
+		// キーは内容と歌詞長上限で構成し、自作リストの編集後や別の長さの
+		// 歌詞で古いDBを使わない。
 		if (customWordlistId(entry.value)) {
-			const key = [entry.value, entry.originalText || ""].join("|");
-			if (!dbCache.has(key)) dbCache.set(key, await buildDatabase(app, entry));
+			const key = [entry.value, entry.originalText || "", maxUnits].join("|");
+			if (!dbCache.has(key)) {
+				dbCache.set(key, await buildDatabase(app, entry, undefined, maxUnits));
+			}
 			return dbCache.get(key);
 		}
-		const key = [entry.filepath, entry.dbtype, where].join("|");
+		const key = [entry.filepath, entry.dbtype, where, maxUnits].join("|");
 		if (!dbCache.has(key)) {
-			dbCache.set(key, await buildDatabase(app, entry, where));
+			dbCache.set(key, await buildDatabase(app, entry, where, maxUnits));
 		}
 		return dbCache.get(key);
 	}
@@ -1103,8 +1106,15 @@ export async function startApp() {
 				const entry = customWordlistId(selectedWordlist && selectedWordlist.value)
 					? { ...selectedWordlist } : selectedWordlist;
 				const where = compileWhere(entry);
-				const db = await getDatabase(entry, where);
 				const tokensList = await tokenizePhrases(phrases);
+				// 歌詞に存在しない長さの駅名候補まで展開すると、大規模リストで
+				// DB構築が止まって見える。発音ユニット数の最大値を先に求め、
+				// 単語側の変種生成を必要な長さまでに限定する。
+				const maxUnits = tokensList.reduce((max, tokens) => Math.max(
+					max, app.textAnalyzer.getYomiAndPhraseBreak(tokens).length), 0);
+				progressText.textContent = "単語リストを準備中...";
+				const db = await getDatabase(
+					entry, where, maxUnits > 0 ? maxUnits : undefined);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された
 				lastConversion = {
 					phrases, tokensList, param, wordlist: entry, where,
