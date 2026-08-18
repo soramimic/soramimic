@@ -126,10 +126,9 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 					//console.log("english fullmatched");
 					token.surface_form = AP.toSign(token.surface_form);
 					//ルビ記法で読みを明示指定したトークンは英語読みで上書きしない
-					if(!token.ruby){
-					//if(token.pronunciation === "*"){
+					//v2 APIの読みを権威とし、ローカル辞書は未知読みだけを補完する。
+					if(!token.ruby && (!token.pronunciation || token.pronunciation === "*")){
 						token.pronunciation = english.toKana(token.surface_form);
-					//}
 					}
 				}
 				return token;
