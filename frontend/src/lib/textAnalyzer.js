@@ -33,9 +33,10 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 				if(english.isFullmatch(token.surface_form)){
 					//console.log("english fullmatched");
 					token.surface_form = AP.toSign(token.surface_form);
-					//if(token.pronunciation === "*"){
-						token.pronunciation = english.toKana(token.surface_form);					
-					//}
+					//v2 APIの読みを権威とし、ローカル辞書は未知読みだけを補完する。
+					if(!token.pronunciation || token.pronunciation === "*"){
+						token.pronunciation = english.toKana(token.surface_form);
+					}
 				}
 				return token;
 			});
