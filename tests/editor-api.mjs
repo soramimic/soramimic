@@ -25,6 +25,34 @@ const h = await buildApp({ tokenizer: "kuromoji" });
 const db = await h.buildWordlist({ file: "wordlists/pokemon.csv", dbtype: "tidy" });
 const { soramimiMaker, textAnalyzer } = h.app;
 
+// ---- 元歌詞表記: 発音に含めない空白・記号も表層順どおり保持する ----
+// 1文字の英単語が複数モーラ(I=アイ)になる場合、後続空白は2番目のモーラへ
+// 連結される。そのモーラから重複surfaceを除く際も空白まで消してはならない。
+for (const [input, expectedSurface] of [
+	["I love you", "I love you"],
+	["Hello world", "Hello world"],
+	["  I  love you  ", "  I  love you  "],
+	["I 愛 you", "I 愛 you"],
+	["I,  love!", "I,  love!"],
+	["don't stop", "don't stop"],
+	["I’m here", "I'm here"],
+	["夢は 今も", "夢は 今も"],
+	["｜love《ラブ》 you", "love you"],
+]) {
+	const inputTokens = textAnalyzer.tokenizeTogether([input])[0];
+	const inputUnits = textAnalyzer.getYomiAndPhraseBreak(inputTokens);
+	assert.equal(
+		inputUnits.map((unit) => unit.surface_form).join(""),
+		expectedSurface,
+		`発音ユニットから元表記を復元できること: ${JSON.stringify(input)}`,
+	);
+}
+
+const englishResults = await h.generate(["I love you"], db, { ...PARAM });
+const englishFormat1 = makeResultText(englishResults, "1").split("\n");
+assert.equal(englishFormat1[1], "I love you", "format 1で英語歌詞の空白を保持すること");
+print("[ok] 元歌詞表記: 英語・連続空白・英日混在・アポストロフィ・行端・ルビを保持");
+
 // allocatorの最重要不変条件: 細分化の成否にかかわらず表層順は変えない。
 // 公開版では漢字→ジュウが「字=ジ / 漢=ュウ」になり、この条件を破っていた。
 const kanjiAllocator = Kanji(

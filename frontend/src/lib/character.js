@@ -589,13 +589,20 @@ function Character(kanji){
 	//記号のトークンを直前と連結する
 	function concatSignToken(tokens){
 		let formatted = [];
+		let leadingSurface = "";
 		for(let token of tokens){
 			if(token["type"] === "sign"){
 				if(formatted.length > 0){
 					formatted[formatted.length-1]["surface_form"] += token["surface_form"];
+				}else{
+					leadingSurface += token["surface_form"];
 				}
 				continue;
 			}else{
+				if(leadingSurface !== ""){
+					token["leading_surface"] = leadingSurface;
+					leadingSurface = "";
+				}
 				formatted.push(token);
 			}
 		}
