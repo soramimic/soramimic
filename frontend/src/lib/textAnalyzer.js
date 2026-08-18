@@ -210,10 +210,10 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 			return sep;
 		},
 		syllableToVariation: k2s.getVariation,
-		yomiToVariation: function(yomi){
+		yomiToVariation: function(yomi, maxUnits){
 			//const yomi = getYomi(text);
 			const sep = k2s.split(yomi);
-			const ptn = k2s.getVariation(sep);
+			const ptn = k2s.getVariation(sep, maxUnits);
 			return ptn;
 		},
 		formatKana: formatKana,

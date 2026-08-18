@@ -133,9 +133,16 @@ function Parser(){
 		
 function WordList(textAnalyzer){
 	const WORD_LIST_ = {}
+	const YIELD_BATCH_SIZE = 256;
+
+	// 大きなワードリストの読み込み中も、ブラウザが描画や入力を処理できる
+	// ように定期的にイベントループへ制御を返す。
+	function yieldToBrowser(){
+		return new Promise(resolve => setTimeout(resolve, 0));
+	}
 
 	
-	function loadDatabaseCsvText(text, query_str){
+	async function loadDatabaseCsvText(text, query_str, maxUnits){
 		//console.log("loadDatabaseCsvText",text);
 		//let text = loadTextFileSync(path);
 		// 改行を含む \s を使うと、末尾カラムが空の行(行末が ",")が次行を飲み込む
@@ -144,7 +151,8 @@ function WordList(textAnalyzer){
 		let header = lines[0].split(",");
 		let df = [];
 		for(let i=1;i<lines.length;i++){
-			df.push(lines[i].split(","));
+			let row = lines[i].split(",");
+			if(row.some(v=>v.trim() !== "")) df.push(row);
 		}
 		
 		let parser = Parser();
@@ -180,13 +188,21 @@ function WordList(textAnalyzer){
 		console.log("kanji_pronunciation",kanji_pronunciation);
 		
 		if(kanji_pronunciation.length > 0){
-			let yomi = textAnalyzer.getYomi(kanji_pronunciation);
-			for(let i=0;i<kanji_pronunciation_id.length;i++){
-				let index = kanji_pronunciation_id[i];
-				pronunciations[index]=yomi[i];
+			for(let start=0;start<kanji_pronunciation.length;start+=YIELD_BATCH_SIZE){
+				let end = Math.min(start + YIELD_BATCH_SIZE, kanji_pronunciation.length);
+				let yomi = textAnalyzer.getYomi(kanji_pronunciation.slice(start,end));
+				for(let i=start;i<end;i++){
+					let index = kanji_pronunciation_id[i];
+					pronunciations[index]=yomi[i-start];
+				}
+				await yieldToBrowser();
 			}
 		}
-		pronunciations2 = pronunciations.map(v=>textAnalyzer.formatKana(v));
+		pronunciations2 = new Array(pronunciations.length);
+		for(let i=0;i<pronunciations.length;i++){
+			pronunciations2[i] = textAnalyzer.formatKana(pronunciations[i]);
+			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
+		}
 		console.timeEnd("non,mecab")
 		//console.time("mecab2");
 		//console.log("pronunciations",pronunciations);
@@ -215,8 +231,10 @@ function WordList(textAnalyzer){
 			obj.pronunciation = pronunciations[i];
 			if(!obj.pronunciation) continue;
 			
-			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation);
+			// maxUnits を変種生成まで渡し、長い読みの直積を作る途中で枝刈りする。
+			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits);
 			for(let p of pvariations){
+				if(maxUnits !== undefined && p.length > maxUnits) continue;
 				if(p.length in resultdb === false)resultdb[p.length]=[];
 				resultdb[p.length].push({
 					"surface":obj.surface,
@@ -227,6 +245,7 @@ function WordList(textAnalyzer){
 					"vcost":p.vcost||0 //単語側の変種コスト(#105)
 				});
 			}
+			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
 		}
 		return resultdb;
 	} 
@@ -246,9 +265,12 @@ function WordList(textAnalyzer){
 			if(v.length === 1){
 				csvlines.push([String(i),v[0],v[0],v[0]]);
 			}else{
+				//「見出し語,読み1,読み2…」: 1列目は original 兼 surface(表示に使う表記)、
+				//2列目以降は読み(マッチングにだけ使う)。読みが複数あるときは
+				//同じid・同じsurfaceの行が読みの数だけ並ぶ(tidy CSVと同じ構造)
 				for(let j=1;j<v.length;j++){
 					if(v[j]){
-						csvlines.push([String(i),v[0],v[j],v[j]]);
+						csvlines.push([String(i),v[0],v[0],v[j]]);
 					}
 				}
 			}
@@ -261,9 +283,9 @@ function WordList(textAnalyzer){
 	}
 	
 
-	const loadDatabaseText = (text) => {
+	const loadDatabaseText = async (text, maxUnits) => {
 		let csvtext = plainToCsv(text);
-		return loadDatabaseCsvText(csvtext, "");
+		return loadDatabaseCsvText(csvtext, "", maxUnits);
 		
 		const words = text.split("\n").map(val=>{
 			val = val.replace(/\u200B/g, "");//エスケープ処理
@@ -363,7 +385,11 @@ function WordList(textAnalyzer){
 		//setList: setList,
 		parseTidy: loadDatabaseCsvText,
 		parsePlain: loadDatabaseText,
-		
+		// plain形式 → tidy CSV の正規化。parsePlain が内部で通しているのと同じ関数を
+		// そのまま公開しただけ(ロジック無改変)。自作リストのCSVを書き出しJSONへ
+		// 同梱するのに使う(parseTidy(csv,"") は parsePlain(text) と同じDBになる)
+		plainToCsv: plainToCsv,
+
 		//setWordListFile: setWordListFile,
 		//get: get,
 		//exists: exists

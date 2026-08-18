@@ -154,61 +154,44 @@
     "vcost": 0
    },
    {
-    "id": "172",
-    "kana": "ピー",
-    "original": "ピィ",
-    "original_surface": "今",
-    "originalkana": "イ",
+    "id": "609",
+    "kana": "キバゴ",
+    "original": "キバゴ",
+    "original_surface": "今も",
+    "originalkana": "イマモ",
     "period": [
      3,
-     4
+     6
     ],
     "pronunciation": [
-     "ピー"
+     "キ",
+     "バ",
+     "ゴ"
     ],
-    "score": 50.086960997079885,
-    "sim": 30.08696099707988,
-    "surface": "ピィ",
+    "score": 42.34471867739477,
+    "sim": 42.34471867739477,
+    "surface": "キバゴ",
     "vcost": 0
    },
    {
-    "id": "277",
-    "kana": "キャモメ",
-    "original": "キャモメ",
-    "original_surface": "もめ",
-    "originalkana": "マモメ",
+    "id": "856",
+    "kana": "テブリム",
+    "original": "テブリム",
+    "original_surface": "めぐりて",
+    "originalkana": "メグリテ",
     "period": [
-     4,
-     7
-    ],
-    "pronunciation": [
-     "キャ",
-     "モ",
-     "メ"
-    ],
-    "score": 34.76097544530829,
-    "sim": 14.760975445308292,
-    "surface": "キャモメ",
-    "vcost": 0
-   },
-   {
-    "id": "547",
-    "kana": "チュリネ",
-    "original": "チュリネ",
-    "original_surface": "ぐりて",
-    "originalkana": "グリテ",
-    "period": [
-     7,
+     6,
      10
     ],
     "pronunciation": [
-     "チュ",
+     "テ",
+     "ブ",
      "リ",
-     "ネ"
+     "ム"
     ],
-    "score": 29.45637802019752,
-    "sim": 29.45637802019752,
-    "surface": "チュリネ",
+    "score": 101.70316178759865,
+    "sim": 101.70316178759865,
+    "surface": "テブリム",
     "vcost": 0
    }
   ],

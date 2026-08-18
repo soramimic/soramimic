@@ -77,7 +77,7 @@ for (const [syllables, expected] of [
 print("[ok] 変種の各ユニットが元音節の位置を保持する(srcIndex)");
 
 // ---- 2. 省略時・一様重みで結果が変わらないこと ----
-const db = wordList.parsePlain(["カキ", "キカ", "カナカ", "カナキ", "カンカ"].join("\n"));
+const db = await wordList.parsePlain(["カキ", "キカ", "カナカ", "カナキ", "カンカ"].join("\n"));
 const kaka = textAnalyzer.yomiToSyllable("カカ");
 assert.deepEqual(kaka, ["カ", "カ"], "「カカ」は2ユニット");
 
@@ -89,7 +89,7 @@ for (const weights of [null, undefined, [1, 1], [3, 3], [0.5, 0.5]]) {
 print("[ok] 省略時・一様重み(スケール違いを含む)でスコア不変");
 
 // 実歌詞でも、重み省略と一様重みで生成結果が一致すること(ゴールデンの追加確認)
-const realDb = h.buildWordlist({
+const realDb = await h.buildWordlist({
 	file: "tests/golden/fixtures/wordlists/pokemon.csv",
 	dbtype: "tidy",
 });
@@ -129,7 +129,7 @@ print("[ok] 長さ不一致・総和0以下・非負の有限数でない値は�
 // 行単位のフォールバック: 不正な行だけ重みなしになり、他の行の重みは効く
 {
 	const twoLines = ["カカ", "カカ"];
-	const twoUnit = wordList.parsePlain(["カキ", "キカ"].join("\n"));
+	const twoUnit = await wordList.parsePlain(["カキ", "キカ"].join("\n"));
 	warnings = [];
 	const results = await generate(twoLines, twoUnit, PARAM, [[1, 2, 3], [0.5, 1.5]]);
 	assert.equal(warnings.length, 1, "不正な行の分だけ警告が出る");
@@ -152,7 +152,7 @@ assert.equal(onlyFront["カキ"], 0, "後ろの重みが0なら前一致だけ�
 print("[ok] 重みを上げた位置で音が合う候補が勝つ(候補スコア)");
 
 // DP(generate)でも選ばれる単語が変わること
-const twoUnitDb = wordList.parsePlain(["カキ", "キカ"].join("\n"));
+const twoUnitDb = await wordList.parsePlain(["カキ", "キカ"].join("\n"));
 assert.equal(surfacesOf(await generate(["カカ"], twoUnitDb, PARAM, [[1.5, 0.5]])), "カキ",
 	"前を重視した生成");
 assert.equal(surfacesOf(await generate(["カカ"], twoUnitDb, PARAM, [[0.5, 1.5]])), "キカ",
@@ -189,7 +189,7 @@ print("[ok] 変種展開(ン/ッ/ー)を跨いでも重みが元の音節に対�
 	const param = { ...PARAM, VARIATION_COST: VC };
 	// 「カンカ」→変種["カ","カ"](ン削除=1操作)が「カカ」に一致する。ld項は0なので
 	// simはVARIATION_COST分だけになり、重みの与え方によらず一定であること
-	const vdb = wordList.parsePlain(["カカ"].join("\n"));
+	const vdb = await wordList.parsePlain(["カカ"].join("\n"));
 	const simFor = (weights) => {
 		const c = soramimiMaker.getCandidates(vdb, kanka, param, 10, weights);
 		return c[0].sim;

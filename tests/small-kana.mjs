@@ -114,7 +114,7 @@ assert.equal(surfaces.join(""), "うっせぇわ", "表層は元の表記のま�
 print("[ok] tokenizeTogether: 読みの小書きが吸収され、表層はそのまま");
 
 // ---- 統合: 「うっせぇわ」のサビが変換できること ----
-const db = h.buildWordlist({
+const db = await h.buildWordlist({
 	file: "tests/golden/fixtures/wordlists/pokemon.csv",
 	dbtype: "tidy",
 });

@@ -15,6 +15,23 @@ Copyright © 2019 Jiro Shimaya. All rights reserved.
 
 
 
+//DPに常設する「filler(万能候補)」1ユニットあたりのコスト(#128)。
+//fillerは「その位置の元歌詞のかなをそのまま置く」仮想語で、単語が足りない・
+//どの単語も合わない区間を必ず埋められる。実単語が1つでも置けるなら必ず負ける
+//だけの巨大な有限値にすることで、単語が足りている行の結果は従来と完全に同一になる。
+//
+//値の根拠(実単語の1行あたり総コストの上限):
+//  ・ユニット距離: 類似度行列の最大値は80(母音×2r・子音×2(1-r)にスケールしても
+//    ベースの (子音+母音)/2 の最大は80のまま)。重みは行内で平均1に正規化される
+//    =総和がユニット数なので、行全体でも 80×ユニット数 を超えない
+//  ・VARIATION_COST(既定16・UI最大18)×変種操作数
+//  ・WORD_NUMBER_PENALTY(UI最大60)・MID_PHRASE_BREAK_PENALTY(UI最大160)×単語数
+//1行は最長40文字(convert.js の MAX_PHRASE_LENGTH)なのでユニット数も40程度で、
+//上記を全部足しても1万台に収まる。1e6 はその2桁上なので「fillerを1つ減らせる
+//経路は必ず安い」が成り立ち、かつ 1e6×ユニット数 でも倍精度の整数精度(2^53)には
+//遠く届かないため、スコアの丸めで順序が壊れることもない
+const FILLER_COST = 1e6;
+
 const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	const assignDefaultParameter = (parameters) => {
 		const DEFAULT_PARAMETER_VALUES_ = {
@@ -175,11 +192,20 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 		
         //固定単語は使用済み扱いにする(DUPLICATE=falseのとき再利用されないように)。
         //固定区間の隙間を順に生成する際、前の区間の採用単語も追記していく(可変配列)
+        //fillerはidを持たないので使用済みには含めない(固定されたfillerが来ても同じ)
         const used = (locks && locks.length > 0)
-			? used_words.concat(locks.map(v=>v.id))
+			? used_words.concat(locks.filter(v=>!v.filler).map(v=>v.id))
 			: used_words;
         
 		const target = tokens.map(v=>v.pronunciation);
+		// 1文字の読みが複数ユニットになる場合（例: 畑=ハ・タ・ケ）、
+		// surface_form は先頭ユニットだけが所有する。文字の途中を自動生成の
+		// 単語境界にすると「畑 / ハ」と「 / タケ」に分かれ、元歌詞の表記と
+		// 読みの対応が崩れるため、DP の内部境界は文字境界だけに限定する。
+		// 固定つき再生成では既存の period が文字途中にある可能性があるので、
+		// 区間の端点 s/t 自体は許容し、その内側の分割点だけを制限する。
+		const isCharacterBoundary = (index) => index <= 0 || index >= tokens.length
+			|| tokens[index - 1].char_index !== tokens[index].char_index;
 		const phraseBreaks = tokens.map((v,j)=>{
 			if(j===0)return 0;
 			else if(v.phrase !== tokens[j-1].phrase){
@@ -204,25 +230,57 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 			
 			const results = [];
 			for (let i = s; i<t; i++){
+				if(i !== s && !isCharacterBoundary(i))continue;
 				//if ( number.includes(t-i) == false )continue
 				const subtarget = target.slice(i,t);
+
+				const r = dp(s,i);
+				//console.log(s,i,t,r);
+				//console.log(s,i,r);
+
+				if(!r)continue;
+
+				const prev_score = r[0];
+				if(prev_score === Infinity)continue;
+
+				const prev_words = r[1];
+
+				//1文字区間には必ず filler(万能候補)を選択肢として置く(#128)。
+				//通常は1文字=1ユニットだが、漢字などは1文字が複数ユニットになるため、
+				//文字境界を守ったまま読み全体を1つのfillerにする。
+				//コストが巨大なので実単語が置ける区間では必ず負け、単語が尽きた/
+				//どの単語も合わない区間だけ「元歌詞のまま」で残る。これで
+				//「候補が無い→行が丸ごと空」という経路が無くなる。
+				//文節の報酬・ペナルティは単語の切れ目に対する調整なので未変換の
+				//fillerには掛けない(経路の優劣がfillerの個数だけで決まるようにする)
+				const firstCharIndex = tokens[i] && tokens[i].char_index;
+				const isSingleCharacterSpan = t - i === 1
+					|| (firstCharIndex != null && tokens.slice(i, t)
+						.every(token => token.char_index === firstCharIndex));
+				if(isSingleCharacterSpan){
+					const kana = subtarget.join("");
+					const filler_words = [].concat(prev_words);
+					filler_words.push({
+						surface: kana,
+						pronunciation: kana,
+						kana: kana,
+						original: "",
+						filler: true,
+						sim: FILLER_COST,
+						score: FILLER_COST,
+						originalkana: kana,
+						period: [i,t]
+					});
+					results.push([prev_score + FILLER_COST + wordsNum, filler_words]);
+				}
+
 				const similarWords = getSimilarWordFunc(subtarget, i, t);
 				if(!similarWords){
 					continue;
 				}
-				
-				const r = dp(s,i);
-				//console.log(s,i,t,r);
-				//console.log(s,i,r);
-				
-				if(!r)continue;
-				
-				const prev_score = r[0];
-				if(prev_score === Infinity)continue;
-				
-				const prev_words = r[1];
-				
-				const currentUsed = prev_words.map(v=>v.id);
+
+				//fillerはidを持たない仮想語なので、使用済み(単語重複なし)の判定からは外す
+				const currentUsed = prev_words.filter(v=>!v.filler).map(v=>v.id);
 
 
 				const newWord = (function(words){
@@ -282,7 +340,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 					words = words.concat(r[1]);
 					//後続区間で同じ単語を再利用しないよう使用済みに追記
 					//(usedはdpがクロージャ経由で毎回参照するため反映される)
-					for(const w of r[1]) used.push(w.id);
+					for(const w of r[1]) if(!w.filler) used.push(w.id);
 				}
 			};
 			for(const lw of sorted){
@@ -420,7 +478,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 					if(updateFunc){
 						updateFunc(result, i, tokenized_phrases);					
 					}
-					used_words = used_words.concat(result.map(v=>v.id));
+					//fillerは実単語ではないので使用済み(単語重複なし)には数えない
+					used_words = used_words.concat(result.filter(v=>!v.filler).map(v=>v.id));
 					results.push(result);
 					convert_line(i+1);
 				},delayMsec);
@@ -438,8 +497,9 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	return {
 		generate: generate,
 		generateFromTokens: generateFromTokens,
-		getCandidates: getCandidates
+		getCandidates: getCandidates,
+		FILLER_COST: FILLER_COST //テスト・呼び出し側の検証用に公開する
 	}
-	
+
 };
-export { SoramimiMaker };
+export { SoramimiMaker, FILLER_COST };

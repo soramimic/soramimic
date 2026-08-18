@@ -42,3 +42,15 @@ jobs:
         run: node tests/editor-smoke.mjs
       - name: 編集ツールタッチE2E(タップ伸縮・ドラッグ選択・長押し詳細)
         run: node tests/editor-touch.mjs
+      - name: 編集ツール単語リストE2E(リスト切替・自作リスト・csvText契約)
+        run: node tests/editor-wordlist.mjs
+      - name: 編集ツールfiller E2E(未変換チップの表示・候補からの差し替え)
+        run: node tests/editor-filler.mjs
+      - name: 編集ツール設定モーダルE2E(パラメータ・単語重複・ファセット絞り込み)
+        run: node tests/editor-settings.mjs
+      - name: 編集ツールセットアップ画面E2E(phrasesだけのシードからブラウザ変換)
+        run: node tests/editor-setup.mjs
+      - name: 編集ツール曲選択E2E(ホストへの依頼・待機・キャンセル)
+        run: node tests/editor-song.mjs
+      - name: 編集ツール元歌詞E2E(字幕用の元歌詞・行ごとの対応づけ)
+        run: node tests/editor-lyrics.mjs
