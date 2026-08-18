@@ -6,7 +6,7 @@ import { buildApp } from "./golden/harness-lib.mjs";
 import { makeResultText } from "../frontend/src/convert.js";
 import { Kanji } from "../frontend/src/lib/character.js";
 import { KanaToSyllable } from "../frontend/src/lib/kanaToSyllable.js";
-import { tokenizePhrasesWithYomiApi } from "../frontend/src/yomiApi.js";
+import { createYomiApi, tokenizePhrasesWithYomiApi } from "../frontend/src/yomiApi.js";
 
 const print = console.log.bind(console);
 
@@ -55,22 +55,79 @@ const englishFormat1 = makeResultText(englishResults, "1").split("\n");
 assert.equal(englishFormat1[1], "I love you", "format 1で英語歌詞の空白を保持すること");
 print("[ok] 元歌詞表記: 英語・連続空白・英日混在・アポストロフィ・行端・ルビを保持");
 
-// 本番で読み推定APIが利用可能でも、英字を含む行はローカル解析する。
-// APIは I を記号品詞として返し、空白tokenも省くため、そのまま共通後処理へ
-// 渡すと既定format 4の読みが「らゔゆー」になり、元表記の空白も失われる。
+// v2読み推定APIは全行の権威となり、英語・空白・アポストロフィもAPI tokenの
+// 読みと表層をそのまま共通後処理へ渡す。
+const makeApiToken = (surface, pronunciation, extra = {}) => ({
+	surface_form: surface,
+	basic_form: surface,
+	reading: pronunciation,
+	pronunciation,
+	pos: "名詞",
+	pos_detail_1: "一般",
+	pos_detail_2: "*",
+	pos_detail_3: "*",
+	conjugated_type: "*",
+	conjugated_form: "*",
+	word_position: 1,
+	chain_flag: 0,
+	...extra,
+});
+const englishReadings = new Map([
+	["i", "アイ"], ["love", "ラヴ"], ["you", "ユー"],
+	["hello", "ハロー"], ["world", "ワールド"], ["don't", "ドーント"],
+	["stop", "ストップ"],
+]);
+function mockV2ApiTokens(text) {
+	const parts = text.match(/\s+|[A-Za-z]+(?:['’][A-Za-z]+)*|[^\sA-Za-z]+/gu) || [];
+	let position = 1;
+	return parts.flatMap((surface) => {
+		let tokens;
+		if (/^\s+$/u.test(surface)) {
+			tokens = [makeApiToken(surface, "", {
+				reading: "", pos: "記号", pos_detail_1: "空白", is_silent: true,
+			})];
+		} else if (/^[A-Za-z]+(?:['’][A-Za-z]+)*$/u.test(surface)) {
+			const pronunciation = englishReadings.get(surface.toLowerCase().replaceAll("’", "'"));
+			assert.ok(pronunciation, `mock APIに英語読みがあること: ${surface}`);
+			tokens = [makeApiToken(surface, pronunciation)];
+		} else {
+			tokens = textAnalyzer.tokenizeTogether([surface])[0].map((token) => ({ ...token }));
+			for (const token of tokens) {
+				if (token.pos === "記号") {
+					token.reading = "";
+					token.pronunciation = "";
+					token.is_silent = true;
+				}
+			}
+		}
+		for (const token of tokens) {
+			token.word_position = position;
+			position += Array.from(token.surface_form).length;
+		}
+		return tokens;
+	});
+}
 const yomiApiCalls = [];
 const routedTokens = await tokenizePhrasesWithYomiApi(textAnalyzer, {
 	async tokenize(texts) {
 		yomiApiCalls.push(texts);
-		return textAnalyzer.tokenizeTogether(texts);
+		return texts.map(mockV2ApiTokens);
 	},
-}, ["日本語", "I love you", "", "｜愛《アイ》", "｜love《ラブ》 you", "夢 は", "don't stop"]);
-assert.deepEqual(yomiApiCalls, [["日本語", "", "夢 は"]],
-	"英字を含まない未注釈部分は従来どおりAPIへ渡すこと");
+}, [
+	"日本語", "I love you", "Hello world", "", "｜愛《アイ》", "｜love《ラブ》 you",
+	"夢 は", "don't stop", "don’t stop", "  I  love you  ", "I 愛 you", "I,  love!", "   ",
+]);
+assert.deepEqual(yomiApiCalls, [[
+	"日本語", "I love you", "Hello world", "", " you", "夢 は", "don't stop", "don’t stop",
+	"  I  love you  ", "I 愛 you", "I,  love!", "   ",
+]], "ルビ注釈以外の全行・全チャンクをAPIへ渡すこと");
 assert.deepEqual(
 	routedTokens.map((tokens) => tokens.map((token) => token.surface_form).join("")),
-	["日本語", "I love you", "", "愛", "love you", "夢 は", "don't stop"],
-	"ローカル・API・空行・ルビを混在させても行順と表層を保つこと",
+	[
+		"日本語", "I love you", "Hello world", "", "愛", "love you", "夢 は",
+		"don't stop", "don’t stop", "  I  love you  ", "I 愛 you", "I,  love!", "   ",
+	],
+	"API・空行・ルビを混在させても行順と原文表層を保つこと",
 );
 assert.equal(
 	textAnalyzer.getYomiAndPhraseBreak(routedTokens[1]).map((unit) => unit.pronunciation).join(""),
@@ -82,15 +139,77 @@ assert.equal(
 	"I love you",
 	"API利用可能時も英語歌詞の空白を保持すること",
 );
+assert.equal(
+	textAnalyzer.getYomiAndPhraseBreak(routedTokens[2]).map((unit) => unit.pronunciation).join(""),
+	"ハローワールド",
+	"複数英単語もAPI読みを使うこと",
+);
+for (const index of [7, 8]) {
+	assert.equal(
+		textAnalyzer.getYomiAndPhraseBreak(routedTokens[index])
+			.map((unit) => unit.pronunciation).join(""),
+		"ドーントストップ",
+		"straight/curly apostropheを同じ語単位・読みで扱うこと",
+	);
+}
 const routedResults = await new Promise((resolve) => {
 	soramimiMaker.generateFromTokens([routedTokens[1]], db, { ...PARAM }, null, resolve);
 });
+assert.equal(
+	makeResultText(routedResults, "1").split("\n")[1],
+	"I love you",
+	"API token経路のformat 1で元表記を正確に出すこと",
+);
 assert.equal(
 	makeResultText(routedResults, "4").split("\n")[1].replaceAll("  ", ""),
 	"あいらゔゆー",
 	"API利用可能時も既定format 4へIの読みを出すこと",
 );
-print("[ok] 読み推定API: 英語行はローカル解析して読みと元表記を保持");
+print("[ok] 読み推定API v2: 全行API経路で読みと原文表層を保持");
+
+// HTTPクライアントはv2 capabilityとlossless surfaceを検証する。不完全な旧APIは
+// app.jsの例外処理によりブラウザ内tokenizerへフォールバックする。
+const originalFetch = globalThis.fetch;
+try {
+	const requestedBodies = [];
+	globalThis.fetch = async (url, options = {}) => {
+		if (url.endsWith("/health")) {
+			return { ok: true, async json() {
+				return { status: "ok", token_contract_version: 2,
+					capabilities: { lossless_surface: true, english_reading: true } };
+			} };
+		}
+		const body = JSON.parse(options.body);
+		requestedBodies.push(body);
+		return { ok: true, async json() {
+			return { tokens: body.text.map(mockV2ApiTokens) };
+		} };
+	};
+	const client = createYomiApi("https://yomi.example");
+	assert.equal(await client.healthy(), true, "v2 capabilityを満たすAPIを採用すること");
+	const exact = ["I love you", "don’t stop", "  "];
+	const exactTokens = await client.tokenize(exact);
+	assert.deepEqual(exactTokens.map((row) => row.map((t) => t.surface_form).join("")), exact);
+	assert.deepEqual(requestedBodies, [{ text: exact }]);
+
+	globalThis.fetch = async (url) => url.endsWith("/health")
+		? { ok: true, async json() { return { status: "ok" }; } }
+		: { ok: true, async json() { return { tokens: [] }; } };
+	assert.equal(await createYomiApi("https://old.example").healthy(), false,
+		"lossless契約のない旧APIは採用しないこと");
+
+	globalThis.fetch = async () => ({ ok: true, async json() {
+		return { tokens: [[makeApiToken("Ｉ", "アイ")]] };
+	} });
+	await assert.rejects(
+		createYomiApi("https://broken.example").tokenize(["I"]),
+		/surface mismatch/,
+		"表層を正規化・欠落させる応答はフォールバック対象にすること",
+	);
+} finally {
+	globalThis.fetch = originalFetch;
+}
+print("[ok] 読み推定API client: capabilityとlossless surfaceを検証");
 
 // allocatorの最重要不変条件: 細分化の成否にかかわらず表層順は変えない。
 // 公開版では漢字→ジュウが「字=ジ / 漢=ュウ」になり、この条件を破っていた。
