@@ -10,10 +10,15 @@ function TokenFormatter(){
 		
 	function removeSignPronunciation(tokens){
 		  //記号の処理
-		  //発音を空文字にする
+		  //APIが返した有効なカナ読みや、明示された無音表層は品詞だけで捨てない。
+		  //旧tokenizer由来の記号は従来どおり表層を仮の発音として後段へ渡し、
+		  //Character.concatSignTokenで無音表層として前後の発音へ付加する。
 		  tokens = tokens.map(token=>{
 			 if(token["pos"] === "記号"){
-				 token["pronunciation"] = token["surface_form"];
+				 const validReading = /^[ァ-ヴー]+$/.test(token["pronunciation"] || "");
+				 if(!validReading && !token.is_silent){
+					 token["pronunciation"] = token["surface_form"];
+				 }
 			 } 
 			 return token;
 		  });
@@ -462,11 +467,22 @@ function Character(kanji){
 			//if(!token.pronunciation) token.pronunciation = token.surface_form;
 			if(!token.pronunciation) token.pronunciation = "";
 			let pos = token["pos"]
-			//surfaceを解析
-			let separated = kanaTokenize(token.surface_form);
-			//カナ、カナ以外の対応を見つける
-			//console.log(token);
-			let correspondance = kanaAllocate(separated, token.pronunciation);
+			//v2 APIが明示した無音表層は空読みのままsign対応を1つ作る。
+			//通常のkanaAllocateは空読みを0要素へするため、空白が消えてしまう。
+			let correspondance;
+			if(token.is_silent){
+				correspondance = [{
+					surface_form: token.surface_form,
+					pronunciation: "",
+					type: "sign",
+				}];
+			}else{
+				//surfaceを解析
+				let separated = kanaTokenize(token.surface_form);
+				//カナ、カナ以外の対応を見つける
+				//console.log(token);
+				correspondance = kanaAllocate(separated, token.pronunciation);
+			}
 			//記号の場合はtypeに記号を設定する
 			// 数字などは解析器によって記号POSになることがある。読み修正やルビで
 			// 有効なカナ読みが与えられている場合は、無音の記号として捨てない。
@@ -496,7 +512,17 @@ function Character(kanji){
 	  let char_correspondance = kana_correspondance.map(token => {
 	    let correspondance = null;
 	    //console.log("in kana_correspondance",token);
-	    if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
+	    if(token.type == "sign" && token.is_silent){
+	      //空読みをbalancedAllocateへ渡すと0要素になり表層が消える。
+	      //signとして後段のconcatSignTokenへ確実に届ける1対応を作る。
+	      subword_index += 1;
+	      correspondance = [{
+	        surface_form: token.surface_form,
+	        pronunciation: "",
+	        in_surface_pos: 0,
+	        subword: subword_index,
+	      }];
+	    }else if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
 	    	//console.log("in if",token);
 		correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
     		? token.manualAlign
@@ -589,13 +615,20 @@ function Character(kanji){
 	//記号のトークンを直前と連結する
 	function concatSignToken(tokens){
 		let formatted = [];
+		let leadingSurface = "";
 		for(let token of tokens){
 			if(token["type"] === "sign"){
 				if(formatted.length > 0){
 					formatted[formatted.length-1]["surface_form"] += token["surface_form"];
+				}else{
+					leadingSurface += token["surface_form"];
 				}
 				continue;
 			}else{
+				if(leadingSurface !== ""){
+					token["leading_surface"] = leadingSurface;
+					leadingSurface = "";
+				}
 				formatted.push(token);
 			}
 		}

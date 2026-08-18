@@ -3,11 +3,7 @@
 // 歌詞のトークナイズをAPIに任せる。失敗時は呼び出し側がkuromojiへフォールバックする。
 // URLは conf/setting.json の yomiApi.url で設定(空/未設定なら無効)。
 
-// 全角英数字・記号を半角に戻す
-function toHankaku(s) {
-	return s.replace(/[Ａ-Ｚａ-ｚ０-９＇]/g, (c) =>
-		String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-}
+const REQUIRED_CAPABILITIES = ["lossless_surface", "english_reading"];
 
 export function createYomiApi(baseUrl, { timeoutMs = 8000 } = {}) {
 	const url = (baseUrl || "").replace(/\/$/, "");
@@ -31,18 +27,34 @@ export function createYomiApi(baseUrl, { timeoutMs = 8000 } = {}) {
 				const res = await fetch(url + "/health", {
 					signal: AbortSignal.timeout(3000),
 				});
-				return res.ok;
+				if (!res.ok) return false;
+				const data = await res.json();
+				const hasCapability = (name) => Array.isArray(data.capabilities)
+					? data.capabilities.includes(name)
+					: data.capabilities?.[name] === true;
+				return data.token_contract_version >= 2 &&
+					REQUIRED_CAPABILITIES.every(hasCapability);
 			} catch {
 				return false;
 			}
 		},
 		// kuromoji互換トークン列(テキスト配列 → トークン列の配列)。
-		// pyopenjtalkは英数字の表層を全角化するため半角に戻す
-		// (English.jsのBEP辞書処理が表層の半角英字前提のため)
+		// v2契約では表層を一切正規化せず、連結すると入力と完全一致する。
 		async tokenize(texts) {
 			const data = await post("/tokenize", { text: texts }, timeoutMs);
-			return data.tokens.map((tokens) =>
-				tokens.map((t) => ({ ...t, surface_form: toHankaku(t.surface_form) })));
+			if (!Array.isArray(data.tokens) || data.tokens.length !== texts.length) {
+				throw new Error("yomi api contract error: invalid token rows");
+			}
+			for (let i = 0; i < texts.length; i++) {
+				const tokens = data.tokens[i];
+				if (!Array.isArray(tokens) || tokens.some((t) =>
+					!t || typeof t.surface_form !== "string" ||
+					typeof t.pronunciation !== "string") ||
+					tokens.map((t) => t.surface_form).join("") !== texts[i]) {
+					throw new Error(`yomi api contract error: surface mismatch at row ${i}`);
+				}
+			}
+			return data.tokens;
 		},
 	};
 }
