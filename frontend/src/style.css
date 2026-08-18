@@ -6,6 +6,7 @@
 	--text: #1e293b;
 	--muted: #64748b;
 	--border: #e2e8f0;
+	--danger: #b91c1c;
 }
 
 * {
@@ -188,7 +189,12 @@ main {
 	border-radius: 8px;
 	font: inherit;
 	background: var(--panel);
-	color: inherit;
+	color: var(--text);
+}
+
+.input::placeholder {
+	color: var(--muted);
+	opacity: 1;
 }
 
 textarea.input {
@@ -421,9 +427,13 @@ textarea.input {
 
 dialog {
 	width: min(90vw, 640px);
+	max-height: calc(100dvh - 2rem);
+	overflow: auto;
 	border: 1px solid var(--border);
 	border-radius: 12px;
 	padding: 1.2rem;
+	background: var(--panel);
+	color: var(--text);
 }
 
 dialog::backdrop {
@@ -442,6 +452,247 @@ dialog h2 {
 	margin-top: 0.8rem;
 }
 
+.custom-wordlist-picker { display: inline-block; }
+
+.custom-wordlist-trigger {
+	display: inline-grid;
+	grid-template-columns: auto auto;
+	align-items: center;
+	column-gap: 0.35rem;
+}
+
+.custom-wordlist-trigger::after {
+	content: "▾";
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	opacity: 0.6;
+}
+
+.custom-wordlist-trigger > span {
+	grid-column: 1;
+	justify-self: start;
+}
+
+.custom-wordlist-trigger:has(.wordlist-select-caption:not([hidden])) {
+	padding-top: 0.15rem;
+	padding-bottom: 0.15rem;
+}
+
+.custom-wordlist-trigger:has(.wordlist-select-caption:not([hidden])) > span { line-height: 1.2; }
+
+.custom-wordlist-trigger.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.custom-wordlist-menu {
+	position: fixed;
+	z-index: 1000;
+	max-height: min(70dvh, 28rem);
+	overflow: auto;
+	padding: 0.35rem;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--panel);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.custom-wordlist-menu[hidden] { display: none; }
+
+.custom-wordlist-menu-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: stretch;
+}
+
+.custom-wordlist-menu button {
+	min-height: 44px;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.custom-wordlist-menu button:hover,
+.custom-wordlist-menu button:focus-visible {
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+
+.custom-wordlist-menu button:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: -2px;
+}
+
+.custom-wordlist-menu-select {
+	min-width: 0;
+	padding: 0.55rem 0.7rem;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.custom-wordlist-menu-select[aria-checked="true"] {
+	background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+	color: var(--text);
+	font-weight: 700;
+}
+
+.custom-wordlist-menu-select[aria-checked="true"]::before { content: "✓ "; }
+
+.custom-wordlist-menu-action {
+	display: grid;
+	place-items: center;
+	min-width: 48px;
+	padding: 0.45rem;
+}
+
+.custom-wordlist-menu-icon {
+	display: block;
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.custom-wordlist-menu-delete { color: var(--danger) !important; }
+
+.custom-wordlist-menu-new {
+	width: 100%;
+	padding: 0.55rem 0.7rem;
+	border-top: 1px solid var(--border) !important;
+	text-align: left;
+}
+
+.custom-wordlist-name {
+	display: grid;
+	gap: 0.35rem;
+	margin-bottom: 0.7rem;
+}
+
+.custom-wordlist-name > span {
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.custom-wordlist-dropzone {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	align-items: center;
+	width: 100%;
+	min-height: 7rem;
+	padding: 1rem 1.25rem;
+	margin-bottom: 0.7rem;
+	border: 2px dashed #93b4f8;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 150ms ease, background-color 150ms ease,
+		box-shadow 150ms ease, transform 150ms ease;
+}
+
+.custom-wordlist-dropzone:hover {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.custom-wordlist-dropzone:focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+	outline-offset: 2px;
+}
+
+.custom-wordlist-dropzone.is-dragging {
+	border-color: var(--accent);
+	border-style: solid;
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+	transform: translateY(-1px);
+}
+
+.custom-wordlist-dropzone-icon {
+	grid-row: 1 / span 2;
+	width: 2.25rem;
+	height: 2.25rem;
+	margin-right: 0.9rem;
+	fill: none;
+	stroke: var(--accent);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.8;
+}
+
+.custom-wordlist-dropzone-copy {
+	display: flex;
+	align-items: baseline;
+	gap: 0.45rem;
+}
+
+.custom-wordlist-dropzone-copy strong {
+	font-size: 0.95rem;
+	font-weight: 650;
+}
+
+.custom-wordlist-dropzone-copy > span {
+	color: var(--accent);
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.custom-wordlist-dropzone-mobile { display: none; }
+
+.custom-wordlist-status {
+	margin: 0.65rem 0 0;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.custom-wordlist-status.is-error { color: var(--danger); }
+
+.custom-wordlist-dialog-buttons .dialog-button-spacer { flex: 1; }
+
+.btn-danger {
+	color: var(--danger);
+	border-color: currentColor;
+}
+
+@media (max-width: 768px) {
+	#original-text {
+		height: 38dvh;
+		min-height: 10rem;
+	}
+
+	.custom-wordlist-dialog-buttons {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem;
+	}
+
+	.custom-wordlist-dialog-buttons .dialog-button-spacer { display: none; }
+
+	.custom-wordlist-dialog-buttons .btn {
+		padding-inline: 0.7rem;
+		white-space: nowrap;
+	}
+
+	#original-delete {
+		grid-column: 1 / -1;
+		justify-self: start;
+	}
+
+	.custom-wordlist-dropzone {
+		min-height: 5.5rem;
+		padding: 0.8rem 1rem;
+	}
+
+	.custom-wordlist-dropzone-desktop,
+	.custom-wordlist-dropzone-copy > span { display: none; }
+
+	.custom-wordlist-dropzone-mobile { display: inline; }
+}
+
 @media (prefers-color-scheme: dark) {
 	:root {
 		--bg: #0f172a;
@@ -449,5 +700,6 @@ dialog h2 {
 		--text: #e2e8f0;
 		--muted: #94a3b8;
 		--border: #334155;
+		--danger: #fca5a5;
 	}
 }
