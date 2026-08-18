@@ -6,6 +6,7 @@ import { buildApp } from "./golden/harness-lib.mjs";
 import { makeResultText } from "../frontend/src/convert.js";
 import { Kanji } from "../frontend/src/lib/character.js";
 import { KanaToSyllable } from "../frontend/src/lib/kanaToSyllable.js";
+import { tokenizePhrasesWithYomiApi } from "../frontend/src/yomiApi.js";
 
 const print = console.log.bind(console);
 
@@ -53,6 +54,43 @@ const englishResults = await h.generate(["I love you"], db, { ...PARAM });
 const englishFormat1 = makeResultText(englishResults, "1").split("\n");
 assert.equal(englishFormat1[1], "I love you", "format 1で英語歌詞の空白を保持すること");
 print("[ok] 元歌詞表記: 英語・連続空白・英日混在・アポストロフィ・行端・ルビを保持");
+
+// 本番で読み推定APIが利用可能でも、英字を含む行はローカル解析する。
+// APIは I を記号品詞として返し、空白tokenも省くため、そのまま共通後処理へ
+// 渡すと既定format 4の読みが「らゔゆー」になり、元表記の空白も失われる。
+const yomiApiCalls = [];
+const routedTokens = await tokenizePhrasesWithYomiApi(textAnalyzer, {
+	async tokenize(texts) {
+		yomiApiCalls.push(texts);
+		return textAnalyzer.tokenizeTogether(texts);
+	},
+}, ["日本語", "I love you", "", "｜愛《アイ》", "｜love《ラブ》 you", "夢 は", "don't stop"]);
+assert.deepEqual(yomiApiCalls, [["日本語", "", "夢 は"]],
+	"英字を含まない未注釈部分は従来どおりAPIへ渡すこと");
+assert.deepEqual(
+	routedTokens.map((tokens) => tokens.map((token) => token.surface_form).join("")),
+	["日本語", "I love you", "", "愛", "love you", "夢 は", "don't stop"],
+	"ローカル・API・空行・ルビを混在させても行順と表層を保つこと",
+);
+assert.equal(
+	textAnalyzer.getYomiAndPhraseBreak(routedTokens[1]).map((unit) => unit.pronunciation).join(""),
+	"アイラヴユー",
+	"API利用可能時もIの読みを失わないこと",
+);
+assert.equal(
+	textAnalyzer.getYomiAndPhraseBreak(routedTokens[1]).map((unit) => unit.surface_form).join(""),
+	"I love you",
+	"API利用可能時も英語歌詞の空白を保持すること",
+);
+const routedResults = await new Promise((resolve) => {
+	soramimiMaker.generateFromTokens([routedTokens[1]], db, { ...PARAM }, null, resolve);
+});
+assert.equal(
+	makeResultText(routedResults, "4").split("\n")[1].replaceAll("  ", ""),
+	"あいらゔゆー",
+	"API利用可能時も既定format 4へIの読みを出すこと",
+);
+print("[ok] 読み推定API: 英語行はローカル解析して読みと元表記を保持");
 
 // allocatorの最重要不変条件: 細分化の成否にかかわらず表層順は変えない。
 // 公開版では漢字→ジュウが「字=ジ / 漢=ュウ」になり、この条件を破っていた。
