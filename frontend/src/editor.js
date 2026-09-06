@@ -62,7 +62,7 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
 let readingFixContext = null; // 読み修正ダイアログの下書き {line, span, draftAlign, alignMode}
-let candidateDraft = null; // {word}: 候補タップだけでは results を変更しない
+let freeInputReturnClickUntil = 0;
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
@@ -472,7 +472,6 @@ function toggleLock(line, word) {
 function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
-	candidateDraft = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
 	const prev = selection;
@@ -1189,15 +1188,16 @@ function buildAlignEditor(model, onChange) {
 	return box;
 }
 
-function selectCandidateDraft(cand) {
-	candidateDraft = { word: Object.assign({}, cand) };
-	freeInputOpen = false;
-	openGroupKey = null;
-	renderPanel();
-	queueMicrotask(() => {
-		const draft = $id("editor-panel").querySelector(".panel-replacement-draft");
-		draft?.scrollIntoView({ block: "nearest" });
-	});
+function setupReplacementPanel() {
+	const panel = $id("editor-panel");
+	// 戻るタップのpointerupで画面を切り替えると、遅れたclickが候補に届く。
+	// 次の新しいタップはすぐ操作できるようpointerdownで抑止を解除する。
+	panel.addEventListener("pointerdown", () => { freeInputReturnClickUntil = 0; }, true);
+	panel.addEventListener("click", (event) => {
+		if (event.detail === 0 || performance.now() >= freeInputReturnClickUntil) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+	}, true);
 }
 
 function appendReplacementControls(panel, target, rangeWeights) {
@@ -1257,6 +1257,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		back.addEventListener("pointerup", (event) => {
 			if (!backTouch || event.pointerId !== backTouch.id) return;
 			backTouch = null;
+			freeInputReturnClickUntil = performance.now() + 400;
 			closeFreeInput();
 		});
 		back.addEventListener("pointercancel", () => {
@@ -1302,34 +1303,12 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		return;
 	}
 
-	if (candidateDraft) {
-		const draft = document.createElement("div");
-		draft.className = "panel-replacement-draft";
-		const surface = document.createElement("span");
-		surface.className = "panel-draft-surface";
-		surface.textContent = candidateDraft.word.surface;
-		const field = document.createElement("div");
-		field.className = "panel-replacement-field";
-		field.innerHTML = '<span>替え歌の読み</span>';
-		const reading = document.createElement("span");
-		reading.className = "panel-draft-reading";
-		reading.textContent = candidateDraft.word.kana;
-		field.appendChild(reading);
-		const apply = document.createElement("button");
-		apply.className = "btn btn-primary panel-candidate-apply";
-		apply.textContent = "差し替え";
-		apply.addEventListener("click", () => replaceSelection(candidateDraft.word));
-		draft.append(surface, field, apply);
-		panel.appendChild(draft);
-	}
-
 	const freeToggle = document.createElement("button");
 	freeToggle.className = "panel-free-toggle";
 	freeToggle.type = "button";
 	freeToggle.textContent = "候補にない歌詞を自由入力する";
 	freeToggle.setAttribute("aria-expanded", "false");
 	freeToggle.addEventListener("click", () => {
-		candidateDraft = null;
 		freeInputOpen = true;
 		freeInputDraft = { surface: "", reading: "" };
 		renderPanel();
@@ -1449,9 +1428,6 @@ function buildPanel() {
 		appendReplacementControls(panel, target, rangeWeights);
 		return;
 	}
-	if (candidateDraft) {
-		appendReplacementControls(panel, target, rangeWeights);
-	}
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
@@ -1472,11 +1448,6 @@ function buildPanel() {
 		const btn = document.createElement("button");
 		btn.className = "btn candidate";
 		btn.dataset.candidateId = String(cand.id);
-		const selected = candidateDraft && g.cands.some((item) =>
-			String(candidateDraft.word.id) === String(item.id) &&
-			candidateDraft.word.surface === item.surface);
-		btn.setAttribute("aria-pressed", String(!!selected));
-		if (selected) btn.classList.add("selected");
 		if (allUsed) btn.classList.add("used");
 		const surface = document.createElement("span");
 		surface.className = "candidate-surface";
@@ -1494,7 +1465,7 @@ function buildPanel() {
 		if (g.cands.length === 1) {
 			btn.title = candidateDetail(cand, used.has(cand.id));
 			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
-			btn.addEventListener("click", () => selectCandidateDraft(cand));
+			btn.addEventListener("click", () => replaceSelection(cand));
 		} else {
 			btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
 			attachLongPress(btn, () =>
@@ -1520,9 +1491,7 @@ function buildPanel() {
 		list.appendChild(more);
 	}
 	panel.appendChild(list);
-	if (!candidateDraft && !freeInputOpen) {
-		appendReplacementControls(panel, target, rangeWeights);
-	}
+	appendReplacementControls(panel, target, rangeWeights);
 }
 
 // 同名候補(id違い)の個別選択リスト
@@ -1559,7 +1528,7 @@ function renderGroupPicker(panel, group, used) {
 		row.append(main, sub);
 		row.title = candidateDetail(cand, isUsed);
 		attachLongPress(row, () => candidateDetail(cand, isUsed));
-		row.addEventListener("click", () => selectCandidateDraft(cand));
+		row.addEventListener("click", () => replaceSelection(cand));
 		list.appendChild(row);
 	}
 	panel.appendChild(list);
@@ -2682,4 +2651,5 @@ async function start() {
 }
 
 setupEmbedNavigation();
+setupReplacementPanel();
 start();

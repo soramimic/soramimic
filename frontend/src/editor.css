@@ -390,27 +390,6 @@ html.editor-free-input-open .editor-toolbar {
 	padding: 0.3rem 0.6rem;
 }
 
-.candidate.selected {
-	border-color: var(--accent);
-	box-shadow: 0 0 0 1px var(--accent);
-}
-
-.panel-replacement-draft {
-	display: grid;
-	grid-template-columns: minmax(9rem, auto) minmax(14rem, 24rem) auto;
-	align-items: end;
-	justify-content: start;
-	gap: 0.5rem;
-	margin-top: 0.7rem;
-	padding-top: 0.65rem;
-	border-top: 1px solid var(--border);
-}
-
-.panel-draft-surface {
-	align-self: center;
-	font-weight: 600;
-}
-
 .panel-replacement-field {
 	display: grid;
 	gap: 0.2rem;
@@ -418,7 +397,6 @@ html.editor-free-input-open .editor-toolbar {
 	font-size: 0.78rem;
 }
 
-.panel-draft-reading,
 .panel-replacement-field .input {
 	color: var(--text);
 	font-size: 0.9rem;
@@ -624,8 +602,7 @@ html.editor-free-input-open .editor-toolbar {
 		gap: 0.35rem;
 	}
 
-	.panel-free-fields,
-	.panel-replacement-draft {
+	.panel-free-fields {
 		grid-template-columns: 1fr;
 		align-items: stretch;
 	}

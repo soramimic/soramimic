@@ -584,44 +584,19 @@ try {
 	assert(selectedReading.includes("フルサト"),
 		"読み修正後の選択範囲が想定外: " + selectedReading);
 
-	// ---- 候補差し替え: 候補選択はドラフト、候補の読みのまま確定すると自動固定 ----
+	// ---- 候補差し替え: 候補をクリックすると即座に差し替えて自動固定 ----
 	const candidate = editor.locator(".candidate:not(:has(.candidate-count))").first();
 	const candSurface = await candidate.locator(".candidate-surface").textContent();
 	const candKana = (await candidate.locator(".candidate-kana").textContent()).replace("・使用中", "");
 	const candId = await candidate.getAttribute("data-candidate-id");
 	assert(candId, "候補の安定IDをUIから取得できない");
-	const beforeDraft = await editor.evaluate(() => {
+	const beforeReplacement = await editor.evaluate(() => {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
 		return { results: JSON.stringify(data.results), history: data.history.length };
 	});
 	await candidate.click();
-	assert(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
-		"候補選択だけでパネルが閉じた");
-	assert(await editor.textContent(".panel-draft-surface") === candSurface,
-		"選択した候補がドラフトに反映されない");
-	assert(await editor.textContent(".panel-draft-reading") === candKana,
-		"候補の読みがドラフトに反映されない");
-	const draftVisible = await editor.locator(".panel-replacement-draft").evaluate((draft) => {
-		const panel = document.getElementById("editor-panel");
-		const d = draft.getBoundingClientRect();
-		const p = panel.getBoundingClientRect();
-		return d.top >= p.top && d.top < p.bottom && d.bottom <= p.bottom;
-	});
-	assert(draftVisible, "候補選択後の確認欄がパネル内に見えていない");
-	const afterDraft = await editor.evaluate(() => {
-		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
-		return { results: JSON.stringify(data.results), history: data.history.length };
-	});
-	assert(afterDraft.results === beforeDraft.results && afterDraft.history === beforeDraft.history,
-		"候補選択だけで編集結果または履歴が変更された");
-	assert(await editor.locator(".panel-replacement-draft input, .panel-replacement-draft textarea, .panel-replacement-draft [contenteditable]").count() === 0,
-		"候補の読みを編集する入力欄が残っている");
-	if (await editor.locator(".panel-more").count()) {
-		await editor.click(".panel-more");
-		assert(await editor.textContent(".panel-draft-reading") === candKana,
-			"候補一覧の再描画で候補の読みが変わった");
-	}
-	await editor.click(".panel-candidate-apply");
+	assert(await editor.locator("#editor-panel").evaluate((el) => !el.classList.contains("open")),
+		"候補をクリックしても差し替えが確定せずパネルが残った");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	assert(await editor.isChecked(".chip-word.locked .chip-lock-input"),
 		"差し替え後の自動固定が鍵アイコンに反映されない");
@@ -635,6 +610,21 @@ try {
 	assert(committed && String(committed.id) === candId && committed.kana === candKana &&
 		Array.isArray(committed.pronunciation) && committed.pronunciation.length > 0,
 		"候補のIDと読みを保って差し替えが保存されない: " + JSON.stringify(committed));
+
+	const afterReplacement = await editor.evaluate(() => {
+		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return { results: JSON.stringify(data.results), history: data.history.length };
+	});
+	assert(afterReplacement.history === beforeReplacement.history + 1,
+		"候補のクリックが1回の変更履歴として保存されない");
+	await editor.click("#btn-undo");
+	assert(await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === beforeReplacement.results,
+		"1回の取り消しで候補選択前の歌詞に戻らない");
+	await editor.click("#btn-redo");
+	assert(await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === afterReplacement.results,
+		"やり直しで候補の差し替えが復元されない");
 
 	// ---- 固定中以外を再生成: 固定した単語が保持される ----
 	await editor.click("#btn-regenerate");

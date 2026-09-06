@@ -243,7 +243,7 @@ try {
 	// パネル表示時の自動スムーススクロールが座標取得とずれないよう静定を待つ
 	await editor.waitForTimeout(600);
 	const lockedBefore = await editor.locator(".chip-word.locked").count();
-	const cand = await editor.locator(".panel-candidates .candidate").first().boundingBox();
+	const cand = await editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first().boundingBox();
 	await cdp.send("Input.dispatchTouchEvent", {
 		type: "touchStart", touchPoints: [{ x: cand.x + 10, y: cand.y + 10 }],
 	});
@@ -296,6 +296,10 @@ try {
 		"自由入力画面のスクロールで入力途中の内容が消えた");
 	assert(await editor.evaluate(() => window.scrollY) === pageScrollBeforeFreeDrag,
 		"自由入力画面のスクロールが背面ページへ連鎖した");
+	const beforeFreeReturn = await editor.evaluate(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return JSON.stringify({ results: state.results, history: state.history });
+	});
 	const freeBack = await editor.locator(".panel-free-back").boundingBox();
 	await editor.touchscreen.tap(
 		freeBack.x + freeBack.width / 2,
@@ -304,29 +308,24 @@ try {
 	assert(await editor.locator(".panel-free").count() === 0 &&
 		await editor.locator(".panel-candidates").count() === 1,
 		"候補選択へ戻るボタンの1回のタップで候補一覧へ戻らない");
-	await editor.locator("#editor-panel").evaluate((panel) =>
-		panel.style.removeProperty("max-height"));
+	await editor.locator("#editor-panel").evaluate((panel) => {
+		panel.style.removeProperty("max-height");
+		panel.scrollTop = 0;
+	});
 
-	// ---- タップで候補を選び、明示確定で差し替えられること ----
+	// 戻るタップから遅れて届くclickが候補を確定していないこと。
+	await editor.waitForTimeout(500);
+	assert(await editor.evaluate(() => {
+		const state = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		return JSON.stringify({ results: state.results, history: state.history });
+	}) === beforeFreeReturn, "候補選択へ戻るタップで意図せず差し替えが確定した");
+
+	// ---- 候補を1回タップすると差し替えられること ----
 	// ×N付き(同名グループ)は個別選択リストが開くため、単独候補を選ぶ
 	const single = editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first();
 	const candSurface = await single.locator(".candidate-surface").textContent();
-	const cand2 = await single.boundingBox();
-	await editor.touchscreen.tap(cand2.x + 10, cand2.y + 10);
-	await editor.waitForSelector(".panel-candidate-apply", { timeout: 10000 });
-	assert(await editor.locator(".chip-word.locked").count() === lockedBefore,
-		"候補タップだけで差し替えが確定した");
-	const panelFits = await editor.locator("#editor-panel").evaluate((panel) =>
-		panel.scrollWidth <= panel.clientWidth);
-	assert(panelFits, "狭い画面で差し替えパネルが横にはみ出した");
-	await editor.locator(".panel-draft-reading").tap();
-	assert(await editor.evaluate(() =>
-		!document.activeElement?.matches("input, textarea, [contenteditable]")),
-		"候補の読みのタップで編集欄にフォーカスした");
-	const applyBox = await editor.locator(".panel-candidate-apply").boundingBox();
-	assert(applyBox.width >= 28 && applyBox.height >= 28,
-		`差し替えボタンがタッチには小さい: ${applyBox.width}x${applyBox.height}`);
-	await editor.locator(".panel-candidate-apply").tap();
+	await single.tap();
+	await editor.waitForSelector("#editor-panel.open", { state: "hidden", timeout: 10000 });
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
