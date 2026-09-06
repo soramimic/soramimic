@@ -33,7 +33,7 @@ const EXPECTED = [
 
 const h = await buildApp({ tokenizer: "kuromoji" });
 const { soramimiMaker, textAnalyzer } = h.app;
-const db = h.app.wordList.parsePlain(WORDS.join("\n"));
+const db = await h.app.wordList.parsePlain(WORDS.join("\n"));
 
 // 各ターゲット語について全7語への sim を取得し、49ペアを検証する。
 const TOL = 0.5; // 準一致値は実測で 16.0/32.0 と整数化するので厳しめ

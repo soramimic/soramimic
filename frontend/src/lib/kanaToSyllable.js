@@ -404,7 +404,7 @@ function KanaToSyllable(){
 		//さらに .srcIndex プロパティで「各出力ユニットが入力syllablesの何番目に由来するか」を
 		//持たせる(ユニット位置別の重み付けスコアリング用。ン/ッ/ーの変種はユニット数が
 		//変わるため、位置の対応づけにはこの由来indexが要る)。
-		getVariation: function(syllables){
+		getVariation: function(syllables, maxUnits){
 			//console.log("syllable",syllables);
 			let result = [];
 			//result[k] が syllables の何番目に由来するか(null音節はスキップされ添字がずれる)
@@ -471,7 +471,40 @@ function KanaToSyllable(){
 				result.push(variation);
 				resultSrc.push(si);
 			}
-			return product(...result)
+			// maxUnits がある場合は、直積を最後まで作ってから長い変種を捨てるのではなく、
+			// 各音節を展開した時点で上限超過の枝を落とす。以後の音節で既存ユニットが
+			// 減ることはないため、ここで除外しても最終結果は従来の後段 filter と同じ。
+			// 学校名など長い読みで ン・ッ・ー が多い場合の指数的な中間配列を防ぐ。
+			let combinations;
+			if(maxUnits === undefined){
+				combinations = product(...result);
+			}else{
+				const unitLength = option => option.u.reduce((n,u)=>n+(u === "" ? 0 : 1),0);
+				// 後続音節から最低でも増えるユニット数。これを足して上限を超える枝も
+				// 先に捨て、最短形でも収まらない長い読みを即座に除外する。
+				const minRemaining = new Array(result.length + 1).fill(0);
+				for(let i=result.length-1;i>=0;i--){
+					minRemaining[i] = minRemaining[i+1] + Math.min(...result[i].map(unitLength));
+				}
+				let partials = result.length === 0 ? [] : [{items:[],length:0}];
+				for(let i=0;i<result.length;i++){
+					const options = result[i];
+					const next = [];
+					for(const partial of partials){
+						for(const option of options){
+							const optionLength = unitLength(option);
+							const length = partial.length + optionLength;
+							if(length + minRemaining[i+1] <= maxUnits){
+								next.push({items:[...partial.items,option],length});
+							}
+						}
+					}
+					partials = next;
+					if(partials.length === 0) break;
+				}
+				combinations = partials.map(v=>v.items);
+			}
+			return combinations
 					.map(v => {
 						//v.flatMap(o=>o.u).filter(v2=>v2!=="") と同じ結果を作りつつ、
 						//残ったユニットごとの由来index(srcIndex)も同時に組み立てる

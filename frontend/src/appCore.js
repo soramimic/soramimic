@@ -77,19 +77,43 @@ export async function initSoramimicApp({ vowelRatio = 0.8 } = {}) {
 	return { app: engine.appFor(vowelRatio), appFor: engine.appFor, mecab: engine.mecab, config };
 }
 
+// トークン列(textAnalyzer.tokenizeTogether の出力)から、編集ツールが表示・編集に
+// 使う発音ユニット列を導出する。生成画面の「編集ツールで開く」と、編集ツールの
+// セットアップ画面が phrases から自前変換する経路の両方で使う(二重実装しない)
+export function unitsListFromTokens(app, tokensList) {
+	return tokensList.map((tokens) =>
+		app.textAnalyzer.getYomiAndPhraseBreak(tokens).map((u) => ({
+			surface_form: u.surface_form,
+			pronunciation: u.pronunciation,
+			phrase: u.phrase,
+		})));
+}
+
 // 単語リスト設定エントリ(conf/setting.json の wordlist 要素)からDBを構築する。
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
-export async function buildDatabase(app, entry, where) {
+export async function buildDatabase(app, entry, where, maxUnits) {
+	// maxUnits は歌詞側が取りうる発音ユニット数の上限。これを超える単語側の
+	// バリエーションはDB構築時に捨てて、巨大リストの展開量を抑える。
 	if (customWordlistId(entry.value)) {
+		if (typeof entry.csvText === "string") {
+			return app.wordList.parseTidy(entry.csvText, "", maxUnits);
+		}
 		return app.wordList.parseTidy(
-			originalTextToCsv(entry.originalText || "", app), "");
+			originalTextToCsv(entry.originalText || "", app), "", maxUnits);
 	}
 	if (entry.value === "ORIGINAL") {
+		// entry.csvText は自作リストの正規化済み tidy CSV(plainToCsv の出力)。
+		// 編集ツールの書き出しJSONはこれを同梱するので、別環境・別ブラウザで
+		// 読み込んでも localStorage に依存せず同じDB(=同じid)が組み直せる。
+		// parseTidy(csv, "") は parsePlain(text, maxUnits) と同一の経路(#37)
+		if (typeof entry.csvText === "string" && entry.csvText !== "") {
+			return app.wordList.parseTidy(entry.csvText, "", maxUnits);
+		}
 		const text = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-		return app.wordList.parseTidy(originalTextToCsv(text, app), "");
+		return app.wordList.parseTidy(originalTextToCsv(text, app), "", maxUnits);
 	}
 	const text = await fetchText(entry.filepath);
 	return entry.dbtype === "tidy"
-		? app.wordList.parseTidy(text, where !== undefined ? where : entry.where)
-		: app.wordList.parsePlain(text);
+		? app.wordList.parseTidy(text, where !== undefined ? where : entry.where, maxUnits)
+		: app.wordList.parsePlain(text, maxUnits);
 }

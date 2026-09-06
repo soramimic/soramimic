@@ -53,6 +53,24 @@ try {
 	if (initState !== "変換") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
+	const defaultFormat = await page.inputValue("#format-select");
+	if (defaultFormat !== "4") {
+		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
+	}
+
+	// format 4を新しい既定にしても、保存済みのformat 1は従来どおり復元する
+	await page.evaluate(() => {
+		sessionStorage.setItem("soramimic-main", JSON.stringify({ format: "1" }));
+	});
+	await page.reload();
+	await page.waitForFunction(
+		() => document.getElementById("btn-convert").textContent === "変換",
+		{ timeout: 60000 },
+	);
+	const restoredFormat = await page.inputValue("#format-select");
+	if (restoredFormat !== "1") {
+		throw new Error("保存済みの出力形式を復元できない: " + restoredFormat);
+	}
 
 	// ---- 名前付き自作リスト: 旧データ移行と行内の選択・編集・削除 ----
 	await page.evaluate(() => {
@@ -339,6 +357,25 @@ try {
 		},
 		{ timeout: 5000 },
 	);
+
+	// ---- 大規模な駅名リスト: 短い歌詞に不要な長さの候補を展開せず完了する ----
+	await page.click("#wordlist-buttons button[data-value='STATION']");
+	await page.fill("#input-text", "山の畑の、桑の実を");
+	await page.click("#btn-convert");
+	await page.waitForFunction(
+		() => {
+			const button = document.getElementById("btn-convert");
+			const output = document.getElementById("output-text");
+			return !button.disabled && button.textContent === "変換"
+				&& !document.getElementById("output-field").hidden
+				&& output.value.length > 0;
+		},
+		{ timeout: 60000 },
+	);
+	const stationOutput = await page.inputValue("#output-text");
+	if (stationOutput.includes("エラーが発生しました")) {
+		throw new Error("駅名リストの変換がエラーで終了: " + stationOutput);
+	}
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

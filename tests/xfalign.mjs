@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { alignLyrics } = await import(
+const { alignLyrics, alignLyricsToLines } = await import(
 	pathToFileURL(path.join(ROOT, "frontend/src/xfAlign.js")).href);
 
 const print = console.log.bind(console);
@@ -98,6 +98,26 @@ const xf = (surface, kana) => ({ surface, kana });
 	assert.equal(lines[0].text, "広がる夜に");
 	assert.ok(!lines[0].text.includes("\n"), "行内に改行が残っている");
 	print("[ok] 区間内の改行の除去");
+}
+
+// ---- 行テキストの配列から使うラッパ(編集ツールの字幕用元歌詞) ----
+// phrases と同じ長さ・対応づかない行は空文字(読みカナを混ぜない)
+{
+	const { originalLines, matchedCount } = alignLyricsToLines(
+		["沈むように", "ラララ", "溶けてゆくように"],
+		"沈むように\n溶けてゆくように",
+	);
+	assert.equal(originalLines.length, 3);
+	assert.deepEqual(originalLines, ["沈むように", "", "溶けてゆくように"]);
+	assert.equal(matchedCount, 2);
+	print("[ok] 行テキスト配列からの対応づけ(未対応行は空文字)");
+}
+
+// ---- 空行(改行だけの行)は対応なしとして空文字にする ----
+{
+	const { originalLines } = alignLyricsToLines(["", "沈むように"], "沈むように");
+	assert.deepEqual(originalLines, ["", "沈むように"]);
+	print("[ok] 空行の扱い");
 }
 
 print("元歌詞アライメント: 全テスト通過");

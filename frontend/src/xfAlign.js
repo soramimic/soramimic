@@ -106,3 +106,18 @@ export function alignLyrics(xfLines, lyricsText) {
 	});
 	return { lines, matchedCount };
 }
+
+// 行のテキスト配列(編集ツールの phrases など、MIDIの行オブジェクトを持たない側)から
+// 同じ対応づけを使うための薄いラッパ。
+// 戻り値: { originalLines, matchedCount }。originalLines は lines と同じ長さで、
+// 対応づかなかった行は空文字(呼び出し側が「対応なし」を判別できるようにする。
+// alignLyrics 本体は未対応行に読みカナを入れて返すが、字幕用途では
+// 読みカナを元歌詞として出したくないため)
+export function alignLyricsToLines(lines, lyricsText) {
+	const { lines: aligned, matchedCount } = alignLyrics(
+		lines.map((text) => ({ surface: String(text ?? ""), kana: "" })), lyricsText);
+	return {
+		originalLines: aligned.map((l) => (l.matched ? l.text : "")),
+		matchedCount,
+	};
+}

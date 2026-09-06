@@ -68,6 +68,11 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	position: relative;
+}
+
+.chip-word-main {
+	padding: 0 1rem;
 }
 
 .chip-word-surface {
@@ -79,11 +84,19 @@
 	font-size: 0.75rem;
 }
 
-.editor-status,
-.editor-hint {
+.editor-status {
 	color: var(--muted);
 	font-size: 0.85rem;
 	margin: 0 0 0.6rem;
+}
+
+.editor-row-label {
+	align-self: center;
+	color: var(--muted);
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding-right: 0.45rem;
+	text-align: right;
 }
 
 .editor-toolbar {
@@ -91,6 +104,11 @@
 	align-items: center;
 	gap: 0.5rem;
 	margin-bottom: 0.8rem;
+}
+
+/* display指定がUAの [hidden] を上書きしないように(セットアップ画面・空表示で隠す) */
+.editor-toolbar[hidden] {
+	display: none;
 }
 
 .editor-toolbar .input {
@@ -102,22 +120,85 @@
 }
 
 .chip-lock {
-	border: none;
-	background: none;
+	display: grid;
+	place-items: center;
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 1.75rem;
+	height: 1.75rem;
 	cursor: pointer;
-	font-size: 0.7rem;
-	padding: 0;
-	line-height: 1;
-	opacity: 0.45;
+}
+
+.chip-lock-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.chip-lock-input:focus-visible + .chip-lock-icon {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
+
+.chip-lock-icon {
+	width: 1rem;
+	height: 1rem;
+	fill: none;
+	color: #64748b;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	pointer-events: none;
+}
+
+.chip-lock-icon-closed {
+	display: none;
+}
+
+.chip-lock-input:checked + .chip-lock-icon {
+	color: #d97706;
+}
+
+.chip-lock-icon.is-locked {
+	color: #d97706;
+}
+
+.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-open,
+.chip-lock-icon.is-locked .chip-lock-icon-open {
+	display: none;
+}
+
+.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-closed,
+.chip-lock-icon.is-locked .chip-lock-icon-closed {
+	display: initial;
+}
+
+/* filler(置ける単語が無く、元歌詞のまま残った区間)。替え歌単語と一目で
+   区別できるよう、破線のグレーで控えめに出す。文字は元歌詞のかなそのもの */
+.chip-word.filler {
+	background: var(--bg);
+	border: 1px dashed var(--border);
+	color: var(--muted);
+}
+
+.chip-word.filler .chip-word-surface {
+	font-weight: 400;
+}
+
+.chip-word.filler:hover {
+	background: var(--bg);
+	border-color: var(--accent);
 }
 
 .chip-word.locked {
 	border-color: #d97706;
 	background: #fef3c7;
-}
-
-.chip-word.locked .chip-lock {
-	opacity: 1;
 }
 
 .chip-unit,
@@ -143,14 +224,6 @@
 	outline-offset: 1px;
 }
 
-/* 読み修正フォームを開いている間、実際に読みが変わるトークン範囲のうち
-   選択外のユニットを破線で薄く示す(選択との違いを可視化する) */
-.chip-unit.reading-scope {
-	outline: 2px dashed var(--accent);
-	outline-offset: 1px;
-	opacity: 0.85;
-}
-
 /* 候補パネル: 画面下部のオーバーレイ(fixed)。レイアウトに参加しないので
    出し入れしてもページの高さが変わらず、ドラッグ中の座標がずれない。
    .open の付け外しで下からせり上がる/滑り降りる */
@@ -170,8 +243,23 @@
 	box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
 	max-height: 45vh;
 	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior-y: contain;
 	transform: translateY(105%);
 	transition: transform 0.22s ease;
+}
+
+/* 自由入力は独立した操作画面として扱い、パネル端から背面ページへ
+   スクロールが連鎖したり、背面の選択範囲が変わったりしないようにする。 */
+html.editor-free-input-open,
+html.editor-free-input-open body {
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
+html.editor-free-input-open .editor-lines,
+html.editor-free-input-open .editor-toolbar {
+	pointer-events: none;
 }
 
 .editor-panel.open {
@@ -186,14 +274,42 @@
 
 .panel-header {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
-	gap: 0.5rem;
-	margin-bottom: 0.5rem;
+	gap: 0.8rem;
+	margin-bottom: 0.7rem;
 }
 
-.panel-title {
+.panel-source {
+	display: grid;
+	gap: 0.25rem;
+	min-width: 0;
+}
+
+.panel-source-row {
+	display: grid;
+	grid-template-columns: 8.5rem minmax(0, auto) auto;
+	align-items: center;
+	justify-content: start;
+	gap: 0.4rem;
+}
+
+.panel-source-label {
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.panel-original-surface,
+.panel-original-reading {
 	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.panel-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	flex: 0 0 auto;
 }
 
 .panel-close {
@@ -201,13 +317,52 @@
 }
 
 .panel-free {
-	display: flex;
-	gap: 0.5rem;
-	margin-bottom: 0.6rem;
+	margin-top: 0.7rem;
+	padding: 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: rgba(100, 116, 139, 0.06);
 }
 
-.panel-free .input {
-	flex: 1;
+.panel-free-title {
+	margin: 0 0 0.5rem;
+	font-size: 0.9rem;
+}
+
+.panel-free-fields {
+	display: grid;
+	grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr);
+	gap: 0.6rem;
+}
+
+.panel-free-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-top: 0.5rem;
+}
+
+.panel-free-back {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+	color: var(--text);
+	font-weight: 600;
+}
+
+.panel-free-back:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+}
+
+.panel-free-toggle {
+	margin-top: 0.55rem;
+	padding: 0.2rem 0;
+	border: 0;
+	background: transparent;
+	color: var(--accent);
+	font: inherit;
+	font-size: 0.82rem;
+	cursor: pointer;
 }
 
 .panel-note {
@@ -221,12 +376,57 @@
 	gap: 0.4rem;
 }
 
+.panel-candidates-title {
+	flex-basis: 100%;
+	font-size: 0.85rem;
+	margin: 0.15rem 0 0;
+}
+
 .candidate {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	line-height: 1.3;
 	padding: 0.3rem 0.6rem;
+}
+
+.candidate.selected {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent);
+}
+
+.panel-replacement-draft {
+	display: grid;
+	grid-template-columns: minmax(9rem, auto) minmax(14rem, 24rem) auto;
+	align-items: end;
+	justify-content: start;
+	gap: 0.5rem;
+	margin-top: 0.7rem;
+	padding-top: 0.65rem;
+	border-top: 1px solid var(--border);
+}
+
+.panel-draft-surface {
+	align-self: center;
+	font-weight: 600;
+}
+
+.panel-replacement-field {
+	display: grid;
+	gap: 0.2rem;
+	color: var(--muted);
+	font-size: 0.78rem;
+}
+
+.panel-replacement-field .input {
+	color: var(--text);
+	font-size: 0.9rem;
+}
+
+.panel-replacement-note {
+	grid-column: 2 / -1;
+	color: #b91c1c;
+	font-size: 0.78rem;
 }
 
 .candidate-kana {
@@ -236,19 +436,15 @@
 
 /* ---- 以降: 候補グループ・使用中表示・詳細ポップオーバー・戻る/進む ---- */
 
-/* 🔒の当たり判定を見た目を変えずに広げる(スマホでの誤タップ・押しにくさ対策) */
-.chip-lock {
-	font-size: 0.8rem;
-	padding: 0.25rem 0.4rem;
-	margin: -0.25rem -0.4rem;
-}
-
 .copy-label {
 	color: var(--muted);
 	font-size: 0.85rem;
 }
 
 .panel-lock {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
 	white-space: nowrap;
 	padding: 0.15rem 0.5rem;
 }
@@ -321,18 +517,52 @@
 	pointer-events: none;
 }
 
-/* 元歌詞の読み修正 */
-.panel-yomi {
+/* 元歌詞の読み修正。候補パネルとは独立した小窓で扱う */
+.reading-fix-dialog {
+	width: min(90vw, 32rem);
+}
+
+.reading-fix-dialog[open] {
 	display: flex;
+	flex-direction: column;
+}
+
+.reading-fix-description {
+	margin: 0 0 0.8rem;
+	color: var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.5;
+}
+
+.reading-fix-target {
+	font-weight: 600;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.reading-fix-selection {
+	padding: 0 0.08em;
+	border-radius: 0.2em;
+	background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+	color: inherit;
+}
+
+.panel-yomi {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
-	flex-wrap: wrap;
 	gap: 0.5rem;
-	margin-bottom: 0.6rem;
 }
 
 .panel-yomi-toggle {
-	color: var(--muted);
-	font-size: 0.82rem;
+	min-width: 2rem;
+	min-height: 2rem;
+	padding: 0.2rem;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font-size: 1rem;
+	cursor: pointer;
 }
 
 .panel-yomi-label {
@@ -341,14 +571,72 @@
 }
 
 .panel-yomi .input {
-	flex: 1;
 	min-width: 8em;
-	width: auto;
+	width: 100%;
 }
 
 .panel-yomi-note {
+	grid-column: 1 / -1;
+	min-height: 1.2em;
+	margin: 0;
 	color: #b91c1c;
 	font-size: 0.78rem;
+}
+
+.reading-fix-form .dialog-buttons {
+	grid-column: 1 / -1;
+}
+
+.reading-fix-align-details {
+	grid-column: 1 / -1;
+	padding-top: 0.2rem;
+}
+
+.reading-fix-align-details > summary {
+	color: var(--muted);
+	font-size: 0.82rem;
+	font-weight: 400;
+	line-height: 1.5;
+	padding-block: 0.2rem;
+	cursor: pointer;
+}
+
+.reading-fix-align-help {
+	margin: 0.55rem 0 0.25rem;
+	color: var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+	.reading-fix-dialog {
+		/* 内容の開閉で高さが変わっても、中央基準で上下に跳ねないよう上端を固定する。 */
+		margin-block-start: max(1rem, env(safe-area-inset-top));
+		margin-block-end: auto;
+	}
+
+	.panel-source-row {
+		grid-template-columns: 7rem minmax(0, auto) auto;
+	}
+
+	.panel-header {
+		gap: 0.35rem;
+	}
+
+	.panel-free-fields,
+	.panel-replacement-draft {
+		grid-template-columns: 1fr;
+		align-items: stretch;
+	}
+
+	.panel-replacement-note {
+		grid-column: 1;
+	}
+
+	.panel-free-actions {
+		align-items: stretch;
+		flex-direction: column;
+	}
 }
 
 /* ---- ツールバーの整理 ----
@@ -363,6 +651,11 @@
 .editor-toolbar .btn,
 .copy-label {
 	white-space: nowrap;
+}
+
+/* 進捗表示(再生成・再変換)はツールバーの行の中で縦位置を揃える */
+.editor-toolbar .editor-status {
+	margin: 0;
 }
 
 /* 控えめだが「押せる」と分かる、うっすら面のあるボタン。
@@ -406,7 +699,7 @@
 	margin: 6px 0;
 }
 .panel-align-label { color: var(--muted, #888); font-size: 0.9em; }
-.panel-align-row { display: flex; align-items: stretch; gap: 4px; }
+.panel-align-row { display: flex; align-items: stretch; gap: 4px; max-width: 100%; overflow-x: auto; }
 .align-cell {
 	display: flex;
 	flex-direction: column;
@@ -421,3 +714,195 @@
 .align-boundary { display: flex; flex-direction: column; justify-content: center; }
 .align-arrow { padding: 0 4px; line-height: 1.2; font-size: 0.8em; }
 .align-reset { font-size: 0.85em; }
+
+/* ---- 変換のしかたモーダル ----
+   生成画面のダイアログ(style.css の dialog)の見た目を踏襲し、ツールバーの⚙から
+   開く。中身のスライダーやチェックボックスは style.css の共通スタイルをそのまま使う */
+
+/* ツールバーの⚙。文字ボタンと高さを揃えつつ、正方形に近い当たり判定にする */
+.btn-icon {
+	padding: 0.45rem 0.7rem;
+	font-size: 1.05rem;
+	line-height: 1.15;
+}
+
+/* 見出しと×を1行に。ヘッダと操作行は固定で、中身だけスクロールさせる */
+.editor-settings[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.dialog-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.dialog-close {
+	border: none;
+	background: none;
+	color: var(--muted);
+	font: inherit;
+	font-size: 1.3rem;
+	line-height: 1;
+	padding: 0.2rem 0.4rem;
+	cursor: pointer;
+}
+
+.dialog-close:hover {
+	color: var(--text);
+}
+
+.editor-settings > .editor-settings-body {
+	overflow-y: auto;
+	flex: 1;
+	min-height: 0;
+}
+
+/* 最後の項目の余白が二重にならないようにする(.field の margin-bottom) */
+.editor-settings-body > .field:last-of-type {
+	margin-bottom: 0;
+}
+
+/* 適用中の自作リストを開き直す導線。入力本体は専用モーダルに分離する */
+.editor-original-edit {
+	margin-top: 0.5rem;
+}
+
+/* 自作リストの登録モーダル */
+.editor-original-dialog[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.editor-midi-dialog[open] {
+	display: flex;
+	flex-direction: column;
+	max-height: 85vh;
+}
+
+.editor-original-text {
+	width: 100%;
+	min-height: 12rem;
+	resize: vertical;
+}
+
+/* 編集欄に流し込むファイル読み込みのボタンと状態表示(編集欄と一緒に出入りする) */
+.editor-original-file {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+	margin-top: 0.5rem;
+}
+
+.editor-original-file .editor-status {
+	margin: 0;
+}
+
+/* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
+.editor-settings-actions {
+	border-top: 1px solid var(--border);
+	padding-top: 0.8rem;
+}
+
+/* 狭い画面ではほぼ全画面にし、スライダーの2カラムもやめる
+   (タッチで掴める幅を確保する) */
+@media (max-width: 640px) {
+	.editor-settings[open] {
+		width: 100vw;
+		max-width: 100vw;
+		height: 100dvh;
+		max-height: 100dvh;
+		margin: 0;
+		border: none;
+		border-radius: 0;
+	}
+
+	.editor-original-dialog[open] {
+		width: calc(100vw - 1rem);
+		max-height: calc(100dvh - 1rem);
+	}
+
+	.editor-midi-dialog[open] {
+		width: calc(100vw - 1rem);
+		max-height: calc(100dvh - 1rem);
+	}
+
+	.editor-settings .param-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* ---- セットアップ画面(第1ステップ) ----
+   変換前の設定をひととおり出す全画面のステップ。中身(#editor-settings-body)は
+   ⚙モーダルと同じ実体を借りてくるので、ここで足すのは枠と操作行だけ */
+
+.editor-setup {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 1rem 1.2rem;
+}
+
+.setup-song-title {
+	margin: 0;
+	font-weight: 600;
+}
+
+/* 「自分のMIDIを使う」・サンプル一覧の折りたたみ・依頼中の表示。
+   曲セクションの中で縦に積む */
+.setup-song-actions {
+	margin-top: 0.5rem;
+}
+
+/* サンプル一覧は「自分のMIDIを使う」より控えめに(生成画面の折りたたみと同じ流儀) */
+.setup-song-samples {
+	margin-top: 0.5rem;
+}
+
+.setup-song-samples > summary {
+	cursor: pointer;
+	font-size: 0.85rem;
+	color: var(--muted);
+	user-select: none;
+}
+
+.setup-song-samples[open] > summary {
+	margin-bottom: 0.5rem;
+}
+
+.setup-song-status {
+	margin: 0.5rem 0 0;
+}
+
+/* 元歌詞(字幕用)。曲のすぐ下に置く任意入力 */
+.setup-lyrics {
+	margin-top: 0.5rem;
+}
+
+.setup-lyrics-status {
+	margin: 0.5rem 0 0;
+}
+
+.setup-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	border-top: 1px solid var(--border);
+	margin-top: 1rem;
+	padding-top: 0.8rem;
+}
+
+.setup-actions .editor-status {
+	margin: 0;
+}
+
+@media (max-width: 640px) {
+	.editor-setup .param-grid {
+		grid-template-columns: 1fr;
+	}
+}

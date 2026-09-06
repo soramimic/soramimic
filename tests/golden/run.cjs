@@ -42,7 +42,7 @@ async function main() {
 
   for (const c of cases) {
     const phrases = c.inlinePhrases || loadLyricLines(c.lyric, c.maxLines);
-    const db = harness.buildWordlist(c.wordlist);
+    const db = await harness.buildWordlist(c.wordlist);
     const started = Date.now();
     const results = await harness.generate(phrases, db, { ...c.param });
     const elapsed = Date.now() - started;
