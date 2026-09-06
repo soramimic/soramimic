@@ -193,6 +193,16 @@ try {
 		"候補選択へ戻るボタンの1回のクリックで候補一覧へ戻らない");
 	await editor.click(".panel-free-toggle");
 	await editor.fill(".panel-free-surface", "あ");
+	const historyBeforeInvalid = await editor.evaluate(() =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length);
+	await editor.fill(".panel-free-reading", "ン".repeat(20));
+	await editor.click(".panel-free-apply");
+	assert((await editor.textContent(".panel-replacement-note")).includes("合わせられる読み"),
+		"発音候補が過大な読みを安全に拒否しない");
+	assert(await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === beforeFree &&
+		await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length) === historyBeforeInvalid,
+		"無効な自由入力の読みで編集結果または履歴が変更された");
 	await editor.fill(".panel-free-reading", "あ");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-free-reading")),
 		"自由入力の読み欄を編集できない");
@@ -574,10 +584,10 @@ try {
 	assert(selectedReading.includes("フルサト"),
 		"読み修正後の選択範囲が想定外: " + selectedReading);
 
-	// ---- 候補差し替え: 候補選択はドラフト、読みと一緒に確定すると自動固定 ----
+	// ---- 候補差し替え: 候補選択はドラフト、候補の読みのまま確定すると自動固定 ----
 	const candidate = editor.locator(".candidate:not(:has(.candidate-count))").first();
 	const candSurface = await candidate.locator(".candidate-surface").textContent();
-	const candKana = await candidate.locator(".candidate-kana").textContent();
+	const candKana = (await candidate.locator(".candidate-kana").textContent()).replace("・使用中", "");
 	const candId = await candidate.getAttribute("data-candidate-id");
 	assert(candId, "候補の安定IDをUIから取得できない");
 	const beforeDraft = await editor.evaluate(() => {
@@ -589,7 +599,7 @@ try {
 		"候補選択だけでパネルが閉じた");
 	assert(await editor.textContent(".panel-draft-surface") === candSurface,
 		"選択した候補がドラフトに反映されない");
-	assert(await editor.inputValue(".panel-draft-reading") === candKana.replace("・使用中", ""),
+	assert(await editor.textContent(".panel-draft-reading") === candKana,
 		"候補の読みがドラフトに反映されない");
 	const draftVisible = await editor.locator(".panel-replacement-draft").evaluate((draft) => {
 		const panel = document.getElementById("editor-panel");
@@ -597,31 +607,20 @@ try {
 		const p = panel.getBoundingClientRect();
 		return d.top >= p.top && d.top < p.bottom && d.bottom <= p.bottom;
 	});
-	assert(draftVisible, "候補選択後の読み調整欄がパネル内に見えていない");
+	assert(draftVisible, "候補選択後の確認欄がパネル内に見えていない");
 	const afterDraft = await editor.evaluate(() => {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
 		return { results: JSON.stringify(data.results), history: data.history.length };
 	});
 	assert(afterDraft.results === beforeDraft.results && afterDraft.history === beforeDraft.history,
 		"候補選択だけで編集結果または履歴が変更された");
-	await editor.fill(".panel-draft-reading", "ふるさた");
+	assert(await editor.locator(".panel-replacement-draft input, .panel-replacement-draft textarea, .panel-replacement-draft [contenteditable]").count() === 0,
+		"候補の読みを編集する入力欄が残っている");
 	if (await editor.locator(".panel-more").count()) {
 		await editor.click(".panel-more");
-		assert(await editor.inputValue(".panel-draft-reading") === "ふるさた",
-			"候補一覧の再描画で未確定の読みが消えた");
+		assert(await editor.textContent(".panel-draft-reading") === candKana,
+			"候補一覧の再描画で候補の読みが変わった");
 	}
-	await editor.fill(".panel-draft-reading", "ン".repeat(20));
-	await editor.click(".panel-candidate-apply");
-	const invalidReadingNote = await editor.textContent(".panel-replacement-note");
-	assert(invalidReadingNote.includes("合わせられる読み"),
-		"発音候補が過大な読みを安全に拒否しない: " + invalidReadingNote);
-	const afterInvalid = await editor.evaluate(() => {
-		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
-		return { results: JSON.stringify(data.results), history: data.history.length };
-	});
-	assert(afterInvalid.results === beforeDraft.results && afterInvalid.history === beforeDraft.history,
-		"無効な読みで編集結果または履歴が変更された");
-	await editor.fill(".panel-draft-reading", "ふるさた");
 	await editor.click(".panel-candidate-apply");
 	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
 	assert(await editor.isChecked(".chip-word.locked .chip-lock-input"),
@@ -633,9 +632,9 @@ try {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
 		return data.results.flat().find((w) => w.surface === surface && w.locked);
 	}, lockedSurface);
-	assert(committed && String(committed.id) === candId && committed.kana === "フルサタ" &&
+	assert(committed && String(committed.id) === candId && committed.kana === candKana &&
 		Array.isArray(committed.pronunciation) && committed.pronunciation.length > 0,
-		"候補IDを保った読み調整が保存されない: " + JSON.stringify(committed));
+		"候補のIDと読みを保って差し替えが保存されない: " + JSON.stringify(committed));
 
 	// ---- 固定中以外を再生成: 固定した単語が保持される ----
 	await editor.click("#btn-regenerate");
