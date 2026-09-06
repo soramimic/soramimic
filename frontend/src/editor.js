@@ -62,7 +62,7 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
 let readingFixContext = null; // 読み修正ダイアログの下書き {line, span, draftAlign, alignMode}
-let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
+let candidateDraft = null; // {word}: 候補タップだけでは results を変更しない
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
@@ -629,7 +629,7 @@ function replaceSelection(word) {
 	setSelection(null);
 }
 
-// 候補の読みを、通常の単語DBと同じ経路で選択範囲へ合わせ直す。
+// 自由入力の読みを、通常の単語DBと同じ経路で選択範囲へ合わせる。
 // id/surface/original は維持し、video が使う kana と pronunciation を必ず同期する。
 function wordWithReading(word, rawReading, target, weights) {
 	const kana = app.textAnalyzer.formatKana(rawReading.trim());
@@ -1190,13 +1190,13 @@ function buildAlignEditor(model, onChange) {
 }
 
 function selectCandidateDraft(cand) {
-	candidateDraft = { word: Object.assign({}, cand), reading: cand.kana };
+	candidateDraft = { word: Object.assign({}, cand) };
 	freeInputOpen = false;
 	openGroupKey = null;
 	renderPanel();
 	queueMicrotask(() => {
-		const input = $id("editor-panel").querySelector(".panel-draft-reading");
-		input?.scrollIntoView({ block: "nearest" });
+		const draft = $id("editor-panel").querySelector(".panel-replacement-draft");
+		draft?.scrollIntoView({ block: "nearest" });
 	});
 }
 
@@ -1308,39 +1308,18 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		const surface = document.createElement("span");
 		surface.className = "panel-draft-surface";
 		surface.textContent = candidateDraft.word.surface;
-		const field = document.createElement("label");
+		const field = document.createElement("div");
 		field.className = "panel-replacement-field";
 		field.innerHTML = '<span>替え歌の読み</span>';
-		const input = document.createElement("input");
-		input.className = "input panel-draft-reading";
-		input.value = candidateDraft.reading;
-		input.addEventListener("input", () => {
-			candidateDraft.reading = input.value;
-		});
-		input.addEventListener("focus", () => {
-			if (isIOSDevice() && !readingInputLayoutCleanup) focusReadingInput(input);
-		});
-		field.appendChild(input);
+		const reading = document.createElement("span");
+		reading.className = "panel-draft-reading";
+		reading.textContent = candidateDraft.word.kana;
+		field.appendChild(reading);
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-candidate-apply";
 		apply.textContent = "差し替え";
-		const note = document.createElement("span");
-		note.className = "panel-replacement-note";
-		note.setAttribute("role", "alert");
-		const applyCandidate = () => {
-			const fitted = wordWithReading(
-				candidateDraft.word, candidateDraft.reading, target, rangeWeights);
-			if (!fitted) {
-				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
-				return;
-			}
-			replaceSelection(fitted);
-		};
-		apply.addEventListener("click", applyCandidate);
-		input.addEventListener("keydown", (e) => {
-			if (e.key === "Enter") applyCandidate();
-		});
-		draft.append(surface, field, apply, note);
+		apply.addEventListener("click", () => replaceSelection(candidateDraft.word));
+		draft.append(surface, field, apply);
 		panel.appendChild(draft);
 	}
 

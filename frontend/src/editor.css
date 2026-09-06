@@ -418,6 +418,7 @@ html.editor-free-input-open .editor-toolbar {
 	font-size: 0.78rem;
 }
 
+.panel-draft-reading,
 .panel-replacement-field .input {
 	color: var(--text);
 	font-size: 0.9rem;

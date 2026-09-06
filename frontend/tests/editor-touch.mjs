@@ -320,18 +320,9 @@ try {
 		panel.scrollWidth <= panel.clientWidth);
 	assert(panelFits, "狭い画面で差し替えパネルが横にはみ出した");
 	await editor.locator(".panel-draft-reading").tap();
-	const draftViewportPosition = await editor.evaluate(() => {
-		const viewport = window.visualViewport;
-		const expected = Math.max(
-			0, window.innerHeight - viewport.height - viewport.offsetTop);
-		return {
-			actual: document.getElementById("editor-panel").style.bottom,
-			expected: `${expected}px`,
-		};
-	});
-	assert(draftViewportPosition.actual === draftViewportPosition.expected,
-		"候補読み入力時にiPhoneの表示領域へパネルが追従しない: " +
-		JSON.stringify(draftViewportPosition));
+	assert(await editor.evaluate(() =>
+		!document.activeElement?.matches("input, textarea, [contenteditable]")),
+		"候補の読みのタップで編集欄にフォーカスした");
 	const applyBox = await editor.locator(".panel-candidate-apply").boundingBox();
 	assert(applyBox.width >= 28 && applyBox.height >= 28,
 		`差し替えボタンがタッチには小さい: ${applyBox.width}x${applyBox.height}`);
