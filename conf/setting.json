@@ -385,13 +385,30 @@
    "dbtype": "tidy",
    "facets": [
     {
-     "column": "category",
-     "label": "種類",
+     "column": "type",
+     "label": "名前の形",
      "values": [
-      { "v": "youtuber", "label": "YouTuber", "default": true },
-      { "v": "vtuber", "label": "VTuber", "default": true }
+      { "v": "family", "label": "名字", "default": true },
+      { "v": "given", "label": "名前", "default": true },
+      { "v": "full", "label": "フルネーム", "default": true }
      ]
     },
+    {
+     "column": "status",
+     "label": "活動状況",
+     "values": [
+      { "v": "current", "label": "活動中" },
+      { "v": "former", "label": "卒業・引退" }
+     ]
+    }
+   ]
+  },
+  {
+   "value": "VTUBER",
+   "text": "VTuber",
+   "filepath": "wordlists/vtuber.csv",
+   "dbtype": "tidy",
+   "facets": [
     {
      "column": "type",
      "label": "名前の形",
