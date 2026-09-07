@@ -15,7 +15,7 @@
 # - privateリポジトリ+FreeプランではGitHub標準のauto-merge機能が使えないための自作
 name: automerge
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled]
     branches: [dev, preview, main]
 
@@ -41,10 +41,7 @@ jobs:
         (
           github.event.pull_request.base.ref == 'dev' ||
           github.event.pull_request.base.ref == 'preview' ||
-          (
-            github.event.pull_request.base.ref == 'main' &&
-            github.event.pull_request.head.ref == 'preview'
-          )
+          github.event.pull_request.base.ref == 'main'
         )
       }}
     runs-on: ubuntu-latest
@@ -57,11 +54,21 @@ jobs:
       SHA: ${{ github.event.pull_request.head.sha }}
       BRANCH: ${{ github.event.pull_request.head.ref }}
       BASE: ${{ github.event.pull_request.base.ref }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
       REPO: ${{ github.repository }}
     steps:
+      - name: Check out trusted base policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
       - name: 他のチェックの完了を待って自動マージ
         id: merge
         run: |
+          if [ "$BASE" = main ] && [ "$BRANCH" != preview ]; then
+            node .github/scripts/check-main-pr.cjs || exit 1
+          fi
           echo "PR #$PR ($SHA) のチェック完了を待機します"
           for i in $(seq 1 50); do
             sleep 20
@@ -100,9 +107,8 @@ jobs:
                 echo "PRの状態が待機開始時から変わったためマージしません" >&2
                 exit 1
               fi
-              if [ "$BASE" = "main" ] && [ "$BRANCH" != "preview" ]; then
-                echo "mainへ自動マージできるのはpreviewだけです" >&2
-                exit 1
+              if [ "$BASE" = main ] && [ "$BRANCH" != preview ]; then
+                node .github/scripts/check-main-pr.cjs || exit 1
               fi
               echo "全チェック成功。マージします"
               result=''
