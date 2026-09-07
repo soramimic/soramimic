@@ -49,6 +49,8 @@
 
 - A same-repository PR containing only regular `.md` files may target `main`
   directly after an explicit request to publish those documentation changes.
+  Create that task branch from `origin/main` in a linked worktree so unrelated
+  development or preview changes are not included.
   Renames must have Markdown names on both sides. Code, workflow files, symlinks,
   executable files, submodules, and mixed changes do not qualify.
 - The workflows verify the complete live diff and recheck it before merging.
