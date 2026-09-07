@@ -52,13 +52,14 @@ assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'preview'/,
 	"選択promotionとdev直接PRのどちらもpreviewへ自動マージする");
 assert.match(automerge, /github\.event\.pull_request\.base\.ref == 'main'/,
 	"main向けPRは独立したrelease条件で判定する");
-assert.match(automerge, /github\.event\.pull_request\.head\.ref == 'preview'/,
-	"mainへ自動マージできるheadをpreviewに限定する");
 assert.match(automerge, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/,
-	"forkのpreviewという名前だけでは自動releaseしない");
-assert.match(automerge,
-	/github\.event\.pull_request\.base\.ref == 'dev'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'preview'[^]*?\|\|[^]*?github\.event\.pull_request\.base\.ref == 'main'[^]*?&&[^]*?github\.event\.pull_request\.head\.ref == 'preview'/,
-	"同一条件式でmain向け自動マージをpreview releaseだけに限定する");
+	"fork PRs cannot enter automatic main delivery");
+assert.match(automerge, /pull_request_target:/,
+	"privileged orchestration uses the trusted workflow");
+assert.match(automerge, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/,
+	"policy code is checked out from the pinned base, not the head");
+assert.equal((automerge.match(/node \.github\/scripts\/check-main-pr\.cjs/g) || []).length, 2,
+	"main docs eligibility is checked before waiting and again before merging");
 assert.match(automerge, /\[ "\$BRANCH" != "dev" \] && \[ "\$BRANCH" != "preview" \]/,
 	"常設のdev/preview branchは自動マージ後も削除しない");
 assert.match(automerge, /gh api "repos\/\$REPO\/pulls\/\$PR"/,
@@ -128,3 +129,7 @@ assert.match(retarget, /head\.repo\.full_name != github\.repository/,
 	"forkのpreviewという名前だけではrelease扱いしない");
 
 console.log("branch promotion policy: OK");
+
+assert.match(retarget, /synchronize/, "pushing code into a docs PR re-evaluates its target");
+assert.match(retarget, /node \.github\/scripts\/check-main-pr\.cjs/, "retarget uses the shared file policy");
+assert.match(release, /node \.github\/scripts\/check-main-pr\.cjs/, "release gate enforces the same Markdown exception");
