@@ -61,3 +61,5 @@ jobs:
         run: node tests/setting-wordlists.mjs
       - name: dev・preview・main昇格ポリシーのテスト
         run: node tests/branch-promotion-policy.mjs
+      - name: Markdown-only PR policy tests
+        run: node tests/main-pr-policy.cjs

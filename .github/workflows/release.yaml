@@ -123,19 +123,31 @@ jobs:
   validate-main-source:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      IS_EMERGENCY: ${{ contains(github.event.pull_request.labels.*.name, 'emergency') }}
     steps:
-      - name: previewまたは明示された緊急修正だけを許可
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          REPO: ${{ github.repository }}
-          IS_EMERGENCY: ${{ contains(github.event.pull_request.labels.*.name, 'emergency') }}
+      - name: Check out trusted base policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Validate main PR source and changed files
         run: |
-          if [ "$HEAD_REPO" = "$REPO" ] && [ "$HEAD_REF" = "preview" ]; then
+          if [ "$IS_EMERGENCY" = true ]; then
             exit 0
           fi
-          if [ "$IS_EMERGENCY" = "true" ]; then
+          if [ "$HEAD_REPO" = "$REPO" ] && [ "$HEAD_REF" = preview ]; then
             exit 0
           fi
-          echo "mainへ入れられるのは同一repositoryのpreviewか、明示されたemergency PRだけです" >&2
-          exit 1
+          node .github/scripts/check-main-pr.cjs
