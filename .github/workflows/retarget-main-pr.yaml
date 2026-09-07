@@ -1,7 +1,7 @@
 name: retarget-main-pr
 on:
   pull_request_target:
-    types: [opened, reopened, edited, labeled, unlabeled]
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
     branches: [main]
 
 permissions:
@@ -21,7 +21,32 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       PR: ${{ github.event.pull_request.number }}
       REPO: ${{ github.repository }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
-      - name: base を dev に付け替える
+      - name: Check out trusted base policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Keep Markdown-only PRs on main
         run: |
+          set +e
+          node .github/scripts/check-main-pr.cjs
+          result=$?
+          set -e
+          if [ "$result" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$result" -ne 1 ]; then
+            exit "$result"
+          fi
+          live=$(gh api "repos/$REPO/pulls/$PR")
+          if [ "$(echo "$live" | jq -r .state)" != open ] || \
+             [ "$(echo "$live" | jq -r .base.ref)" != main ] || \
+             [ "$(echo "$live" | jq -r .base.sha)" != "$BASE_SHA" ] || \
+             [ "$(echo "$live" | jq -r .head.sha)" != "$SHA" ]; then
+            exit 1
+          fi
           gh pr edit "$PR" --repo "$REPO" --base dev

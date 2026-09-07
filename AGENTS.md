@@ -9,7 +9,7 @@
   promotion to `preview` or a `preview` to `main` release only when the user has
   requested that promotion. These pull requests can merge and deploy automatically;
   use `no-automerge` when the requested review requires a separate stop.
-- Normal releases to `main` come only from the same repository's `preview` branch.
+- Normal code releases to `main` come only from the same repository's `preview` branch.
   Use the existing merge workflow; do not bypass checks or trigger a duplicate deployment.
 
 ## Changes and verification
@@ -44,3 +44,13 @@
   reconcile it instead of polling indefinitely. Respect required progress updates.
 - Use bounded waits and incremental output for CI and long commands too. A timeout
   is neither completion nor approval; required checks must still pass before merge.
+
+## Markdown-only main updates
+
+- A same-repository PR containing only regular `.md` files may target `main`
+  directly after an explicit request to publish those documentation changes.
+  Renames must have Markdown names on both sides. Code, workflow files, symlinks,
+  executable files, submodules, and mixed changes do not qualify.
+- The workflows verify the complete live diff and recheck it before merging.
+  Mandatory CI, branch protections, draft status, and `no-automerge` still apply.
+  An API error or incomplete diff is not permission to use the exception.
