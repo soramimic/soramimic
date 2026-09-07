@@ -1,17 +1,46 @@
 # Repository agent rules
 
-## Worktree isolation
+## Delivery
 
-- Treat the primary worktree as a protected coordination checkout and keep it on `dev`.
-- Perform implementation, tests, commits, rebases, and conflict resolution in a session-specific linked worktree.
-- Do not switch, reset, clean, or implement changes in the primary worktree.
+- Ordinary implementation is complete when its pull request is merged into `dev`
+  after mandatory checks pass. Use a session-specific linked worktree and task
+  branch from `origin/dev`; keep the primary checkout on `dev` and preserve its state.
+- Development delivery does not authorize a release. Create or mark ready a
+  promotion to `preview` or a `preview` to `main` release only when the user has
+  requested that promotion. These pull requests can merge and deploy automatically;
+  use `no-automerge` when the requested review requires a separate stop.
+- Normal releases to `main` come only from the same repository's `preview` branch.
+  Use the existing merge workflow; do not bypass checks or trigger a duplicate deployment.
 
-## Branch promotion safety
+## Changes and verification
 
-- Automatic merging is allowed for non-draft, same-repository pull requests whose base branch is `dev` or `preview`, and for same-repository `preview` → `main` release pull requests. Pull requests from forks and pull requests labeled `no-automerge` or `emergency` are excluded. No other pull request targeting `main` may be automatically merged.
-- `dev` is the development/integration branch and may include unapproved word lists.
-- `preview` contains changes selected for the next production release. Prefer a selective promotion pull request from a branch based on `preview` when only part of `dev` should ship; a direct `dev` → `preview` pull request is also allowed when all current development changes should ship.
-- Creating or marking ready a same-repository pull request to `dev` or `preview` authorizes the repository workflow to merge it after all mandatory checks pass and deploy the corresponding fixed environment automatically.
-- `main` is production and accepts normal releases only from `preview`. Creating a same-repository `preview` → `main` pull request at the user's direction is explicit production release approval; the repository workflow must merge it after all mandatory checks pass and complete the associated deployment automatically.
-- A passing CI run, a schedule, or a generic instruction such as "finish" is not release approval and must not create a `preview` → `main` pull request.
-- Do not add or use the `emergency` label unless the user explicitly requests an emergency release.
+- Use [README.md](README.md) for the project structure and development commands.
+  Initialize `wordlists` at its recorded submodule commit for tests; update that
+  pointer only when the requested change requires it.
+- Preserve conversion output unless a behavior change is requested. For changes in
+  `frontend/src/lib/`, run `node tests/golden/run.cjs` and the affected algorithm or
+  editor API tests. Change golden expectations only for an intentional behavior change.
+- For frontend behavior, run the relevant browser tests in `frontend/package.json`;
+  `npm run test:smoke` includes the production build. Install dependencies with
+  `npm ci` in `frontend`.
+- For documentation-only changes, check links, command names, and `git diff --check`.
+  All mandatory CI checks still apply before merge; workflows in `.github/workflows/`
+  define the complete CI commands.
+- Preserve the third-party license and attribution notices in [NOTICE](NOTICE).
+
+## Agent coordination
+
+- Default to one agent. Delegate only an explicitly requested or clearly useful,
+  bounded independent subtask while the parent advances other work. Use the
+  smallest useful team and a self-contained brief; avoid unnecessary full-history
+  forks, recursive delegation, duplicate work, and overlapping edits.
+- Prefer completion notifications. When blocked on a result, call the native wait
+  tool directly with an explicit timeout suited to the expected duration and the
+  active runtime and communication limits. Avoid repeated short waits, wrapping
+  native agent waits in another yielding tool, and checking status after every
+  unchanged timeout.
+- Send follow-up messages only for new information, changed scope, or a concrete
+  blocker. If a final result conflicts with a running status, inspect once and
+  reconcile it instead of polling indefinitely. Respect required progress updates.
+- Use bounded waits and incremental output for CI and long commands too. A timeout
+  is neither completion nor approval; required checks must still pass before merge.
