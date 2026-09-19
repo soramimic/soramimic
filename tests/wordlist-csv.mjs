@@ -6,7 +6,7 @@
 // 実行: node tests/wordlist-csv.mjs
 import assert from "node:assert";
 import { buildApp } from "./golden/harness-lib.mjs";
-import { originalTextToCsv, looksLikeTidyHeader }
+import { originalTextToCsv, looksLikeTidyHeader, countWordlistInputRows }
 	from "../frontend/src/wordlistInput.js";
 
 const h = await buildApp({ tokenizer: "kuromoji" });
@@ -113,6 +113,25 @@ assert.strictEqual(originalTextToCsv("surface\nカレー", noYomiApp), [
 const commented = originalTextToCsv("# id,original,surface,pronunciation\nカレー", noYomiApp);
 assert.strictEqual(commented, "id,original,surface,pronunciation\n0,カレー,カレー,カレー",
 	"コメント行をヘッダと誤認している:\n" + commented);
+
+// 追加列はJavaScriptのObjectプロパティ名と重なってもその名前を保つ。
+assert.strictEqual(originalTextToCsv(
+	"surface,constructor,__proto__,hasOwnProperty\nカレー,分類,メモ,補足", noYomiApp), [
+	"surface,constructor,__proto__,hasownproperty,id,original,pronunciation",
+	"カレー,分類,メモ,補足,0,カレー,",
+].join("\n"), "追加列名をObjectの継承プロパティで置き換えないこと");
+
+// ファイルの行数判定と変換で、先頭の空行・コメント・引用符を同じように扱う。
+for (const input of [
+	"\n\r\n表記,読み\n林檎,リンゴ\n,,\n蜜柑,ミカン\n",
+	"# surface,pronunciation\nカレー,カレー,カレエ\nすし",
+	'surface,備考\nカレー,"複数行\nメモ"',
+	"",
+]) {
+	const normalized = originalTextToCsv(input, noYomiApp);
+	assert.strictEqual(countWordlistInputRows(input), normalized.split("\n").length - 1,
+		"入力行数と正規化後の行数が一致すること: " + input);
+}
 
 // ---- 5. plain: 読みの推定 ----
 // 読みを書いていない語(1列だけの行)は、かな以外を含むときだけ推定して2列目に埋める。

@@ -53,3 +53,5 @@ jobs:
         run: node tests/editor-song.mjs
       - name: 編集ツール元歌詞E2E(字幕用の元歌詞・行ごとの対応づけ)
         run: node tests/editor-lyrics.mjs
+      - name: 編集ツール埋め込みE2E
+        run: node tests/editor-embed.mjs
