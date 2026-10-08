@@ -307,6 +307,23 @@ function absorbSmallKana(text){
 	return chars.join("");
 }
 
+// 2個目以降の長音を母音へ開く。1文字ずつ置換し、元の文字位置を保つ。
+// 母音が特定できない場合(行頭やン・ッの後ろなど)は推測で補わない。
+function expandRepeatedLongVowels(text){
+	let previous = "", vowel = "", out = "";
+	for(const char of text){
+		if(char === "ー"){
+			out += previous === "ー" && vowel ? vowel : char;
+		}else{
+			const candidate = char === "ヲ" ? "オ" : charToVowel(char);
+			vowel = /^[アイウエオ]$/.test(candidate) ? candidate : "";
+			out += char;
+		}
+		previous = char;
+	}
+	return out;
+}
+
 //ーとッの不自然な並びを削除する
 function removeBarAndSokuonReputation(text){
 	text = text.replace(/ー+/g,"ー");//ーの連続を1文字にする
@@ -800,7 +817,7 @@ export {
 	barToVowel, vowelToBar, charToConsonant, charToVowel,
 	isSameKana, isSameVowel, isSameConsonant, isSameBar, isSameSokuon, isSameHatsuon,
 	hiraToKata, KanaPattern, smallVowelToBar, smallVowelToLarge,
-	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana,
+	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana, expandRepeatedLongVowels,
 	moraSplit, KanaToMora, KanaToSyllable, getKanaToVowelDictionary,
 	phononSplit, createKanaConverter,
 };
