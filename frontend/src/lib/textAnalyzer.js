@@ -1,7 +1,7 @@
 // js/TextAnalyzer.js から移植(ロジック無改変、ESモジュール化のみ)
 import { removeSign } from "./utils.js";
 import { TokenFormatter } from "./character.js";
-import { hiraToKata, removeUnnaturalKanaPattern, absorbSmallKana } from "./kanaToSyllable.js";
+import { hiraToKata, removeUnnaturalKanaPattern, absorbSmallKana, expandRepeatedLongVowels } from "./kanaToSyllable.js";
 import { parseRuby } from "./ruby.js";
 
 //ルビ記法(｜表層《よみ》)の注釈区間に割り当てる強制トークン。
@@ -217,6 +217,7 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 		//text = english.toKana(text);
 		text = hiraToKata(text);
 		text = removeSign(text);
+		text = expandRepeatedLongVowels(text);
 		text = removeUnnaturalKanaPattern(text);
 		return text
 	}
@@ -285,6 +286,10 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 			}
 			return kana;
 		})();
+		// 表層との対応付けと断片の結合を済ませてから、連続長音を開く。
+		// 文字数を保つため、手動割当やchar_indexはそのまま使える。
+		subword_kana = subword_kana.map(expandRepeatedLongVowels);
+		const normalizedPronunciation = subword_kana.join("");
 		let mora = subword_kana.map(v=>{
 			return k2s.split(v);
 		}).flat();
@@ -296,6 +301,7 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 		}).flat();
 		for(let i=0;i<mora_index.length;i++){
 			tokens[i]["mora"] = mora_index[i];
+			tokens[i]["pronunciation"] = normalizedPronunciation[i];
 		}
 		//console.log("before",tokens);
 		//moraの単位でtokenをまとめる

@@ -97,16 +97,17 @@ function TokenFormatter(){
 	//長音の処理
 	//単独のtokenがあれば、直前のtokenとくっつける
 	function concatSingleBar(tokens){
-		
-		  for(let i=1;i<tokens.length;i++){
-			  if(isRuby(tokens[i]) || isRuby(tokens[i-1]))continue;
-			  if(tokens[i]["surface_form"] === "ー"){
-				  tokens[i-1]["surface_form"] += "ー";
-				  tokens[i-1]["pronunciation"] += "ー";
-			  }
-		  }
-		  tokens = tokens.filter(token=>isRuby(token) || token["surface_form"] !== "ー");
-		return tokens;
+		const out = [];
+		for(const token of tokens){
+			const previous = out[out.length - 1];
+			if(previous && !isRuby(token) && !isRuby(previous) && token.surface_form === "ー"){
+				previous.surface_form += "ー";
+				previous.pronunciation += "ー";
+			}else{
+				out.push(token);
+			}
+		}
+		return out;
 	}
 	
 	function setNumberPronunciation(tokens){
