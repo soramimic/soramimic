@@ -273,12 +273,15 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 			let kana = []
 			let last_subword = -1;
 			for(let token of tokens){
-				if(token.subword !== last_subword){
+				// コ / ーラ のように長音から始まる断片は、直前の音節の続き。
+				// 音節分割前につなぎ、表層と読みの位置対応に使う全文字を保つ。
+				if(token.subword !== last_subword &&
+					(token.pronunciation !== "ー" || kana.length === 0)){
 					kana.push(token.pronunciation);
-					last_subword = token.subword;
 				}else{
 					kana[kana.length-1] += token.pronunciation;
 				}
+				last_subword = token.subword;
 			}
 			return kana;
 		})();
