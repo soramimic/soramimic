@@ -31,6 +31,8 @@ jobs:
         run: node tests/editor-api.mjs
       - name: 小書きカナ吸収のテスト
         run: node tests/small-kana.mjs
+      - name: トークン境界をまたぐ長音のテスト
+        run: node tests/long-vowels.mjs
       - name: formatKanaの英字カナ化のテスト
         run: node tests/format-kana.mjs
       - name: ルビ記法(｜表層《よみ》)のテスト
