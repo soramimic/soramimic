@@ -356,6 +356,66 @@ function KanaToMora(){
 	}
 }
 
+// 1音節の変種。削除(空ユニット)も残し、列挙と省メモリ検索で同じ規則を使う。
+function syllableVariations(syllable){
+	let variation = [];
+	if(/^[アイウエオ]$/.test(syllable)){//アイウエオは先に処理しておく
+		variation.push({u:[syllable],c:0});
+	}else if(/^[ンッ]$/.test(syllable)){
+		variation.push({u:[syllable],c:0});
+		variation.push({u:[""],c:1});//裸ン・ッの削除
+	}else if(syllable == "ンー"){//ンー→["ン","ン"],["ン"],[""]
+		variation.push({u:["ン","ン"],c:1});//ー→ン変換
+		variation.push({u:["ン"],c:1});//ー削除
+		variation.push({u:[""],c:2});//ン削除+ー削除
+	}else if(syllable == "ンッ"){//ンッ→["ン","ッ"],["ン"],["ッ"],[""]
+		variation.push({u:["ン","ッ"],c:0});
+		variation.push({u:["ン"],c:1});//ッ削除
+		variation.push({u:["ッ"],c:1});//ン削除
+		variation.push({u:[""],c:2});
+	}else if(syllable.endsWith("ーン")){//ex: アーン→["アー","ン"],["アー"]
+		let head = syllable.slice(0,-2);
+		variation.push({u:[head+"ー","ン"],c:0});
+		variation.push({u:[head+"ー"],c:1});//ン削除
+	}else if(syllable.endsWith("ンッ")){//ex: アンッ→["ア","ン","ッ"],["ア","ン"],["アー","ッ"],["アー"],["ア","ッ"]
+		let head = syllable.slice(0,-2);
+		variation.push({u:[head,"ン","ッ"],c:0});
+		variation.push({u:[head,"ン"],c:1});//ッ削除
+		variation.push({u:[head+"ー","ッ"],c:1});//ン→ー化
+		variation.push({u:[head+"ー"],c:2});//ン→ー化+ッ削除
+		variation.push({u:[head,"ッ"],c:1});//ン削除
+	}else if(syllable.endsWith("ーッ")){//ex. アーッ→["アー","ッ"],["アー"]
+		let head = syllable.slice(0,-2);
+		variation.push({u:[head+"ー","ッ"],c:0});
+		variation.push({u:[head+"ー"],c:1});//ッ削除
+	}else if(syllable.endsWith("ー")){//ex. アー→["アー"]
+		let head = syllable.slice(0,-1);
+		variation.push({u:[head+"ー"],c:0});
+	}else if(syllable.endsWith("ッ")){
+		let head = syllable.slice(0,-1);
+		variation.push({u:[head,"ッ"],c:0});//ex. アッ→["ア","ッ"],["ア"],["アー"]
+		variation.push({u:[head],c:1});//ッ削除
+		variation.push({u:[head+"ー"],c:1});//ッ→ー置換(単一操作でッ↔ーを閉じる)
+	}else if(syllable.endsWith("ン")){//ex. アン→["ア","ン"],["アー"],["ア"]
+		let head = syllable.slice(0,-1);
+		variation.push({u:[head,"ン"],c:0});
+		variation.push({u:[head+"ー"],c:1});//ン→ー化
+		variation.push({u:[head],c:1});//ン削除(単一操作でン削除を閉じる)
+	}
+	//母音で終わる
+	else if(/[アイウエオ]$/.test(syllable)){//カア→["カ","ア"],["カー"]
+		let head = syllable.slice(0,-1);
+		let vowel = syllable[syllable.length-1];
+		variation.push({u:[head,vowel],c:0});
+		variation.push({u:[head+"ー"],c:0});//表記ゆれ(母音連続→ー)扱いで無コスト
+	}
+	//1モーラ
+	else{
+		variation.push({u:[syllable],c:0});
+	}
+	return variation;
+}
+
 function KanaToSyllable(){
 	//よく使うカナパターンの取得
 	let kana = KanaPattern();
@@ -430,61 +490,7 @@ function KanaToSyllable(){
 			for(let si=0; si<syllables.length; si++){
 				const syllable = syllables[si];
 				if(syllable === null) continue;
-				let variation = [];
-				if(/^[アイウエオ]$/.test(syllable)){//アイウエオは先に処理しておく
-					variation.push({u:[syllable],c:0});
-				}else if(/^[ンッ]$/.test(syllable)){
-					variation.push({u:[syllable],c:0});
-					variation.push({u:[""],c:1});//裸ン・ッの削除
-				}else if(syllable == "ンー"){//ンー→["ン","ン"],["ン"],[""]
-					variation.push({u:["ン","ン"],c:1});//ー→ン変換
-					variation.push({u:["ン"],c:1});//ー削除
-					variation.push({u:[""],c:2});//ン削除+ー削除
-				}else if(syllable == "ンッ"){//ンッ→["ン","ッ"],["ン"],["ッ"],[""]
-					variation.push({u:["ン","ッ"],c:0});
-					variation.push({u:["ン"],c:1});//ッ削除
-					variation.push({u:["ッ"],c:1});//ン削除
-					variation.push({u:[""],c:2});
-				}else if(syllable.endsWith("ーン")){//ex: アーン→["アー","ン"],["アー"]
-					let head = syllable.slice(0,-2);
-					variation.push({u:[head+"ー","ン"],c:0});
-					variation.push({u:[head+"ー"],c:1});//ン削除
-				}else if(syllable.endsWith("ンッ")){//ex: アンッ→["ア","ン","ッ"],["ア","ン"],["アー","ッ"],["アー"],["ア","ッ"]
-					let head = syllable.slice(0,-2);
-					variation.push({u:[head,"ン","ッ"],c:0});
-					variation.push({u:[head,"ン"],c:1});//ッ削除
-					variation.push({u:[head+"ー","ッ"],c:1});//ン→ー化
-					variation.push({u:[head+"ー"],c:2});//ン→ー化+ッ削除
-					variation.push({u:[head,"ッ"],c:1});//ン削除
-				}else if(syllable.endsWith("ーッ")){//ex. アーッ→["アー","ッ"],["アー"]
-					let head = syllable.slice(0,-2);
-					variation.push({u:[head+"ー","ッ"],c:0});
-					variation.push({u:[head+"ー"],c:1});//ッ削除
-				}else if(syllable.endsWith("ー")){//ex. アー→["アー"]
-					let head = syllable.slice(0,-1);
-					variation.push({u:[head+"ー"],c:0});
-				}else if(syllable.endsWith("ッ")){
-					let head = syllable.slice(0,-1);
-					variation.push({u:[head,"ッ"],c:0});//ex. アッ→["ア","ッ"],["ア"],["アー"]
-					variation.push({u:[head],c:1});//ッ削除
-					variation.push({u:[head+"ー"],c:1});//ッ→ー置換(単一操作でッ↔ーを閉じる)
-				}else if(syllable.endsWith("ン")){//ex. アン→["ア","ン"],["アー"],["ア"]
-					let head = syllable.slice(0,-1);
-					variation.push({u:[head,"ン"],c:0});
-					variation.push({u:[head+"ー"],c:1});//ン→ー化
-					variation.push({u:[head],c:1});//ン削除(単一操作でン削除を閉じる)
-				}
-				//母音で終わる
-				else if(/[アイウエオ]$/.test(syllable)){//カア→["カ","ア"],["カー"]
-					let head = syllable.slice(0,-1);
-					let vowel = syllable[syllable.length-1];
-					variation.push({u:[head,vowel],c:0});
-					variation.push({u:[head+"ー"],c:0});//表記ゆれ(母音連続→ー)扱いで無コスト
-				}
-				//1モーラ
-				else{
-					variation.push({u:[syllable],c:0});
-				}
+				const variation = syllableVariations(syllable);
 				result.push(variation);
 				resultSrc.push(si);
 			}
@@ -818,6 +824,6 @@ export {
 	isSameKana, isSameVowel, isSameConsonant, isSameBar, isSameSokuon, isSameHatsuon,
 	hiraToKata, KanaPattern, smallVowelToBar, smallVowelToLarge,
 	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana, expandRepeatedLongVowels,
-	moraSplit, KanaToMora, KanaToSyllable, getKanaToVowelDictionary,
+	moraSplit, KanaToMora, KanaToSyllable, syllableVariations, getKanaToVowelDictionary,
 	phononSplit, createKanaConverter,
 };
