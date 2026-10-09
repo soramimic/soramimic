@@ -36,6 +36,8 @@ jobs:
         run: node tests/unit-weights.mjs
       - name: 音節バリエーション早期枝刈りのテスト
         run: node tests/variation-pruning.mjs
+      - name: 発音候補の省メモリ検索と列挙結果の一致テスト
+        run: node tests/compact-search.mjs
       - name: 名前付き自作リスト保存・旧データ移行のテスト
         run: node tests/custom-wordlists.mjs
       - name: 自作リスト入力形式のテスト
