@@ -1,5 +1,6 @@
 // js/soramimic.js から移植(ロジック無改変、ESモジュール化のみ)
 import { zip } from "./utils.js";
+import { PronunciationSearch } from "./pronunciationSearch.js";
 
 /*
 ======================================================================
@@ -89,49 +90,48 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer)=>{
 	//省略時は従来と完全同一。変種でユニット数が変わる場合は変種側の由来index(srcIndex)を
 	//たどって元音節の重みを引く
 	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null) => {
-		//console.log(kanaDist);
-		const orglen = target.length;
-			//Object.keysでは文字列配列が取得できるので、v.lengthも文字列に直してからfilterする
-		
-		//発音候補を長さごとに分類して取得
-		//console.log("in gs start");
-		//console.time("in gs");
-		let tmp = textAnalyzer.syllableToVariation(target);
-		let candidates = {};
-		//変種ごとの重み(出力ユニット→由来音節の重み)。単語ごとに作り直さないよう先に用意する
+		// 小さい入力は列挙、分岐が多い入力は音節ごとの状態を共有して全変種を採点する。
+		// maxUnitsだけでは同じ長さの変種が指数的に増えるため、直積自体を避ける。
+		const search = new PronunciationSearch(target,Object.keys(wordlist));
+		const candidates = {};
 		const candidateWeights = weights ? new Map() : null;
-		for(let c of tmp){
-			//発音cの長さがwordlistに存在しないときスキップ
-			if(c.length in wordlist == false) continue;
-
-			if(c.length in candidates == false) candidates[c.length]=[]
-			candidates[c.length].push(c);
-			if(candidateWeights){
-				const src = c.srcIndex || [];
-				//由来indexが取れない場合(古い変種)は重み1=無重みにフォールバック
-				candidateWeights.set(c, c.map((_,k)=>{
-					const w = weights[src[k]];
-					return (typeof w === "number") ? w : 1;
-				}));
+		if(search.compact){
+			for(const size of search.lengths)candidates[size] = null;
+		}else if(search.lengths.length){
+			const tmp = textAnalyzer.syllableToVariation(target,search.maximum);
+			for(const c of tmp){
+				if(!(c.length in wordlist))continue;
+				if(!(c.length in candidates))candidates[c.length] = [];
+				candidates[c.length].push(c);
+				if(candidateWeights){
+					const src = c.srcIndex || [];
+					candidateWeights.set(c,c.map((_,k)=>{
+						const w = weights[src[k]];
+						return typeof w === "number" ? w : 1;
+					}));
+				}
 			}
 		}
-		//console.timeLog("in gs");
+		const exactScore = (size,word)=>{
+			if(search.compact){
+				if(word.pronunciation.length!==Number(size))return Infinity;
+				return search.score(word.pronunciation,kanaDist,variationCost,word.vcost||0,weights);
+			}
+			let best = Infinity;
+			for(const c of candidates[size]){
+				const score = ld(c,word.pronunciation,kanaDist,
+					candidateWeights ? candidateWeights.get(c) : null)
+					+ ((c.vcost||0)+(word.vcost||0))*variationCost;
+				best = Math.min(best,score);
+			}
+			return best;
+		};
 		let words = {}
 		for(let i in candidates){
 			for(let w of wordlist[i]){
 				//共有オブジェクトを直接書き換えるとDPの再帰中に別セグメントの
 				//クエリがsimを上書きし、スコア計算が汚染される(#99)。コピーに載せる
-				let sim = Infinity;
-				for(let c of candidates[i]){
-					//ldの生スコアに変種コスト(ターゲット側 c.vcost + 単語側 w.vcost)を
-					//加算した素の合計にする(#105)。旧正規化(÷変種長×音節数)は
-					//対角0の新行列(#102/#104)では希釈の副作用だけが残るため廃止。
-					//ユニット位置別の重みは ld のユニット距離にだけ掛ける。VARIATION_COST は
-					//無重みのまま(将来、変種操作が起きた位置の重みで重み付けする拡張は可能)
-					let d = ld(c, w.pronunciation, kanaDist, candidateWeights ? candidateWeights.get(c) : null)
-						+ ((c.vcost||0)+(w.vcost||0))*variationCost;
-					sim = Math.min(d, sim);
-				}
+				const sim = exactScore(i,w);
 				if(w.id in words && sim > words[w.id].sim) continue;
 				words[w.id] = Object.assign({}, w, {sim: sim});
 			}
