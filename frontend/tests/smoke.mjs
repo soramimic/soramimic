@@ -3,7 +3,10 @@
 // 実行: npm run build && node tests/smoke.mjs
 // 形態素解析はkuromoji.jsでブラウザ内完結(外部API通信なし)。
 import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
+import { Parser } from "../src/lib/wordList.js";
 import { buildXfMidi } from "../../tests/xfmidi-fixture.mjs";
 
 const PORT = 4199;
@@ -389,6 +392,57 @@ try {
 	if (!await selectAll.evaluate((el) => el.indeterminate)) {
 		throw new Error("一部選択時にすべて選択が中間状態にならない");
 	}
+	// 科学者: 実際のUIが組み立てるwhereで、著名人博士の全行を任意選択できる。
+	await page.click("#wordlist-buttons button[data-value='SCIENTIST']");
+	const scope = page.locator("#wordlist-facets .facet-group").filter({ hasText: "通常の科学者" });
+	const ordinary = scope.locator("input.facet-value[value='no']");
+	const celebrities = scope.locator("input.facet-value[value='yes']");
+	assert(await ordinary.isChecked(), "通常の科学者が既定で選ばれていない");
+	assert(!await celebrities.isChecked(), "著名人博士が既定で選ばれている");
+	const config = await (await fetch(`http://localhost:${PORT}/conf/setting.json`)).json();
+	const scientist = config.wordlist.find((entry) => entry.value === "SCIENTIST");
+	const controlsSource = await readFile(new URL("../src/convertControls.js", import.meta.url), "utf8");
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(controlsSource).toString("base64")}`;
+	const getScientistWhere = () => page.evaluate(async ({ moduleUrl, scientist }) => {
+		const { compileWhere } = await import(moduleUrl);
+		return compileWhere(document.querySelector("#wordlist-facets"), scientist);
+	}, { moduleUrl, scientist });
+	const csv = await (await fetch(`http://localhost:${PORT}/wordlists/scientist.csv`)).text();
+	const [header, ...rows] = csv.trimEnd().split(/\r?\n/).map((line) => line.split(","));
+	const flagIndex = header.indexOf("celebrity_doctorate");
+	assert(flagIndex >= 0, "配信CSVに著名人博士フラグがない");
+	const reviewed = rows.filter((row) => row[flagIndex] === "yes");
+	assert(reviewed.length > 0, "著名人博士の検証対象が空");
+	const parser = Parser();
+	assert(scientist.where && parser.filter(scientist.where, header, rows)
+		.every((row) => row[flagIndex] === "no"), "エントリの既定条件に著名人博士が混入した");
+	const defaults = parser.filter(await getScientistWhere(), header, rows);
+	assert(defaults.length > 0 && defaults.every((row) => row[flagIndex] === "no"),
+		"既定の科学者リストに著名人博士が混入した");
+	await celebrities.check();
+	const enabled = parser.filter(await getScientistWhere(), header, rows);
+	assert(reviewed.every((row) => enabled.includes(row)),
+		"著名人博士を選んでも分野・時代・ノーベル賞の条件で除外される");
+	await ordinary.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), reviewed,
+		"著名人博士だけに絞れない");
+	await ordinary.check();
+	await celebrities.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"著名人博士をオフに戻せない");
+	await ordinary.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"対象を全解除したときに著名人博士へ暗黙に広がる");
+	// 編集ツールで旧形式のwhereを復元する場合も、追加対象は既定オフ。
+	await page.evaluate(async (moduleUrl) => {
+		const { restoreFacets } = await import(moduleUrl);
+		restoreFacets(document.querySelector("#wordlist-facets"), "(field~=物理)");
+	}, moduleUrl);
+	assert(await ordinary.isChecked() && !await celebrities.isChecked(),
+		"旧設定の復元で著名人博士が既定オフにならない");
+	assert(parser.filter(await getScientistWhere(), header, rows)
+		.every((row) => row[flagIndex] === "no"), "旧設定の復元で著名人博士が混入した");
+
 	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
 	await page.click("#wordlist-buttons button[data-value='BASEBALL']");
 	const baseballSelectAll = page.getByRole("checkbox", { name: "種類をすべて選択" });

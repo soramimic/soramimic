@@ -344,7 +344,17 @@
    "text": "科学者",
    "filepath": "wordlists/scientist.csv",
    "dbtype": "tidy",
+   "where": "celebrity_doctorate=no",
    "facets": [
+    {
+     "column": "celebrity_doctorate",
+     "label": "対象",
+     "defaultWhenEmpty": true,
+     "values": [
+      { "v": "no", "label": "通常の科学者", "default": true },
+      { "v": "yes", "label": "著名人博士", "default": false }
+     ]
+    },
     {
      "column": "field",
      "label": "分野",
@@ -355,7 +365,13 @@
       { "v": "天文学", "label": "天文学", "where": "field~=天文学" },
       { "v": "生物学", "label": "生物学", "where": "field~=生物学" },
       { "v": "計算機科学", "label": "計算機科学", "where": "field~=計算機科学" },
-      { "v": "地学", "label": "地学", "where": "field~=地学" }
+      { "v": "地学", "label": "地学", "where": "field~=地学" },
+      { "v": "理学", "label": "理学（専攻未詳）", "where": "field=理学" },
+      { "v": "工学", "label": "工学", "where": "field~=工学" },
+      { "v": "医学", "label": "医学", "where": "field~=医学" },
+      { "v": "教育学", "label": "教育学", "where": "field~=教育学" },
+      { "v": "哲学", "label": "哲学", "where": "field~=哲学" },
+      { "v": "NA", "label": "不明" }
      ]
     },
     {
@@ -366,14 +382,17 @@
       { "v": "中世", "label": "中世" },
       { "v": "近世", "label": "近世" },
       { "v": "近代", "label": "近代" },
-      { "v": "現代", "label": "現代" }
+      { "v": "現代", "label": "現代" },
+      { "v": "NA", "label": "不明" }
      ]
     },
     {
      "column": "nobel",
      "label": "ノーベル賞",
      "values": [
-      { "v": "yes", "label": "受賞者" }
+      { "v": "yes", "label": "受賞者" },
+      { "v": "no", "label": "未受賞" },
+      { "v": "NA", "label": "不明" }
      ]
     }
    ]
