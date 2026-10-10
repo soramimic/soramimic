@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	CLOUDFLARE_PAGES_FILE_LIMIT,
+	checkDeploymentFileCount,
 	OMITTED_WORDLIST_COLUMNS,
 	REQUIRED_WORDLIST_COLUMNS,
 	findOversizedFiles,
@@ -51,6 +52,16 @@ for (const plan of plans) {
 assert(deliveryBytes < sourceBytes, "単語リスト全体の配信サイズが縮小されていない");
 const oversized = await findOversizedFiles(fileURLToPath(new URL("../dist", import.meta.url)));
 assert.deepEqual(oversized, [], "distにCloudflare Pagesの上限超過ファイルがある");
+await checkDeploymentFileCount(fileURLToPath(new URL("../dist", import.meta.url)));
+for (const directory of ["images", "assets", "tools", "docs", ".git", ".github"]) {
+	await assert.rejects(readFile(new URL(`../dist/wordlists/${directory}`, import.meta.url)),
+		{ code: "ENOENT" }, `配信用wordlistsに${directory}が残っている`);
+}
+for (const filename of ["README.md", "LICENSE-APACHE-2.0-material-symbols"]) {
+	assert.equal(await readFile(new URL(`../dist/wordlists/${filename}`, import.meta.url), "utf8"),
+		await readFile(new URL(`../../wordlists/${filename}`, import.meta.url), "utf8"),
+		`${filename}の出典・ライセンス表示が失われた`);
+}
 
 assert.deepEqual([...wordlistConfigColumns({
 	where: "status=current",
@@ -97,11 +108,22 @@ try {
 	await writeFile(join(wordlists, "kept.csv"), "keep", "utf8");
 	await writeFile(join(wordlists, "hidden.csv"), "remove", "utf8");
 	await writeFile(join(wordlists, "NOTICE.md"), "keep metadata", "utf8");
+	await writeFile(join(wordlists, ".git"), "gitdir: private/path", "utf8");
+	await mkdir(join(wordlists, "images"));
+	await writeFile(join(wordlists, "images", "unused.svg"), "unused", "utf8");
+	await mkdir(join(wordlists, "nested"));
+	await writeFile(join(wordlists, "nested", "used.csv"), "nested data", "utf8");
+	await writeFile(join(wordlists, "nested", "unused.csv"), "remove", "utf8");
 	assert.deepEqual(await pruneUnconfiguredWordlists(dist, [{
 		filepath: "wordlists/kept.csv",
-	}]), ["hidden.csv"], "設定にないCSVを配信物から除外できない");
+	}, { filepath: "wordlists/nested/used.csv" }]),
+	[".git", "hidden.csv", "images", "nested/unused.csv"], "不要な単語リスト素材を除外できない");
 	assert.equal(await readFile(join(wordlists, "kept.csv"), "utf8"), "keep");
 	assert.equal(await readFile(join(wordlists, "NOTICE.md"), "utf8"), "keep metadata");
+	assert.equal(await readFile(join(wordlists, "nested", "used.csv"), "utf8"), "nested data");
+	assert.equal(await checkDeploymentFileCount(dist, 3), 3, "上限と同数のファイルを受理しない");
+	await assert.rejects(checkDeploymentFileCount(dist, 2), /上限を超えています/,
+		"配信ファイル数の上限超過を検出できない");
 
 	await writeFile(input,
 		'id,original,surface,pronunciation,status\n1,"学校",学校,ガッコウ,current', "utf8");
