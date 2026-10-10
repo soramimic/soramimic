@@ -261,6 +261,10 @@ export function renderFacets(container, entry) {
 	for (const f of facets) {
 		const group = document.createElement("div");
 		group.className = "facet-group";
+		// 任意追加の対象は、未選択や旧設定の復元で暗黙に全件へ広げない。
+		group.__defaultClauses = f.defaultWhenEmpty
+			? f.values.filter((item) => item.default === true).map((item) => facetClause(f, item))
+			: [];
 		const header = document.createElement("div");
 		header.className = "facet-header";
 		const label = document.createElement("span");
@@ -312,7 +316,8 @@ export function renderFacets(container, entry) {
 }
 
 // 現在のチェック状態を where 文字列にコンパイルする。
-// 同一 facet 内は or、facet をまたぐと and。未チェックの facet は制約なし。
+// 同一 facet 内は or、facet をまたぐと and。未チェックは制約なしだが、
+// defaultWhenEmpty を指定した facet は既定の選択肢に戻す。
 // 各選択肢の断片は facetClause() が決める(column= / columns の or / 任意の where)。
 // facets 未定義のエントリは従来どおり entry.where を返す。
 export function compileWhere(container, entry) {
@@ -320,8 +325,9 @@ export function compileWhere(container, entry) {
 	if (facets.length === 0) return entry ? entry.where : undefined;
 	const clauses = [];
 	for (const group of container.querySelectorAll(".facet-group")) {
-		const frags = [...group.querySelectorAll("input.facet-value:checked")]
+		let frags = [...group.querySelectorAll("input.facet-value:checked")]
 			.map((cb) => cb.__where);
+		if (frags.length === 0) frags = group.__defaultClauses || [];
 		if (frags.length === 0) continue; // 制約なし
 		clauses.push("(" + frags.join(" or ") + ")");
 	}
@@ -353,6 +359,9 @@ export function restoreFacets(container, where) {
 	}
 	for (const group of container.querySelectorAll(".facet-group")) {
 		const values = [...group.querySelectorAll("input.facet-value")];
+		if (!values.some((cb) => cb.checked) && group.__defaultClauses?.length) {
+			for (const cb of values) cb.checked = group.__defaultClauses.includes(cb.__where);
+		}
 		const selectAll = group.querySelector("input.facet-select-all-input");
 		const checkedCount = values.filter((cb) => cb.checked).length;
 		selectAll.checked = checkedCount === values.length;
