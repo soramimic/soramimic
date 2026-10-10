@@ -369,8 +369,14 @@
       { "v": "理学", "label": "理学（専攻未詳）", "where": "field=理学" },
       { "v": "工学", "label": "工学", "where": "field~=工学" },
       { "v": "医学", "label": "医学", "where": "field~=医学" },
+      { "v": "薬学", "label": "薬学", "where": "field~=薬学" },
       { "v": "教育学", "label": "教育学", "where": "field~=教育学" },
       { "v": "哲学", "label": "哲学", "where": "field~=哲学" },
+      { "v": "文学", "label": "文学", "where": "field~=文学" },
+      { "v": "心理学", "label": "心理学", "where": "field~=心理学" },
+      { "v": "観光学", "label": "観光学", "where": "field~=観光学" },
+      { "v": "環境学", "label": "環境学", "where": "field~=環境学" },
+      { "v": "経済学", "label": "経済学", "where": "field~=経済学" },
       { "v": "NA", "label": "不明" }
      ]
     },
