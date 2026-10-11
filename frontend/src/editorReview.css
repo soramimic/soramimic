@@ -19,6 +19,8 @@
 .review-words { display: flex; flex-wrap: wrap; gap: .45rem; }
 .review-word { font: inherit; font-weight: 600; line-height: 1.5; min-height: 44px; padding: .45rem .7rem; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--panel); cursor: pointer; overflow-wrap: anywhere; max-width: 100%; }
 .review-word:hover, .review-word[aria-pressed="true"] { border-color: var(--accent); }
+.review-word.locked { background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-color: var(--accent); }
+.review-word .chip-lock-icon { width: .85em; height: .85em; margin-left: .35em; vertical-align: -.1em; color: inherit; }
 .review-word.filler { border-style: dashed; border-color: var(--muted); background: transparent; color: var(--muted); font-weight: 400; }
 .video-review.review-selecting { overflow: hidden; }
 .video-review .editor-panel { inset: 0; max-width: 820px; max-height: none; border: 0; border-radius: 0; padding: 0 1rem 1rem; background: var(--bg); box-shadow: none; transform: translateX(105%); }
