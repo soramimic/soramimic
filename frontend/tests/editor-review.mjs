@@ -63,7 +63,7 @@ try {
 		console.error({ errors, before, panel: await page.locator("#editor-panel").textContent() });
 		throw error;
 	});
-	assert(await page.locator(".review-unit").first().isVisible(), "reading and range start expanded");
+	assert(await page.locator(".review-unit").first().isVisible(), "reading and range remain visible");
 	assert.equal(await page.locator(".panel-yomi-toggle").count(), 0);
 	const panelBox = await page.locator("#editor-panel").boundingBox();
 	assert(panelBox.height >= 700, "candidate editor should use the mobile viewport");
@@ -86,7 +86,7 @@ try {
 	if (end < seed.unitsList[0].length) {
 		await page.click(`.review-unit[data-index="${end}"]`);
 		assert.equal(await page.locator('.review-unit[aria-pressed="true"]').count(), end - start + 1);
-		assert(await page.locator(".review-range").evaluate((node) => node.open));
+		assert(await page.locator(".review-unit").first().isVisible());
 	}
 	await page.keyboard.press("Escape");
 	assert.equal(await page.locator("#editor-panel").evaluate((node) => node.classList.contains("open")), false);

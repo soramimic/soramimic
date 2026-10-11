@@ -100,7 +100,7 @@ export function renderReviewLine(data, line, selection, choose, lockIcon) {
 }
 
 // Original readings remain read-only because the host has already aligned these
-// units to the song's notes. The range is expanded when opening a selection.
+// units to the song's notes. Keep the reading and range visible while editing.
 export function appendReviewHeader(panel, data, selection, callbacks) {
 	const { line, start, end } = selection;
 	const units = data.unitsList[line] || [];
@@ -121,11 +121,10 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		header.append(lock);
 	}
 	panel.append(header);
-	const details = element("details", "review-range");
-	details.open = callbacks.rangeOpen;
-	details.append(element("summary", "", "読み・範囲"));
-	details.addEventListener("toggle", () => callbacks.setRangeOpen(details.open));
-	details.append(element("p", "review-original", reviewOriginal(data, line)));
+	const range = element("div", "review-range");
+	range.setAttribute("role", "group");
+	range.setAttribute("aria-label", "読みと範囲");
+	range.append(element("p", "review-original", reviewOriginal(data, line)));
 	const buttons = element("div", "review-range-units");
 	units.forEach((unit, index) => {
 		const button = element("button", "btn review-unit", unit.pronunciation);
@@ -135,6 +134,6 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		button.addEventListener("click", (event) => callbacks.unit(line, index, event.shiftKey));
 		buttons.append(button);
 	});
-	details.append(buttons);
-	panel.append(details);
+	range.append(buttons);
+	panel.append(range);
 }
