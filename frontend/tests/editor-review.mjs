@@ -143,8 +143,8 @@ try {
 	for (const index of [1, 2]) {
 		assert.deepEqual(await periods(gaps(index)), [[0, gapSeed.unitsList[index].length]]);
 	}
-	assert((await page.locator(".review-word.filler .review-unmatched").allTextContents())
-		.every((text) => text === "未対応"));
+	assert(await page.locator(".review-word.filler").evaluateAll((nodes) =>
+		nodes.every((node) => node.getAttribute("aria-label").startsWith("未対応、"))));
 	assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results),
 		gapSeed.results, "displaying uncovered ranges must not rewrite saved conversion results");
 	for (const colorScheme of ["light", "dark"]) {
@@ -153,7 +153,7 @@ try {
 	}
 	await gaps(0).first().click();
 	assert(await page.locator(".review-unit").first().isVisible());
-	assert.equal(await page.locator(".review-panel-header .review-unmatched").textContent(), "未対応");
+	assert.equal(await page.locator(".review-panel-header .panel-lock").count(), 0);
 	await page.locator(".candidate").first().click();
 	assert.deepEqual(await periods(gaps(0)), [[2, 4], [5, gapSeed.unitsList[0].length]]);
 	await page.click("#btn-undo");
