@@ -397,8 +397,7 @@
      "label": "ノーベル賞",
      "values": [
       { "v": "yes", "label": "受賞者" },
-      { "v": "no", "label": "非受賞者" },
-      { "v": "NA", "label": "不明" }
+      { "v": "other", "label": "その他", "where": "(nobel=no or nobel=NA)" }
      ]
     }
    ]
