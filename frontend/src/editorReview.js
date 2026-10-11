@@ -64,7 +64,7 @@ export function setupReviewToolbar() {
 	toolbar.append(actions);
 }
 
-export function renderReviewLine(data, line, selection, choose) {
+export function renderReviewLine(data, line, selection, choose, lockIcon) {
 	const row = element("div", "editor-line review-line");
 	row.dataset.line = String(line);
 	if (!data.unitsList[line]?.length) {
@@ -83,8 +83,12 @@ export function renderReviewLine(data, line, selection, choose) {
 		chip.dataset.start = String(word.period[0]);
 		chip.dataset.end = String(word.period[1]);
 		chip.classList.toggle("filler", !!word.filler);
+		chip.classList.toggle("locked", !!word.locked && !word.filler);
 		if (word.filler) {
 			chip.setAttribute("aria-label", `未対応、${word.surface}。候補を選ぶ`);
+		} else if (word.locked) {
+			chip.append(lockIcon(true));
+			chip.setAttribute("aria-label", `${word.surface}、固定中。候補を選ぶ`);
 		}
 		chip.setAttribute("aria-pressed", String(selection?.line === line
 			&& selection.start === word.period[0] && selection.end === word.period[1]));

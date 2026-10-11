@@ -49,6 +49,7 @@ let paramControls = null; // 変換設定パネルのパラメータUI(生成画
 let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
 let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
 let reconverting = false; // 再変換中(多重実行を防ぐ)
+let regeneration = null;
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
 let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
 let songRequest = null; // ホストに出した曲の依頼 {type, id, nonce}(応答待ち中だけ非null)
@@ -318,7 +319,7 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
-	if (isVideoReview(data)) return renderReviewLine(data, line, selection, onWordClick);
+	if (isVideoReview(data)) return renderReviewLine(data, line, selection, onWordClick, makeLockIcon);
 	const units = unitsOf(line);
 	const words = data.results[line] || [];
 	const el = document.createElement("div");
@@ -1587,8 +1588,9 @@ function renderGroupPicker(panel, group, used) {
 // ---- 再生成・コピー ----
 
 // 🔒固定した単語(と差し替え済み単語)を残し、それ以外を作り直す
-function regenerate() {
-	if (reconverting) return;
+function regenerate({ allUnlocked = false } = {}) {
+	if (regeneration) return regeneration;
+	if (reconverting || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
 	const btn = $id("btn-regenerate");
 	const progress = $id("regen-progress");
 	// 編集の影響がありうる行だけ再計算する。単語重複なしでは使用済み単語が
@@ -1601,26 +1603,42 @@ function regenerate() {
 	// filler(未変換の区間)は固定扱いにしない。単語が増えていれば埋まるように、
 	// 再生成のたびに埋め直しを試みる
 	const locksPerLine = data.results.map((words, i) =>
-		(words || []).filter((w) => !w.filler && (atRisk(i) ? w.locked : true)));
+		(words || []).filter((w) => !w.filler && ((allUnlocked || atRisk(i)) ? w.locked : true)));
 	btn.disabled = true;
 	progress.hidden = false;
 	progress.textContent = `再生成中... 0/${data.results.length}`;
 	setSelection(null);
-	app.soramimiMaker.generateFromTokens(
-		data.tokensList, db, data.param,
-		(result, i) => {
-			progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
-		},
-		(results) => {
-			pushHistory();
-			data.results = results;
-			data.dirtyLines = []; // 再生成直後はどの行も編集済みでない
-			saveData();
-			renderAll();
-			btn.disabled = false;
-			progress.hidden = true;
-		},
-		locksPerLine, noteLengthWeights());
+	if (isVideoReview(data)) $id("app").inert = true;
+	let handle, timeout;
+	regeneration = new Promise((resolve, reject) => {
+		timeout = setTimeout(() => {
+			handle?.cancel();
+			reject(new Error("再生成に時間がかかっています。もう一度お試しください"));
+		}, 120000);
+		handle = app.soramimiMaker.generateFromTokens(
+			data.tokensList, db, data.param,
+			(result, i) => {
+				progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
+			},
+			(results) => {
+				try {
+					pushHistory();
+					data.results = results;
+					data.dirtyLines = [];
+					saveData();
+					renderAll();
+					resolve();
+				} catch (error) { reject(error); }
+			},
+			locksPerLine, noteLengthWeights());
+	}).finally(() => {
+		clearTimeout(timeout);
+		regeneration = null;
+		btn.disabled = false;
+		progress.hidden = true;
+		if (isVideoReview(data)) $id("app").inert = false;
+	});
+	return regeneration;
 }
 
 // ---- 「変換のしかた」モーダル(パラメータ・絞り込み) ----
@@ -2648,7 +2666,10 @@ async function start() {
 	const toolbar = $id("editor-toolbar");
 	toolbar.hidden = false;
 	$id("btn-regenerate").disabled = true; // DB初期化が済むまで再生成は不可
-	$id("btn-regenerate").addEventListener("click", regenerate);
+	$id("btn-regenerate").addEventListener("click", () => regenerate().catch((error) => {
+		$id("regen-progress").textContent = error.message;
+		$id("regen-progress").hidden = false;
+	}));
 	$id("btn-copy").addEventListener("click", copyResult);
 	$id("btn-undo").addEventListener("click", undo);
 	$id("btn-redo").addEventListener("click", redo);
@@ -2714,4 +2735,21 @@ async function start() {
 
 setupEmbedNavigation();
 setupReplacementPanel();
-start();
+const initialization = start();
+// The same-origin video host waits for completion before reading shared storage.
+window.soramimicVideoReview = {
+	async regenerateUnlocked() {
+		let timer;
+		try {
+			await Promise.race([
+				initialization,
+				new Promise((_, reject) => {
+					timer = setTimeout(() => reject(new Error("候補の準備に時間がかかっています。もう一度お試しください")), 60000);
+				}),
+			]);
+		} finally { clearTimeout(timer); }
+		if (!isVideoReview(data)) throw new Error("歌詞確認画面を開き直してください");
+		if (regeneration) await regeneration;
+		await regenerate({ allUnlocked: true });
+	},
+};

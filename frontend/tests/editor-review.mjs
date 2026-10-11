@@ -73,6 +73,9 @@ try {
 	await candidate.click();
 	await page.waitForFunction(() => !document.getElementById("editor-panel").classList.contains("open"));
 	assert.equal(await firstWord.textContent(), chosen);
+	assert(await firstWord.evaluate((node) => node.classList.contains("locked")));
+	assert.equal(await firstWord.locator(".chip-lock-icon").count(), 1);
+	assert.match(await firstWord.getAttribute("aria-label"), /固定中/);
 	await page.click("#btn-undo");
 	assert.equal(await firstWord.textContent(), before);
 	await page.click("#btn-redo");
@@ -175,6 +178,42 @@ try {
 		"replacing part of a filler must keep the remaining source visible");
 	assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList),
 		gapSeed.unitsList, "filling gaps preserves source units");
+
+	// The host must regenerate every unlocked word, including untouched lines.
+	const regenSeed = structuredClone(gapSeed);
+	regenSeed.results = [[one(1)], [{
+		id: "custom-old", surface: "再生成対象", kana: "シロイクモヲオイカケル",
+		pronunciation: regenSeed.unitsList[1].map((unit) => unit.pronunciation),
+		period: [0, regenSeed.unitsList[1].length],
+	}], []];
+	regenSeed.dirtyLines = [];
+	await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), regenSeed);
+	await page.reload();
+	await page.waitForFunction(() => window.soramimicVideoReview);
+	await page.evaluate(() => window.soramimicVideoReview.regenerateUnlocked());
+	const regenerated = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	const fixed = regenerated.results[0].find((word) => word.locked);
+	assert.equal(fixed.surface, "酢");
+	assert.deepEqual(fixed.period, [1, 2]);
+	assert(!regenerated.results.flat().some((word) => word.surface === "再生成対象"));
+	for (const [index, words] of regenerated.results.entries()) {
+		let cursor = 0;
+		for (const word of words) {
+			assert.equal(word.period[0], cursor);
+			cursor = word.period[1];
+		}
+		assert.equal(cursor, regenSeed.unitsList[index].length);
+	}
+	assert.deepEqual(regenerated.unitsList, regenSeed.unitsList);
+	const fixedChip = line(0).locator('.review-word[data-start="1"]');
+	assert(await fixedChip.evaluate((node) => node.classList.contains("locked")));
+	await fixedChip.click();
+	await page.click(".panel-lock");
+	await page.click(".panel-close");
+	assert.equal(await fixedChip.locator(".chip-lock-icon").count(), 0);
+	assert.equal(await fixedChip.evaluate((node) => node.classList.contains("locked")), false);
+	await page.click("#btn-undo");
+	assert(await fixedChip.evaluate((node) => node.classList.contains("locked")));
 	assert.deepEqual(errors, []);
 	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, undo/redo, recovery");
 } finally {
