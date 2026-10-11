@@ -69,7 +69,7 @@ let freeInputReturnClickUntil = 0;
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
-let reviewRangeOpen = false;
+let reviewRangeOpen = true;
 let reviewPreviousSelection = null;
 
 function $id(id) {
@@ -476,7 +476,7 @@ function toggleLock(line, word) {
 // ---- 選択 ----
 
 function setSelection(next) {
-	if (!next || next.line !== selection?.line) reviewRangeOpen = false;
+	if (!next || next.line !== selection?.line) reviewRangeOpen = true;
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
 	freeInputOpen = false;
