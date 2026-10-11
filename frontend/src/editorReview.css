@@ -29,7 +29,6 @@
 .review-panel-header .panel-close { min-width: 44px; min-height: 44px; font-size: 1.25rem; }
 .review-selected-word { font-size: 1.1rem; margin: 0; flex: 1; overflow-wrap: anywhere; }
 .review-range { border-bottom: 1px solid var(--border); padding: .5rem 0 .8rem; margin-bottom: 1rem; color: var(--muted); font-size: .85rem; }
-.review-range summary { cursor: pointer; width: fit-content; min-height: 32px; }
 .review-range-units { display: flex; flex-wrap: wrap; gap: .25rem; }
 .review-unit { min-width: 40px; min-height: 44px; padding: .35rem; }
 .review-unit[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
