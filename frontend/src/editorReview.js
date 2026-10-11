@@ -84,7 +84,6 @@ export function renderReviewLine(data, line, selection, choose) {
 		chip.dataset.end = String(word.period[1]);
 		chip.classList.toggle("filler", !!word.filler);
 		if (word.filler) {
-			chip.append(element("span", "review-unmatched", "未対応"));
 			chip.setAttribute("aria-label", `未対応、${word.surface}。候補を選ぶ`);
 		}
 		chip.setAttribute("aria-pressed", String(selection?.line === line
@@ -116,9 +115,6 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		lock.setAttribute("aria-pressed", String(!!word.locked));
 		lock.addEventListener("click", () => callbacks.lock(line, word));
 		header.append(lock);
-	} else if (!(data.results[line] || []).some((w) =>
-		!w.filler && w.period[0] < end && start < w.period[1])) {
-		header.append(element("span", "review-unmatched", "未対応"));
 	}
 	panel.append(header);
 	const details = element("details", "review-range");
