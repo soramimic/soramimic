@@ -37,6 +37,8 @@ sessionStorage の `soramimic-editor` に入れてから `editor.html` を開く
 
 - **`phrases`(行ごとの歌詞)だけが必須**。`tokensList` / `unitsList` / `results` は
   編集ツールがブラウザ内で導出できる
+- `tokensList` を渡すと、その読み・単語境界・文節を初回変換と再変換で保持する。
+  各行は `textAnalyzer.tokenizeTogether` の出力形式とし、`phrases` と同じ行順に並べる
 - `results` が無い(または空の)ときは**未変換**とみなし、セットアップ画面
   (第1ステップ: 曲・単語リスト・変換のしかた)から起動して、「この設定で変換」で
   変換してから編集画面に入る
@@ -52,7 +54,7 @@ sessionStorage の `soramimic-editor` に入れてから `editor.html` を開く
 
 埋め込み元(soramimic-video 等)は元歌詞を字幕に使う。エディタのセットアップ画面に
 「元歌詞(字幕用)」の入力欄を出し、行ごとの対応づけまで済ませて返す。
-**変換の入力には使わない**(変換の入力は従来どおり `phrases`)。
+この入力欄の編集では、変換用の `phrases` や `tokensList` を変更しない。
 
 - ホスト → エディタ: `lyrics: "<元歌詞の生テキスト>"`(任意)。初期値として欄に入る
 - エディタ → ホスト: `lyrics`(編集後の生テキスト)と
@@ -78,8 +80,9 @@ sessionStorage を共有しているだけでイベントは飛ばないので�
   - `hostRequest: {type: "song-upload", nonce}` — 自分のMIDIを使いたい
 - ホストの応答: 依頼を処理して `phrases` / `song` / `noteLengthRawList`
   (旧版互換では `weightsList` も可)と、元歌詞を持っていれば `lyrics` を
-  新しい曲のものに差し替え、`results` / `tokensList` / `unitsList` /
+  新しい曲のものに差し替え、`results` / `unitsList` /
   `originalLines` を削除して未変換に戻し、`hostRequest` を削除して書き戻す。
+  `tokensList` は新しい曲の解析結果に差し替えるか、削除して再解析する。
   キャンセル(ファイル選択をやめた等)は `phrases` を変えずに `hostRequest` だけ削除する
 - エディタは `hostRequest` の消滅を1.5秒ごとに見張り、`phrases` が変わっていれば
   新しい曲でセットアップ画面を描き直す(単語リスト・パラメータの選択は維持)。

@@ -224,6 +224,38 @@ try {
 	assert(afterFiltered.where === HOST_WHERE,
 		"変換で絞り込みが変わった: " + JSON.stringify(afterFiltered.where));
 
+	// Confirmed host readings and phrase boundaries remain the source of truth,
+	// including after a reload and another setup conversion.
+	const hostTokens = [
+		["手", "テ", 0], ["を", "オ", 0], ["打つ", "ウツ", 1],
+	].map(([surface_form, pronunciation, phrase]) => ({
+		surface_form, pronunciation, reading: pronunciation, phrase, pos: "名詞",
+	}));
+	await seed(page, {
+		phrases: ["テオウツ"], tokensList: [hostTokens],
+		wordlist: { value: "ORIGINAL", dbtype: "tidy", csvText:
+			"id,original,surface,pronunciation\n0,時計,時計,トケイ\n1,手,手,テ\n" },
+	});
+	const checkBoundaries = async () => {
+		const saved = await readData(page);
+		assert(saved.unitsList[0].map(u => u.pronunciation).join("|") === "テ|オ|ウ|ツ",
+			"元歌詞の単語境界を越えてオウが結合された");
+		assert(saved.unitsList[0].map(u => u.phrase).join("|") === "0|0|1|1",
+			"元歌詞の文節境界が失われた");
+		assert(saved.unitsList[0].map(u => u.surface_form).join("") === "手を打つ",
+			"元歌詞の表記が失われた");
+	};
+	for (let attempt = 0; attempt < 2; attempt++) {
+		await waitSetupReady(page);
+		await page.click("#btn-setup-convert");
+		await waitEditor(page);
+		await checkBoundaries();
+		if (attempt === 0) {
+			const saved = await readData(page);
+			await seed(page, { ...saved, setupFirst: true });
+		}
+	}
+
 	// ---- 壊れたシード(phrasesもresultsも無い)は従来どおり空表示 ----
 	await seed(page, { param: {} });
 	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
