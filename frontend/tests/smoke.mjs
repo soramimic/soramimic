@@ -422,15 +422,17 @@ try {
 	const nobel = page.locator("#wordlist-facets .facet-group").filter({ hasText: "ノーベル賞" });
 	const nobelAll = nobel.locator("input.facet-select-all-input");
 	const nobelIndex = header.indexOf("nobel");
-	const nobelValues = ["yes", "no", "NA"];
+	const nobelOptions = { yes: ["yes"], other: ["no", "NA"] };
+	assert.equal(await nobel.locator("input.facet-value").count(), 2,
+		"ノーベル賞は受賞者とその他の2択にする");
 	assert.deepEqual([...new Set(defaults.map((row) => row[nobelIndex]))].sort(),
-		[...nobelValues].sort(), "科学者の初期選択で受賞歴による除外がある");
+		["NA", "no", "yes"], "科学者の初期選択で受賞歴による除外がある");
 	assert(await nobelAll.isChecked(), "ノーベル賞は既定ですべて選択する");
-	for (const value of nobelValues) {
+	for (const [value, statuses] of Object.entries(nobelOptions)) {
 		await nobelAll.uncheck();
 		await nobel.locator(`input.facet-value[value='${value}']`).check();
 		assert.deepEqual(parser.filter(await getScientistWhere(), header, rows),
-			defaults.filter((row) => row[nobelIndex] === value), "受賞歴を個別に絞れない");
+			defaults.filter((row) => statuses.includes(row[nobelIndex])), "受賞歴を個別に絞れない");
 		assert(!await nobelAll.isChecked(), "一部の選択で「すべて」がチェックされる");
 		assert(await nobelAll.evaluate((cb) => cb.indeterminate),
 			"受賞歴の一部選択を「すべて」に反映できない");
