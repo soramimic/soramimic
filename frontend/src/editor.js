@@ -5,6 +5,9 @@
 import "./style.css";
 import "./editor.css";
 import {
+	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
+} from "./editorReview.js";
+import {
 	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
 import { originalTextToCsv, looksLikeTidyHeader } from "./wordlistInput.js";
@@ -66,6 +69,8 @@ let freeInputReturnClickUntil = 0;
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
+let reviewRangeOpen = false;
+let reviewPreviousSelection = null;
 
 function $id(id) {
 	return document.getElementById(id);
@@ -313,6 +318,7 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
+	if (isVideoReview(data)) return renderReviewLine(data, line, selection, onWordClick);
 	const units = unitsOf(line);
 	const words = data.results[line] || [];
 	const el = document.createElement("div");
@@ -470,6 +476,7 @@ function toggleLock(line, word) {
 // ---- 選択 ----
 
 function setSelection(next) {
+	if (!next || next.line !== selection?.line) reviewRangeOpen = false;
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
 	freeInputOpen = false;
@@ -1030,8 +1037,32 @@ function ensureSelectionVisible(line) {
 }
 
 function renderPanel() {
+	const focusedUnit = document.activeElement?.closest(".review-unit")?.dataset.index;
 	buildPanel();
-	if (selection) ensureSelectionVisible(selection.line);
+	if (isVideoReview(data)) {
+		const panel = $id("editor-panel");
+		document.documentElement.classList.toggle("review-selecting", !!selection);
+		$id("editor-lines").inert = !!selection;
+		$id("editor-toolbar").inert = !!selection;
+		panel.inert = !selection;
+		panel.setAttribute("role", "dialog");
+		panel.setAttribute("aria-modal", "true");
+		panel.setAttribute("aria-label", "替え歌を編集");
+		if (selection) {
+			const target = focusedUnit !== undefined
+				? panel.querySelector(`.review-unit[data-index="${focusedUnit}"]`)
+				: panel.querySelector(".panel-close");
+			target?.focus({ preventScroll: true });
+		} else if (reviewPreviousSelection) {
+			const { line, start } = reviewPreviousSelection;
+			document.querySelector(`.review-line[data-line="${line}"] .review-word[data-start="${start}"]`)
+				?.focus({ preventScroll: true });
+		}
+		reviewPreviousSelection = selection;
+		if (window.parent !== window) window.parent.postMessage({
+			type: "soramimic:review-selection", open: !!selection,
+		}, window.location.origin);
+	} else if (selection) ensureSelectionVisible(selection.line);
 }
 
 // ---- 表層↔モーラの手動割当 ----
@@ -1206,7 +1237,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		free.className = "panel-free";
 		const heading = document.createElement("h3");
 		heading.className = "panel-free-title";
-		heading.textContent = "候補にない歌詞を入力";
+		heading.textContent = isVideoReview(data) ? "歌詞を入力" : "候補にない歌詞を入力";
 		const fields = document.createElement("div");
 		fields.className = "panel-free-fields";
 		const surfaceLabel = document.createElement("label");
@@ -1224,7 +1255,16 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		readingInput.placeholder = "未入力なら自動で推定";
 		readingInput.value = freeInputDraft.reading;
 		readingLabel.appendChild(readingInput);
-		fields.append(surfaceLabel, readingLabel);
+		fields.append(surfaceLabel);
+		const readingDisclosure = document.createElement("details");
+		if (isVideoReview(data)) {
+			readingDisclosure.className = "review-reading-input";
+			const summary = document.createElement("summary");
+			summary.textContent = "読みを指定";
+			readingDisclosure.open = !!freeInputDraft.reading;
+			readingDisclosure.append(summary, readingLabel);
+			fields.append(readingDisclosure);
+		} else fields.append(readingLabel);
 		const note = document.createElement("span");
 		note.className = "panel-replacement-note";
 		note.setAttribute("role", "alert");
@@ -1270,7 +1310,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		});
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
-		apply.textContent = "この歌詞で差し替え";
+		apply.textContent = isVideoReview(data) ? "変更する" : "この歌詞で差し替え";
 		const applyFree = () => {
 			const text = surfaceInput.value.trim();
 			if (text === "") {
@@ -1280,6 +1320,8 @@ function appendReplacementControls(panel, target, rangeWeights) {
 			const custom = makeCustomWord(text, readingInput.value, target, rangeWeights);
 			if (!custom) {
 				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
+				if (isVideoReview(data)) readingDisclosure.open = true;
+				focusReadingInput(readingInput);
 				return;
 			}
 			replaceSelection(custom);
@@ -1306,7 +1348,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 	const freeToggle = document.createElement("button");
 	freeToggle.className = "panel-free-toggle";
 	freeToggle.type = "button";
-	freeToggle.textContent = "候補にない歌詞を自由入力する";
+	freeToggle.textContent = isVideoReview(data) ? "自分で入力" : "候補にない歌詞を自由入力する";
 	freeToggle.setAttribute("aria-expanded", "false");
 	freeToggle.addEventListener("click", () => {
 		freeInputOpen = true;
@@ -1332,61 +1374,68 @@ function buildPanel() {
 	const { line, start, end } = selection;
 	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
-	const header = document.createElement("div");
-	header.className = "panel-header";
-	const source = document.createElement("div");
-	source.className = "panel-source";
-	const sourceSurface = document.createElement("div");
-	sourceSurface.className = "panel-source-row";
-	sourceSurface.innerHTML =
-		'<span class="panel-source-label">元歌詞</span><span class="panel-original-surface"></span>';
-	sourceSurface.querySelector(".panel-original-surface").textContent =
-		rangeSurface(line, start, end);
-	const sourceReading = document.createElement("div");
-	sourceReading.className = "panel-source-row";
-	const sourceReadingLabel = document.createElement("span");
-	sourceReadingLabel.className = "panel-source-label";
-	sourceReadingLabel.textContent = "元歌詞の読み";
-	const sourceReadingValue = document.createElement("span");
-	sourceReadingValue.className = "panel-original-reading";
-	sourceReadingValue.textContent = rangeKana(line, start, end);
-	sourceReading.append(sourceReadingLabel, sourceReadingValue);
-	if (span) {
-		const toggle = document.createElement("button");
-		toggle.className = "panel-yomi-toggle";
-		toggle.type = "button";
-		toggle.textContent = "✏️";
-		const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
-		toggle.title = editLabel;
-		toggle.setAttribute("aria-label", editLabel);
-		toggle.addEventListener("click", () => openReadingFixDialog(line, start, end, span));
-		sourceReading.appendChild(toggle);
+	if (isVideoReview(data)) {
+		appendReviewHeader(panel, data, selection, {
+			close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
+			rangeOpen: reviewRangeOpen, setRangeOpen: (open) => { reviewRangeOpen = open; },
+		});
+	} else {
+		const header = document.createElement("div");
+		header.className = "panel-header";
+		const source = document.createElement("div");
+		source.className = "panel-source";
+		const sourceSurface = document.createElement("div");
+		sourceSurface.className = "panel-source-row";
+		sourceSurface.innerHTML =
+			'<span class="panel-source-label">元歌詞</span><span class="panel-original-surface"></span>';
+		sourceSurface.querySelector(".panel-original-surface").textContent =
+			rangeSurface(line, start, end);
+		const sourceReading = document.createElement("div");
+		sourceReading.className = "panel-source-row";
+		const sourceReadingLabel = document.createElement("span");
+		sourceReadingLabel.className = "panel-source-label";
+		sourceReadingLabel.textContent = "元歌詞の読み";
+		const sourceReadingValue = document.createElement("span");
+		sourceReadingValue.className = "panel-original-reading";
+		sourceReadingValue.textContent = rangeKana(line, start, end);
+		sourceReading.append(sourceReadingLabel, sourceReadingValue);
+		if (span) {
+			const toggle = document.createElement("button");
+			toggle.className = "panel-yomi-toggle";
+			toggle.type = "button";
+			toggle.textContent = "✏️";
+			const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
+			toggle.title = editLabel;
+			toggle.setAttribute("aria-label", editLabel);
+			toggle.addEventListener("click", () => openReadingFixDialog(line, start, end, span));
+			sourceReading.appendChild(toggle);
+		}
+		source.append(sourceSurface, sourceReading);
+		header.appendChild(source);
+		const headerActions = document.createElement("div");
+		headerActions.className = "panel-header-actions";
+		// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
+		// (チップ上の鍵はスマホだと小さいため)
+		const word = (data.results[line] || []).find(
+			(w) => w.period[0] === start && w.period[1] === end);
+		if (word) {
+			const lockBtn = document.createElement("button");
+			lockBtn.className = "btn panel-lock";
+			lockBtn.setAttribute("aria-pressed", String(!!word.locked));
+			const lockLabel = document.createElement("span");
+			lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
+			lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
+			lockBtn.addEventListener("click", () => toggleLock(line, word));
+			headerActions.appendChild(lockBtn);
+		}
+		const close = document.createElement("button");
+		close.className = "btn panel-close";
+		close.textContent = "✕";
+		close.addEventListener("click", () => setSelection(null));
+		headerActions.appendChild(close);
+		header.appendChild(headerActions);
+		panel.appendChild(header);
 	}
-	source.append(sourceSurface, sourceReading);
-	header.appendChild(source);
-	const headerActions = document.createElement("div");
-	headerActions.className = "panel-header-actions";
-	// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
-	// (チップ上の鍵はスマホだと小さいため)
-	const word = (data.results[line] || []).find(
-		(w) => w.period[0] === start && w.period[1] === end);
-	if (word) {
-		const lockBtn = document.createElement("button");
-		lockBtn.className = "btn panel-lock";
-		lockBtn.setAttribute("aria-pressed", String(!!word.locked));
-		const lockLabel = document.createElement("span");
-		lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
-		lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
-		lockBtn.addEventListener("click", () => toggleLock(line, word));
-		headerActions.appendChild(lockBtn);
-	}
-	const close = document.createElement("button");
-	close.className = "btn panel-close";
-	close.textContent = "✕";
-	close.addEventListener("click", () => setSelection(null));
-	headerActions.appendChild(close);
-	header.appendChild(headerActions);
-	panel.appendChild(header);
 
 	if (!db) {
 		const note = document.createElement("p");
@@ -1428,6 +1477,7 @@ function buildPanel() {
 		appendReplacementControls(panel, target, rangeWeights);
 		return;
 	}
+	if (isVideoReview(data)) appendReplacementControls(panel, target, rangeWeights);
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
@@ -1439,7 +1489,7 @@ function buildPanel() {
 	if (shown.length === 0) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
-		note.textContent = "候補が見つかりませんでした。自由入力をお使いください。";
+		note.textContent = isVideoReview(data) ? "候補がありません" : "候補が見つかりませんでした。自由入力をお使いください。";
 		list.appendChild(note);
 	}
 	for (const g of shown) {
@@ -1491,7 +1541,7 @@ function buildPanel() {
 		list.appendChild(more);
 	}
 	panel.appendChild(list);
-	appendReplacementControls(panel, target, rangeWeights);
+	if (!isVideoReview(data)) appendReplacementControls(panel, target, rangeWeights);
 }
 
 // 同名候補(id違い)の個別選択リスト
@@ -2271,6 +2321,8 @@ function lyricsEnabled() {
 // data.lyrics と phrases を対応づけて data.originalLines を作り直す。
 // 元歌詞が空(または行が無い)なら originalLines ごと落とす
 function syncOriginalLines() {
+	// Review uses the host's analyzed alignment, also used for video subtitles.
+	if (isVideoReview(data)) return;
 	const text = typeof data.lyrics === "string" ? data.lyrics : "";
 	const phrases = Array.isArray(data.phrases) ? data.phrases : [];
 	if (text.trim() === "" || phrases.length === 0) {
@@ -2553,6 +2605,16 @@ async function start() {
 		return;
 	}
 	setupMode = !converted || data.setupFirst === true;
+	if (isVideoReview(data)) {
+		setupReviewToolbar();
+		$id("editor-panel").inert = true;
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && selection && !event.defaultPrevented) {
+				event.preventDefault();
+				setSelection(null);
+			}
+		});
+	}
 	// 未変換でも以降の処理が同じ形を前提にできるよう、空配列で埋めておく
 	if (!Array.isArray(data.results)) data.results = [];
 	if (!Array.isArray(data.unitsList)) data.unitsList = [];

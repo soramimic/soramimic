@@ -55,3 +55,5 @@ jobs:
         run: node tests/editor-lyrics.mjs
       - name: 編集ツール埋め込みE2E
         run: node tests/editor-embed.mjs
+      - name: 動画生成前の歌詞確認E2E
+        run: node tests/editor-review.mjs
