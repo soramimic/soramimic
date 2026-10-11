@@ -15,6 +15,30 @@ export function reviewOriginal(data, line) {
 	return data.originalLines?.[line] || data.phrases?.[line] || "";
 }
 
+// Fill uncovered source ranges for display only. Replacing part of a word removes
+// that word, so results can contain gaps as well as explicit conversion fillers.
+function reviewWords(data, line) {
+	const units = data.unitsList[line] || [];
+	const assigned = (data.results[line] || []).filter((word) => !word.filler)
+		.sort((a, b) => a.period[0] - b.period[0]);
+	const words = [];
+	let cursor = 0;
+	const appendGap = (end) => {
+		if (cursor >= end) return;
+		words.push({
+			period: [cursor, end], filler: true,
+			surface: units.slice(cursor, end).map((unit) => unit.pronunciation).join(""),
+		});
+	};
+	for (const word of assigned) {
+		appendGap(word.period[0]);
+		words.push(word);
+		cursor = Math.max(cursor, word.period[1]);
+	}
+	appendGap(units.length);
+	return words;
+}
+
 export function setupReviewToolbar() {
 	document.documentElement.classList.add("video-review");
 	const toolbar = document.getElementById("editor-toolbar");
@@ -52,12 +76,17 @@ export function renderReviewLine(data, line, selection, choose) {
 	row.append(original);
 	const words = element("div", "review-words");
 	words.setAttribute("aria-label", "替え歌");
-	for (const word of data.results[line] || []) {
-		const chip = element("button", "review-word", word.surface);
+	for (const word of reviewWords(data, line)) {
+		const chip = element("button", "review-word");
+		chip.append(element("span", "review-word-surface", word.surface));
 		chip.type = "button";
 		chip.dataset.start = String(word.period[0]);
 		chip.dataset.end = String(word.period[1]);
 		chip.classList.toggle("filler", !!word.filler);
+		if (word.filler) {
+			chip.append(element("span", "review-unmatched", "未対応"));
+			chip.setAttribute("aria-label", `未対応、${word.surface}。候補を選ぶ`);
+		}
 		chip.setAttribute("aria-pressed", String(selection?.line === line
 			&& selection.start === word.period[0] && selection.end === word.period[1]));
 		chip.addEventListener("click", () => choose(line, word));
@@ -67,8 +96,8 @@ export function renderReviewLine(data, line, selection, choose) {
 	return row;
 }
 
-// Range selection is deliberately behind a disclosure. Original readings remain
-// read-only because the host has already aligned these units to the song's notes.
+// Original readings remain read-only because the host has already aligned these
+// units to the song's notes. The range is expanded when opening a selection.
 export function appendReviewHeader(panel, data, selection, callbacks) {
 	const { line, start, end } = selection;
 	const units = data.unitsList[line] || [];
@@ -87,6 +116,9 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		lock.setAttribute("aria-pressed", String(!!word.locked));
 		lock.addEventListener("click", () => callbacks.lock(line, word));
 		header.append(lock);
+	} else if (!(data.results[line] || []).some((w) =>
+		!w.filler && w.period[0] < end && start < w.period[1])) {
+		header.append(element("span", "review-unmatched", "未対応"));
 	}
 	panel.append(header);
 	const details = element("details", "review-range");

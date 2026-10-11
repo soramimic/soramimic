@@ -19,7 +19,8 @@
 .review-words { display: flex; flex-wrap: wrap; gap: .45rem; }
 .review-word { font: inherit; font-weight: 600; line-height: 1.5; min-height: 44px; padding: .45rem .7rem; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--panel); cursor: pointer; overflow-wrap: anywhere; max-width: 100%; }
 .review-word:hover, .review-word[aria-pressed="true"] { border-color: var(--accent); }
-.review-word.filler { border-style: dashed; color: var(--muted); }
+.review-word.filler { border-style: dashed; display: inline-flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
+.review-unmatched { color: var(--muted); font-size: .75rem; font-weight: 400; white-space: nowrap; }
 .video-review.review-selecting { overflow: hidden; }
 .video-review .editor-panel { inset: 0; max-width: 820px; max-height: none; border: 0; border-radius: 0; padding: 0 1rem 1rem; background: var(--bg); box-shadow: none; transform: translateX(105%); }
 .video-review .editor-panel.open { transform: translateX(0); }

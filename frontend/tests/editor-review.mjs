@@ -30,7 +30,7 @@ try {
 	await page.reload();
 	await page.waitForFunction(() => !document.getElementById("btn-setup-convert").disabled, undefined, { timeout: 60000 });
 	await page.click("#btn-original-edit");
-	await page.fill("#editor-original-text", "青森,アオモリ\n空豆,ソラマメ\n白玉,シラタマ\n雲丹,ウニ\n小松菜,コマツナ\n風車,カザグルマ\n神田,カンダ\n京都,キョート");
+	await page.fill("#editor-original-text", "青森,アオモリ\n空豆,ソラマメ\n白玉,シラタマ\n雲丹,ウニ\n小松菜,コマツナ\n風車,カザグルマ\n神田,カンダ\n京都,キョート\n酢,ス");
 	await page.click("#btn-original-register");
 	await page.click("#btn-setup-convert");
 	await page.waitForSelector(".chip-word", { timeout: 60000 });
@@ -63,7 +63,7 @@ try {
 		console.error({ errors, before, panel: await page.locator("#editor-panel").textContent() });
 		throw error;
 	});
-	assert.equal(await page.locator(".review-range").getAttribute("open"), null);
+	assert(await page.locator(".review-unit").first().isVisible(), "reading and range start expanded");
 	assert.equal(await page.locator(".panel-yomi-toggle").count(), 0);
 	const panelBox = await page.locator("#editor-panel").boundingBox();
 	assert(panelBox.height >= 700, "candidate editor should use the mobile viewport");
@@ -78,7 +78,6 @@ try {
 	await page.click("#btn-redo");
 	assert.equal(await firstWord.textContent(), chosen);
 	await firstWord.click();
-	await page.click(".review-range summary");
 	const start = Number(await firstWord.getAttribute("data-start"));
 	const end = Number(await firstWord.getAttribute("data-end"));
 	if (end < seed.unitsList[0].length) {
@@ -117,8 +116,67 @@ try {
 	assert.equal(await firstWord.textContent(), "手入力の語");
 	await page.click("#btn-undo");
 	assert.equal(await firstWord.textContent(), chosen);
+
+	// Cover leading/middle/trailing gaps, explicit fillers, and a fully empty line.
+	const gapSeed = structuredClone(seed);
+	const one = (start) => ({
+		id: "9", surface: "酢", kana: "ス", pronunciation: ["ス"],
+		period: [start, start + 1], locked: true,
+	});
+	const filler = (line, start, end) => ({
+		filler: true, period: [start, end],
+		surface: gapSeed.unitsList[line].slice(start, end).map((u) => u.pronunciation).join(""),
+	});
+	gapSeed.results = [
+		[one(1), filler(0, 2, 3), filler(0, 3, 4), one(4)],
+		[],
+		[filler(2, 0, gapSeed.unitsList[2].length)],
+	];
+	await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), gapSeed);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	const line = (index) => page.locator(`.review-line[data-line="${index}"]`);
+	const gaps = (index) => line(index).locator(".review-word.filler");
+	const periods = (chips) => chips.evaluateAll((nodes) => nodes.map((node) =>
+		[Number(node.dataset.start), Number(node.dataset.end)]));
+	assert.deepEqual(await periods(gaps(0)), [[0, 1], [2, 4], [5, gapSeed.unitsList[0].length]]);
+	for (const index of [1, 2]) {
+		assert.deepEqual(await periods(gaps(index)), [[0, gapSeed.unitsList[index].length]]);
+	}
+	assert((await page.locator(".review-word.filler .review-unmatched").allTextContents())
+		.every((text) => text === "未対応"));
+	assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results),
+		gapSeed.results, "displaying uncovered ranges must not rewrite saved conversion results");
+	for (const colorScheme of ["light", "dark"]) {
+		await page.emulateMedia({ colorScheme });
+		assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "gaps overflow");
+	}
+	await gaps(0).first().click();
+	assert(await page.locator(".review-unit").first().isVisible());
+	assert.equal(await page.locator(".review-panel-header .review-unmatched").textContent(), "未対応");
+	await page.locator(".candidate").first().click();
+	assert.deepEqual(await periods(gaps(0)), [[2, 4], [5, gapSeed.unitsList[0].length]]);
+	await page.click("#btn-undo");
+	assert.deepEqual(await periods(gaps(0)), [[0, 1], [2, 4], [5, gapSeed.unitsList[0].length]]);
+	await page.click("#btn-redo");
+	assert.equal(await gaps(0).count(), 2);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	assert.equal(await gaps(0).count(), 2, "assigned gaps remain filled after reopening");
+	await gaps(1).click();
+	assert.equal(await page.locator('.review-unit[aria-pressed="true"]').count(), gapSeed.unitsList[1].length);
+	await page.click('.review-unit[data-index="2"]');
+	await page.locator(".candidate").first().click();
+	assert.deepEqual(await periods(gaps(1)), [[0, 2], [3, gapSeed.unitsList[1].length]]);
+	await gaps(2).click();
+	await page.click('.review-unit[data-index="2"]');
+	await page.locator(".candidate").first().click();
+	assert.deepEqual(await periods(gaps(2)), [[0, 2], [3, gapSeed.unitsList[2].length]],
+		"replacing part of a filler must keep the remaining source visible");
+	assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList),
+		gapSeed.unitsList, "filling gaps preserves source units");
 	assert.deepEqual(errors, []);
-	console.log("[ok] compact review: source spelling, mobile layout, candidates, range, undo/redo, recovery");
+	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, undo/redo, recovery");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid); } catch {}
