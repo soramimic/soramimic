@@ -2055,7 +2055,8 @@ function setupSettingsPanel() {
 // ---- セットアップ画面(第1ステップ) ----
 // 編集画面がメインで設定はオプションだが、起動時だけは 設定 → 編集画面 の順で出す。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけで、
-// tokensList / unitsList / results はここでブラウザ変換して作る。
+// tokensList が渡されていれば確定済みの読み・単語境界・文節を保持して使う。
+// 渡されていないときは phrases から解析し、unitsList / results を導出する。
 // 設定UI(単語リスト・パラメータ・絞り込み)は⚙モーダルと同じ実体を借りる:
 // セットアップ画面と⚙モーダルは同時に出ないので、#editor-settings-body を
 // DOMごと付け替えれば paramControls も含めてまるごと共有できる
@@ -2286,7 +2287,6 @@ function applyHostResponse(next) {
 	if (!hasResults()) {
 		data.results = [];
 		data.unitsList = [];
-		delete data.tokensList;
 	}
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
 	normalizeNoteLengthSetting();
@@ -2400,7 +2400,13 @@ async function setupConvert() {
 	let unitsList;
 	try {
 		await syncEngine();
-		tokensList = app.textAnalyzer.tokenizeTogether(data.phrases);
+		// tokensList は読み修正やホストの解析結果の正本。カナだけの phrases
+		// から再解析すると、元歌詞の単語・文節境界と確定した読みが失われる。
+		tokensList = Array.isArray(data.tokensList)
+			&& data.tokensList.length === data.phrases.length
+			&& data.tokensList.every(Array.isArray)
+			? structuredClone(data.tokensList)
+			: app.textAnalyzer.tokenizeTogether(data.phrases);
 		unitsList = unitsListFromTokens(app, tokensList);
 	} catch (err) {
 		console.error(err);

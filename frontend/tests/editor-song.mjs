@@ -162,6 +162,11 @@ try {
 		d.phrases = ${JSON.stringify(NEXT_PHRASES)};
 		d.song = { id: "katatsumuri", title: "かたつむり" };
 		delete d.results; delete d.tokensList; delete d.unitsList;
+		d.tokensList = d.phrases.map((text, i) => [{
+			surface_form: text, pronunciation: text.replace(/[ぁ-ゖ]/g,
+				c => String.fromCharCode(c.charCodeAt(0) + 0x60)),
+			pos: "名詞", phrase: i + 10,
+		}]);
 	`);
 	await waitIdleSetup(page);
 	assert(await page.$eval("#setup-song-select", (el) => el.value) === "katatsumuri",
@@ -190,6 +195,8 @@ try {
 		"曲の切替をまたいで選んだ単語リストが使われていない");
 	assert(converted.host && converted.host.songs.length === SONGS.length,
 		"ホストが渡した host が失われている");
+	assert(converted.unitsList.every((line, i) => line.every(u => u.phrase === i + 10)),
+		"曲の差し替えでホストの解析済み文節が失われた");
 
 	// ---- 書き出しJSONに host / hostRequest は載らない ----
 	const [download] = await Promise.all([
