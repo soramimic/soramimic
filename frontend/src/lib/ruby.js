@@ -28,23 +28,25 @@ const ESCAPABLE = new Set(["｜", "|", "《", "》", "\\"]);
 function toAtoms(text) {
 	const atoms = [];
 	const chars = Array.from(text);
+	let offset = 0;
 	for (let i = 0; i < chars.length; i++) {
 		const c = chars[i];
+		const start = offset;
+		offset += c.length;
 		if (c === "\\") {
 			const next = chars[i + 1];
 			if (next !== undefined && ESCAPABLE.has(next)) {
-				atoms.push({ kind: "char", ch: next });
+				offset += next.length;
+				atoms.push({ kind: "char", ch: next, start, end: offset });
 				i++;
 				continue;
 			}
 			// エスケープ対象外(や行末)の \ はそのまま文字
-			atoms.push({ kind: "char", ch: "\\" });
+			atoms.push({ kind: "char", ch: "\\", start, end: offset });
 			continue;
 		}
-		if (BARS.has(c)) atoms.push({ kind: "bar", ch: c });
-		else if (c === OPEN) atoms.push({ kind: "open", ch: c });
-		else if (c === CLOSE) atoms.push({ kind: "close", ch: c });
-		else atoms.push({ kind: "char", ch: c });
+		const kind = BARS.has(c) ? "bar" : c === OPEN ? "open" : c === CLOSE ? "close" : "char";
+		atoms.push({ kind, ch: c, start, end: offset });
 	}
 	return atoms;
 }
@@ -111,4 +113,19 @@ export function parseRuby(text) {
 // 有効な記法を含むか
 export function hasRuby(text) {
 	return parseRuby(text).annotations.length > 0;
+}
+
+// UTF-16 source spans for callers that divide the original text. Use the same
+// grammar and escapes as parseRuby; a valid annotation is one indivisible span.
+export function rubySourceRanges(text) {
+	const atoms = toAtoms(text);
+	const ranges = [];
+	for (let i = 0; i < atoms.length;) {
+		const match = atoms[i].kind === "bar" ? matchRuby(atoms, i) : null;
+		if (match) {
+			ranges.push({ start: atoms[i].start, end: atoms[match.next - 1].end });
+			i = match.next;
+		} else i++;
+	}
+	return ranges;
 }
