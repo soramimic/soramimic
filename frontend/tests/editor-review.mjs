@@ -61,6 +61,7 @@ try {
 	const firstWord = page.locator('.review-line[data-line="0"] .review-word:not(.filler)').first();
 	const before = await firstWord.textContent();
 	await firstWord.click();
+	assert.equal(await page.locator(".panel-close").textContent(), "×");
 	await page.waitForSelector("#editor-panel.open .candidate").catch(async (error) => {
 		console.error({ errors, before, panel: await page.locator("#editor-panel").textContent() });
 		throw error;
@@ -74,6 +75,8 @@ try {
 	const candidate = page.locator(".candidate").filter({ hasNotText: before }).first();
 	const chosen = await candidate.locator(".candidate-surface").textContent();
 	await candidate.click();
+	assert.equal(await page.locator(".panel-close").textContent(), "決定");
+	assert(await page.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true }).isVisible());
 	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "selection stays open for confirmation");
 	assert.equal(await page.locator(".review-selected-word").textContent(), chosen);
 	await page.click(".panel-close");
@@ -87,10 +90,12 @@ try {
 	await page.click("#btn-redo");
 	assert.equal(await firstWord.textContent(), chosen);
 	await firstWord.click();
+	assert.equal(await page.locator(".panel-close").textContent(), "×", "reopening starts a fresh comparison");
 	const start = Number(await firstWord.getAttribute("data-start"));
 	const end = Number(await firstWord.getAttribute("data-end"));
 	if (end < seed.unitsList[0].length) {
 		await page.click(`.review-unit[data-index="${end}"]`);
+		assert.equal(await page.locator(".panel-close").textContent(), "×", "browsing ranges does not change lyrics");
 		assert.equal(await page.locator('.review-unit[aria-pressed="true"]').count(), end - start + 1);
 		assert(await page.locator(".review-unit").first().isVisible());
 	}
@@ -119,6 +124,7 @@ try {
 	await page.click(".review-reading-input summary");
 	await page.fill(".panel-free-reading", "あ".repeat(20));
 	await page.click(".panel-free-apply");
+	assert.equal(await page.locator(".panel-close").textContent(), "決定", "custom input counts as a change");
 	assert.equal(await firstWord.textContent(), "手入力の語");
 	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "custom input returns to candidates for confirmation");
 	assert.equal(await page.locator(".panel-free").count(), 0);
@@ -173,6 +179,7 @@ try {
 		"keyboard focus remains visible");
 	await selectedCandidate.click();
 	assert.equal(await page.locator(".review-word-surface").filter({ hasText: "手入力の語" }).count(), 0);
+	assert.equal(await page.locator(".panel-close").textContent(), "決定", "clearing an existing assignment counts as a change");
 	await assertUnassignedSelection(Array.from({ length: end - start }, (_, index) => start + index));
 	await page.click(".panel-close");
 	await page.click("#btn-undo");
@@ -409,6 +416,7 @@ try {
 	assert.equal(await selectedCandidate.count(), 1);
 	await selectedCandidate.click();
 	assert.deepEqual((await readData()).results[0], [], "the selected group can be deselected with one tap");
+	assert.equal(await page.locator(".panel-close").textContent(), "×", "restoring an initially empty range removes the confirmation");
 	await assertUnassignedSelection([1]);
 	await page.click(".panel-close");
 	await page.click("#btn-undo");
@@ -465,11 +473,23 @@ try {
 	assert(!await details.textContent().then((text) => text.includes("岐阜県")), "new selection replaces old details");
 	assert.equal(await details.evaluate((node) => node.open), false, "new selections begin with a compact summary");
 	assert.equal(await page.locator(".review-selected-word").textContent(), "出戸");
+	assert.equal(await page.locator(".panel-close").textContent(), "決定");
 	await page.locator('.candidate[data-candidate-id="3137"]').click();
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("岐阜県"));
-	await page.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true }).click();
+	await page.getByRole("button", { name: "閉じて歌詞一覧に戻る", exact: true }).click();
 	assert(await page.locator("#editor-panel").evaluate((node) => !node.open));
 	assert.equal((await readData()).results[0][0].surface, "下呂", "return confirms the last chosen candidate");
+	await firstWord.click();
+	await page.click(".panel-free-toggle");
+	await page.fill(".panel-free-surface", "手入力");
+	await page.click(".review-reading-input summary");
+	await page.fill(".panel-free-reading", "テニュウリョク");
+	await page.click(".panel-free-apply");
+	await page.click(".panel-close");
+	await firstWord.click();
+	await page.click(".panel-free-toggle");
+	await page.click(".panel-free-apply");
+	assert.equal(await page.locator(".panel-close").textContent(), "×", "reapplying unchanged custom text and reading does not need confirmation");
 	assert.deepEqual(errors, []);
 	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, assignment clearing, fixed-word priority, undo/redo, recovery");
 } finally {

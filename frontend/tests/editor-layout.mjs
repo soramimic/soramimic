@@ -60,12 +60,13 @@ try {
 			await page.locator(".review-unit").first().scrollIntoViewIfNeeded();
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.getBoundingClientRect().height >= 700), "editing should use the viewport");
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "selection overflows");
-			const done = page.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true });
-			const doneBox = await done.boundingBox();
+			const close = page.getByRole("button", { name: "閉じて歌詞一覧に戻る", exact: true });
+			assert.equal(await close.textContent(), "×", "unchanged selections only need a close action");
+			const closeBox = await close.boundingBox();
 			const headerBox = await page.locator(".review-panel-header").boundingBox();
-			assert(doneBox.width >= 44 && doneBox.height >= 44, "confirmation must be touch accessible");
-			assert(Math.abs(doneBox.x + doneBox.width - headerBox.x - headerBox.width) < 2,
-				"confirmation stays at the right edge of the header");
+			assert(closeBox.width >= 44 && closeBox.height >= 44, "close must be touch accessible");
+			assert(Math.abs(closeBox.x + closeBox.width - headerBox.x - headerBox.width) < 2,
+				"close stays at the right edge of the header");
 			assert(await page.locator(".panel-yomi-toggle").isVisible(), "source reading repair remains available");
 			if (width === 390 && colorScheme === "dark") await screenshot("selection");
 			await page.click(".panel-yomi-toggle");
@@ -79,7 +80,7 @@ try {
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.scrollWidth <= panel.clientWidth),
 				"input area must fit the panel width");
 			await page.click(".panel-free-back");
-			await done.focus();
+			await close.focus();
 			await page.keyboard.press("Enter");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
