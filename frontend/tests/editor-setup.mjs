@@ -59,8 +59,8 @@ const waitEditor = (page) =>
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
@@ -149,7 +149,10 @@ try {
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await page.click("#editor-preset-buttons button:has-text('音そっくり')");
-	await page.click("#btn-reconvert");
+	await waitIdle(page);
+	assert(await wordsOf(page) === wordsFirst, "設定変更で歌詞が変わった");
+	await page.click("#btn-settings-close");
+	await menuAction(page, "#btn-regenerate");
 	await waitIdle(page);
 	const afterReconvert = await readData(page);
 	assert(afterReconvert.param.WORD_NUMBER_PENALTY === 0,

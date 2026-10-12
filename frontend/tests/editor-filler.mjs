@@ -1,4 +1,4 @@
-import { selectRange } from "./editor-ui.mjs";
+import { selectRange, menuAction } from "./editor-ui.mjs";
 // filler(万能候補)のE2E(#128)。
 // 語数の少ない自作リストで再変換すると、置ける単語が無い区間は「元歌詞のまま」の
 // filler チップ(破線)になり、行が空にならないこと。filler をタップすれば通常どおり
@@ -47,8 +47,8 @@ const CANDIDATE = "#editor-panel.open .panel-candidates .candidate";
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
@@ -91,7 +91,7 @@ try {
 	editor.on("pageerror", (e) => pageErrors.push(e));
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
+		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 
 	// ---- 語数の少ない自作リストで再変換する ----
 	await editor.click("#btn-settings");
@@ -101,7 +101,9 @@ try {
 	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
 	await editor.click("#btn-original-register");
-	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	await editor.click("#btn-settings-close");
+	await menuAction(editor, "#btn-regenerate");
 	await waitIdle(editor);
 
 	// ---- 空行にならず、埋まらない区間が filler になっている ----

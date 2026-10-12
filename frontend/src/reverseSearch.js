@@ -70,36 +70,62 @@ function compare(a, b) {
 		|| a.line - b.line || a.start - b.start || a.end - b.end;
 }
 
-// Only mark exact surface offsets. Host-provided spellings may differ from units;
-// in that case highlight the line and open its closest matching range for editing.
-export function highlightOriginal(node, units, matches, onSelect) {
-	if (!matches.length) return;
-	const highlight = (text, match) => {
-		const button = document.createElement("button");
-		button.type = "button";
-		button.className = "reverse-highlight";
-		button.textContent = text;
-		button.dataset.start = match.start;
-		button.dataset.end = match.end;
-		const reading = units.slice(match.start, match.end).map((unit) => unit.pronunciation).join("");
-		button.setAttribute("aria-label", `「${text}」を編集（読み：${reading}）`);
-		button.addEventListener("click", () => onSelect(match));
-		return button;
-	};
-	const source = units.map((unit) => unit.surface_form).join("");
-	if (source !== node.textContent) {
-		const button = highlight(node.textContent, matches[0]);
-		node.replaceChildren(button);
-		return;
+// Reading edits can change the character alignment. Map each token separately,
+// and leave unaligned characters unmarked instead of highlighting the whole line.
+export function originalHighlightRanges(source, units, matches, tokens = []) {
+	let spans = [];
+	if (units.map((unit) => unit.surface_form).join("") === source) {
+		let offset = 0;
+		spans = units.map((unit) => {
+			const start = offset;
+			offset += unit.surface_form.length;
+			return [start, offset];
+		});
+	} else if (tokens.map((token) => token.surface_form).join("") === source) {
+		let offset = 0;
+		for (let index = 0; index < tokens.length; index++) {
+			const token = tokens[index];
+			const group = units.map((unit, i) => ({ unit, i }))
+				.filter(({ unit }) => unit.token_index === index);
+			// If a reading no longer maps exactly to its spelling, only that token
+			// is uncertain; other tokens in the line still have precise offsets.
+			const aligned = group.map(({ unit }) => unit.surface_form).join("") === token.surface_form;
+			let cursor = offset;
+			for (const { unit, i } of group) {
+				spans[i] = aligned ? [cursor, cursor + unit.surface_form.length]
+					: token.surface_form.length < source.length ? [offset, offset + token.surface_form.length] : null;
+				cursor += unit.surface_form.length;
+			}
+			offset += token.surface_form.length;
+		}
+	} else {
+		return [];
 	}
-	const offsets = [0];
-	for (const unit of units) offsets.push(offsets.at(-1) + unit.surface_form.length);
+	const ranges = matches.flatMap(({ start, end }) => {
+		const selected = Array.from(spans.slice(start, end));
+		if (selected.length !== end - start || selected.some((span) => !span)) return [];
+		return [[Math.min(...selected.map((span) => span[0])), Math.max(...selected.map((span) => span[1]))]];
+	}).filter(([start, end]) => start < end).sort((a, b) => a[0] - b[0]);
+	const merged = [];
+	for (const range of ranges) {
+		if (merged.length && range[0] <= merged.at(-1)[1]) merged.at(-1)[1] = Math.max(merged.at(-1)[1], range[1]);
+		else merged.push(range);
+	}
+	return merged;
+}
+
+export function highlightOriginal(node, units, matches, tokens) {
+	const source = node.textContent;
+	const ranges = originalHighlightRanges(source, units, matches, tokens);
+	if (!ranges.length) return;
 	let cursor = 0;
 	node.textContent = "";
-	for (const match of [...matches].sort((a, b) => a.start - b.start)) {
-		const start = offsets[match.start], end = offsets[match.end];
+	for (const [start, end] of ranges) {
 		node.append(document.createTextNode(source.slice(cursor, start)));
-		node.append(highlight(source.slice(start, end), match));
+		const mark = document.createElement("mark");
+		mark.className = "reverse-highlight";
+		mark.textContent = source.slice(start, end);
+		node.append(mark);
 		cursor = end;
 	}
 	node.append(document.createTextNode(source.slice(cursor)));

@@ -19,6 +19,7 @@ import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 import { findPlacements, highlightOriginal } from "./reverseSearch.js";
 import { lineRegenerationInput } from "./editorRegeneration.js";
+import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
 import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
@@ -47,18 +48,20 @@ let app = null;
 let mecab = null;
 let db = null;
 let appFor = null; // 「音の合わせ方」別のエンジンを取り直すためのファクトリ
-let currentVowelRatio = null; // いまの app を作った VOWEL_RATIO
+let engineVowelRatio = null;
 let dbWhere = undefined; // いまの db を作った where(ファセット絞り込み)
 let dbWordlistKey = null; // いまの db を作った単語リスト(wordlistKey)
 let paramControls = null; // 変換設定パネルのパラメータUI(生成画面と共有)
 let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
 let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
-let reconverting = false; // 再変換中(多重実行を防ぐ)
+let settingsUpdating = false;
+let settingsRevision = 0;
+let settingsReady = false;
+let settingsDirty = false;
 let regeneration = null;
 let reverseMatches = [];
 let reverseTimer = null;
 let reverseRequest = null;
-let reverseKana = "";
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
 let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
 let songRequest = null; // ホストに出した曲の依頼 {type, id, nonce}(応答待ち中だけ非null)
@@ -194,12 +197,11 @@ function snapshotState() {
 		results: data.results,
 		tokensList: data.tokensList,
 		unitsList: data.unitsList,
-		// 変換設定も一緒に積むので、「この設定で再変換」も戻る1回で取り消せる。
-		// 単語リストも含めるので、リスト切替(=固定の全解除+全行作り直し)も
-		// 戻る1回で完全に元へ戻る。
+		// 設定変更も歌詞編集とは別の操作として取り消せる。
 		// where は undefined(=エントリ既定)と区別するため null にして持つ
 		param: data.param,
 		wordlist: data.wordlist,
+		wordlistSource: data.wordlistSource,
 		where: data.where === undefined ? null : data.where,
 		noteLengthAlpha: data.noteLengthAlpha,
 	}));
@@ -212,6 +214,7 @@ function restoreState(s) {
 	// 旧セッションの履歴には設定が入っていないので、あるときだけ戻す
 	if (s.param) data.param = s.param;
 	if (s.wordlist) data.wordlist = s.wordlist;
+	data.wordlistSource = s.wordlistSource;
 	if ("where" in s) data.where = s.where === null ? undefined : s.where;
 	if ("noteLengthAlpha" in s) data.noteLengthAlpha = s.noteLengthAlpha;
 }
@@ -276,7 +279,20 @@ function afterHistoryJump() {
 	updateHistoryButtons();
 	// パラメータ・絞り込みも戻るので、パネル表示と候補計算の土台を合わせ直す
 	syncSettingsUi();
-	if (appFor) syncEngine().then(() => renderPanel()).catch((err) => console.error(err));
+	if (appFor) {
+		setSettingsBusy(true);
+		showSettingsStatus();
+		syncEngine().then((applied) => {
+			if (!applied) return;
+			setSettingsBusy(false);
+			renderPanel();
+			scheduleReverseSearch();
+		}).catch((err) => {
+			db = null;
+			setSettingsBusy(false);
+			showSettingsStatus("単語リストを読み込めませんでした: " + err.message);
+		});
+	}
 }
 
 // 編集した行を記録する。「固定中以外を再生成」は編集の影響がありうる行だけを
@@ -286,8 +302,8 @@ function markDirty(line) {
 }
 
 function updateHistoryButtons() {
-	$id("btn-undo").disabled = data.history.length === 0;
-	$id("btn-redo").disabled = data.future.length === 0;
+	$id("btn-undo").disabled = settingsUpdating || data.history.length === 0;
+	$id("btn-redo").disabled = settingsUpdating || data.future.length === 0;
 }
 
 // ---- 表示 ----
@@ -327,9 +343,12 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
+	const matches = reverseMatches.filter((match) => match.line === line);
 	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
+		chip.classList.toggle("reverse-word-match", matches.some((match) =>
+			word.period[0] < match.end && match.start < word.period[1]));
 	});
 	if (!unitsOf(line).length) return row;
 	const original = row.querySelector(".review-original");
@@ -341,17 +360,11 @@ function renderLine(line) {
 	regenerateButton.textContent = "↻";
 	regenerateButton.title = "この行を再生成（固定中の単語は保持）";
 	regenerateButton.setAttribute("aria-label", `${line + 1}行目を再生成（固定中の単語は保持）`);
-	regenerateButton.disabled = !db || reconverting || !!regeneration;
+	regenerateButton.disabled = !db || settingsUpdating || !!regeneration;
 	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
 	original.replaceWith(heading);
 	heading.append(original, regenerateButton);
-	const matches = reverseMatches.filter((match) => match.line === line);
-	highlightOriginal(original, unitsOf(line), matches, (match) => {
-		setSelection({ line, start: match.start, end: match.end });
-		freeInputOpen = true;
-		freeInputDraft = { surface: $id("reverse-word").value.trim(), reading: reverseKana };
-		renderPanel();
-	});
+	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line]);
 	return row;
 }
 
@@ -370,9 +383,9 @@ function renderAll() {
 
 function syncLineActions() {
 	for (const button of document.querySelectorAll(".line-regenerate")) {
-		button.disabled = !db || reconverting || !!regeneration;
+		button.disabled = !db || settingsUpdating || !!regeneration;
 	}
-	$id("reverse-word").disabled = !app || reconverting || !!regeneration;
+	$id("reverse-word").disabled = !app || settingsUpdating || !!regeneration;
 	$id("reverse-clear").disabled = $id("reverse-word").disabled;
 }
 
@@ -387,6 +400,17 @@ function setupReverseSearch() {
 	$id("reverse-search").addEventListener("toggle", () => scheduleReverseSearch());
 }
 
+function searchUnits(line) {
+	const row = unitsOf(line);
+	const derived = app.textAnalyzer.getYomiAndPhraseBreak(data.tokensList[line]);
+	const aligned = derived.length === row.length
+		&& derived.every((unit, i) => unit.pronunciation === row[i].pronunciation);
+	return row.map((unit, i) => ({ ...unit,
+		char_index: aligned ? derived[i].char_index : undefined,
+		token_index: aligned ? derived[i].token_index : undefined,
+	}));
+}
+
 function scheduleReverseSearch(composing = false) {
 	$id("reverse-clear").hidden = !$id("reverse-word").value;
 	clearTimeout(reverseTimer);
@@ -397,7 +421,7 @@ function scheduleReverseSearch(composing = false) {
 	for (const line of previous) rerenderLine(line);
 	const status = $id("reverse-status");
 	status.textContent = "";
-	if (!$id("reverse-search").open || !$id("reverse-word").value.trim() || !app || composing) return;
+	if (!$id("reverse-search").open || !$id("reverse-word").value.trim() || !app || settingsUpdating || composing) return;
 	status.textContent = "当てはめ先を検索中…";
 	reverseTimer = setTimeout(async () => {
 		const request = new AbortController();
@@ -408,21 +432,13 @@ function scheduleReverseSearch(composing = false) {
 				throw new Error("ひらがな・カタカナで入力してください");
 			}
 			const kana = app.textAnalyzer.formatKana(reading);
-			const units = data.unitsList.map((row, line) => {
-				const derived = app.textAnalyzer.getYomiAndPhraseBreak(data.tokensList[line]);
-				return row.map((unit, i) => ({ ...unit,
-					char_index: derived.length === row.length ? derived[i].char_index : undefined,
-				}));
-			});
+			const units = data.unitsList.map((_, line) => searchUnits(line));
 			const matches = await findPlacements(app, kana, units, data.param,
 				noteLengthWeights(), request.signal);
 			if (request.signal.aborted) return;
-			reverseKana = kana;
 			reverseMatches = matches;
 			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
-			status.textContent = matches.length
-				? "ハイライトを押すと編集できます。"
-				: "当てはめられる範囲がありません";
+			status.textContent = matches.length ? "" : "当てはめられる範囲がありません";
 		} catch (error) {
 			if (!request.signal.aborted) status.textContent = error.message;
 		}
@@ -577,7 +593,8 @@ function replaceSelection(word) {
 	const conflicts = [];
 	data.results.forEach((words, otherLine) => {
 		for (const other of words || []) {
-			if (data.param.DUPLICATE || other.filler || !other.locked || other.id !== word.id) continue;
+			if (data.param.DUPLICATE || other.filler || !other.locked || other.id !== word.id
+				|| (other.wordlistSource || data.wordlistSource) !== (word.wordlistSource || data.wordlistSource)) continue;
 			if (otherLine === line && other.period[0] < end && start < other.period[1]) continue;
 			conflicts.push({ line: otherLine, word: other });
 		}
@@ -636,6 +653,7 @@ function applyReplacement(word, conflicts = []) {
 		markDirty(conflict.line);
 	}
 	const placed = Object.assign({}, word, {
+		wordlistSource: word.wordlistSource || data.wordlistSource,
 		period: [start, end],
 		originalkana: rangeKana(line, start, end),
 		original_surface: rangeSurface(line, start, end),
@@ -1034,7 +1052,7 @@ function usedIdSet(excludeLine, start, end) {
 	const used = new Set();
 	data.results.forEach((words, li) => {
 		for (const w of words || []) {
-			if (w.filler) continue; // fillerは実単語ではないので使用済みに数えない
+			if (w.filler || !isCurrentWord(w, data.wordlistSource)) continue;
 			if (li === excludeLine && !(w.period[1] <= start || end <= w.period[0])) continue;
 			used.add(w.id);
 		}
@@ -1388,7 +1406,7 @@ function buildPanel() {
 		} : null,
 	});
 
-	if (!db) {
+	if (!db || settingsUpdating) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
 		note.textContent = "候補を読み込み中...(単語リスト初期化中)";
@@ -1544,7 +1562,7 @@ function showRegenerationError(error) {
 
 function regenerate({ allUnlocked = false, line = null } = {}) {
 	if (regeneration) return regeneration;
-	if (reconverting || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
+	if (settingsUpdating || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
 	const btn = $id("btn-regenerate");
 	const progress = $id("regen-progress");
 	// 編集の影響がありうる行だけ再計算する。単語重複なしでは使用済み単語が
@@ -1557,7 +1575,8 @@ function regenerate({ allUnlocked = false, line = null } = {}) {
 	// filler(未変換の区間)は固定扱いにしない。単語が増えていれば埋まるように、
 	// 再生成のたびに埋め直しを試みる
 	const locksPerLine = data.results.map((words, i) =>
-		(words || []).filter((w) => !w.filler && ((allUnlocked || atRisk(i)) ? w.locked : true)));
+		(words || []).filter((w) => !w.filler && ((allUnlocked || atRisk(i)) ? w.locked : true))
+			.map((word) => generationLock(word, data.wordlistSource)));
 	const input = line === null
 		? { tokens: data.tokensList, db, locks: locksPerLine, weights: noteLengthWeights() }
 		: lineRegenerationInput(data, db, line, noteLengthWeights());
@@ -1581,10 +1600,10 @@ function regenerate({ allUnlocked = false, line = null } = {}) {
 				try {
 					pushHistory();
 					if (line === null) {
-						data.results = results;
+						data.results = results.map((words) => generatedWords(words, data.wordlistSource));
 						data.dirtyLines = [];
 					} else {
-						data.results[line] = results[0];
+						data.results[line] = generatedWords(results[0], data.wordlistSource);
 						data.dirtyLines = data.dirtyLines.filter((i) => i !== line);
 					}
 					saveData();
@@ -1610,29 +1629,41 @@ function regenerate({ allUnlocked = false, line = null } = {}) {
 // ツールバーの⚙から開くモーダル(dialog)で、パラメータUIは生成画面と同じ
 // 共有部品(convertControls.js)。初期値は引き継いだ data.param から逆算する
 
-// 単語リストエントリの同一性キー。自作リストは中身(正規化CSV)まで含めて
-// 比較する(テキストを書き換えたら別のリスト扱いにするため)
-function wordlistKey(entry) {
-	if (!entry) return "";
-	if (entry.value === "ORIGINAL") return "ORIGINAL\t" + (entry.csvText || "");
-	return [entry.value, entry.filepath, entry.dbtype].join("\t");
+// Prepare the engine against a captured settings value before committing it.
+async function prepareEngine(settings) {
+	const nextApp = appFor(settings.param?.VOWEL_RATIO);
+	const key = wordlistKey(settings.wordlist);
+	const nextDb = key === dbWordlistKey && settings.where === dbWhere && db
+		? db : await buildDatabase(nextApp, settings.wordlist, settings.where);
+	return { app: nextApp, db: nextDb, key, source: await wordlistSource(settings.wordlist) };
 }
 
-// 候補計算に使うエンジンとDBを、現在の data.param / data.wordlist / data.where に合わせる。
-// 「音の合わせ方」は類似度行列そのものが変わるためエンジンを取り直し、
-// 単語リストか絞り込み(where)が変わったら単語リストDBを作り直す
+function useEngine(engine, settings) {
+	app = engine.app;
+	db = engine.db;
+	engineVowelRatio = settings.param?.VOWEL_RATIO;
+	dbWhere = settings.where;
+	dbWordlistKey = engine.key;
+	data.wordlistSource = engine.source;
+}
+
+function engineMatches(settings = data) {
+	return db && dbWordlistKey === wordlistKey(settings.wordlist) && dbWhere === settings.where
+		&& engineVowelRatio === settings.param?.VOWEL_RATIO;
+}
+
 async function syncEngine() {
-	if (!appFor) return;
-	const ratio = data.param && data.param.VOWEL_RATIO;
-	if (ratio !== currentVowelRatio) {
-		app = appFor(ratio);
-		currentVowelRatio = ratio;
-	}
-	const key = wordlistKey(data.wordlist);
-	if (data.where !== dbWhere || key !== dbWordlistKey) {
-		db = await buildDatabase(app, data.wordlist, data.where);
-		dbWhere = data.where;
-		dbWordlistKey = key;
+	if (!appFor) return false;
+	const revision = ++settingsRevision;
+	const settings = { param: data.param, wordlist: data.wordlist, where: data.where };
+	try {
+		const engine = await prepareEngine(settings);
+		if (revision !== settingsRevision) return false;
+		useEngine(engine, settings);
+		return true;
+	} catch (error) {
+		if (revision !== settingsRevision) return false;
+		throw error;
 	}
 }
 
@@ -1761,13 +1792,12 @@ function syncWordlistUi() {
 	}
 }
 
-// 単語リストの選択が変わったとき。適用はしない(「この設定で再変換」に集約)。
-// ファセットだけは新しいリストのもので組み直す(チェックは既定に戻る)
+// 選んだリストの絞り込みを表示し、今ある歌詞を保ったまま設定を保存する。
 function onWordlistChange() {
 	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
 	if (!entry) return;
 	showOriginalEditButton(entry.value === "ORIGINAL");
-	if (entry.value === "ORIGINAL") openOriginalDialog(wordlistUiValue);
+	if (entry.value === "ORIGINAL") openOriginalDialog(data.wordlist?.value || wordlistUiValue);
 	else wordlistUiValue = entry.value;
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
@@ -1777,14 +1807,22 @@ function onWordlistChange() {
 	if (facetsEnabled && entry.value === (data.wordlist && data.wordlist.value)) {
 		restoreFacets($id("editor-facets"), data.where);
 	}
+	if (entry.value !== "ORIGINAL") saveSettings();
 }
 
 let originalDialogRestoreValue = null;
 let originalDialogAccepted = false;
+let originalDraftEntry = null;
 
 // 自作リストは別モーダルで編集する。選択操作から開いた場合は、キャンセル時に
 // それまで適用されていた単語リストへセレクトを戻す。
 function openOriginalDialog(restoreValue = null) {
+	if (engineMatches()) {
+		++settingsRevision;
+		setSettingsBusy(false);
+		showSettingsStatus();
+	}
+	originalDraftEntry = null;
 	const dialog = $id("editor-original-dialog");
 	const ta = $id("editor-original-text");
 	originalDialogRestoreValue = restoreValue && restoreValue !== "ORIGINAL"
@@ -1810,12 +1848,20 @@ function acceptOriginalDialog() {
 		setOriginalFileStatus("単語を1つ以上入力してください");
 		return;
 	}
+	try {
+		originalDraftEntry = { value: "ORIGINAL", text: "自作リストを使う",
+			csvText: originalTextToCsv(text, app) };
+	} catch (error) {
+		setOriginalFileStatus(error.message);
+		return;
+	}
 	saveOriginalText(text);
 	originalDialogAccepted = true;
 	originalDialogRestoreValue = null;
 	wordlistUiValue = "ORIGINAL";
 	$id("editor-original-dialog").close();
 	showOriginalEditButton(true);
+	saveSettings();
 }
 
 function finishOriginalDialog() {
@@ -1833,11 +1879,9 @@ function pickedWordlistEntry() {
 	const picked = wordlistCatalog && sel && wordlistCatalog.get(sel.value);
 	if (!picked) return data.wordlist;
 	if (picked.value !== "ORIGINAL") return Object.assign({}, picked);
-	return {
-		value: "ORIGINAL",
-		text: picked.text,
-		csvText: originalTextToCsv($id("editor-original-text").value, app),
-	};
+	return originalDraftEntry || (data.wordlist?.value === "ORIGINAL" ? data.wordlist : {
+		value: "ORIGINAL", text: picked.text, csvText: "",
+	});
 }
 
 // conf/setting.json から単語リストの選択肢を組み立てる(生成画面と同じ情報源)。
@@ -1913,89 +1957,80 @@ async function setupWordlistPicker() {
 	$id("editor-wordlist-field").hidden = false;
 }
 
-function setReconverting(busy) {
-	reconverting = busy;
-	syncLineActions();
-	$id("btn-regenerate").disabled = busy || !db;
-	// 再変換中に⚙からモーダルを開いても設定をいじれないようにする。
-	// 閉じる操作だけは残したいので×は対象外
-	for (const el of $id("editor-settings").querySelectorAll("button, input, select, textarea")) {
-		if (el.id === "btn-settings-close") continue;
-		el.disabled = busy;
+function showSettingsStatus(message = "") {
+	for (const id of ["settings-progress", "editor-settings-status"]) {
+		$id(id).textContent = message;
+		$id(id).hidden = !message;
 	}
-	for (const el of $id("editor-original-dialog").querySelectorAll("button, input, textarea")) {
-		el.disabled = busy;
-	}
-	$id("btn-reconvert").disabled = busy || !db;
 }
 
-// モーダルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
-// 差し替えた単語は残る(未固定の手編集は作り直される)。直前の状態は
-// 結果・パラメータ・単語リスト・絞り込みをまとめて履歴に積むので、
-// 「↩ 戻る」1回で戻せる。
-// 単語リストの切替もここで適用する(select単体では再変換しない)。リストが
-// 変わったときだけは固定を全解除して全行を作り直す: 別リストの単語を持ち越すと
-// idが衝突して単語重複なしの判定が壊れるため
-async function reconvertAll() {
-	if (!app || !db || !paramControls || reconverting) return;
-	const progress = $id("reconvert-progress");
+function setSettingsBusy(busy) {
+	settingsUpdating = busy;
+	$id("editor-settings").setAttribute("aria-busy", String(busy));
+	$id("btn-regenerate").disabled = busy || !db || !!regeneration;
+	syncLineActions();
+	updateHistoryButtons();
+	if (busy) scheduleReverseSearch();
+}
+
+// Settings apply to future edits and generation. Existing lyrics and locks stay
+// intact, including when IDs happen to overlap between different word lists.
+async function saveSettings() {
+	if (setupMode || regeneration || $id("editor-original-dialog").open) return;
+	settingsDirty = true;
+	if (!settingsReady || !appFor) return;
+	settingsDirty = false;
+	const revision = ++settingsRevision;
+	const previousEntry = data.wordlist;
 	const nextEntry = pickedWordlistEntry();
 	const listChanged = wordlistKey(nextEntry) !== wordlistKey(data.wordlist);
-	setReconverting(true);
-	progress.hidden = false;
-	progress.textContent = `再変換中... 0/${data.results.length}`;
-	setSelection(null);
-	pushHistory();
-	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
-	data.param = Object.assign({}, data.param, paramControls.getParam());
-	applyNoteLengthSetting();
-	if (listChanged) {
-		data.wordlist = nextEntry;
-		facetsEnabled = hasFacets(nextEntry);
-	}
-	if (facetsEnabled) data.where = compileWhere($id("editor-facets"), data.wordlist);
-	else if (listChanged) data.where = undefined; // 新しいリストのエントリ既定に戻す
-	try {
-		await syncEngine();
-	} catch (err) {
-		console.error(err);
-		restoreState(data.history.pop()); // 設定ごと巻き戻す
-		updateHistoryButtons();
-		syncSettingsUi();
-		progress.textContent = "単語リストの再構築に失敗しました: " + err.message;
-		setReconverting(false);
+	const alpha = Number($id("editor-note-length-alpha").value);
+	const next = {
+		param: { ...data.param, ...paramControls.getParam() },
+		wordlist: nextEntry,
+		where: hasFacets(nextEntry) ? compileWhere($id("editor-facets"), nextEntry)
+			: listChanged ? undefined : data.where,
+		noteLengthAlpha: Array.isArray(data.noteLengthRawList)
+			? Number.isFinite(alpha) && alpha >= 0 ? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA
+			: data.noteLengthAlpha,
+	};
+	if (engineMatches() && !listChanged && next.where === data.where && next.noteLengthAlpha === data.noteLengthAlpha
+		&& JSON.stringify(next.param) === JSON.stringify(data.param)) {
+		setSettingsBusy(false);
+		showSettingsStatus();
+		scheduleReverseSearch();
+		renderPanel();
 		return;
 	}
-	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す。
-	// ただしリストごと変わったときは持ち越さない(idが別リストのものになるため)
-	// filler(未変換の区間)は持ち越さず、新しい設定で埋め直しを試みる
-	const locksPerLine = listChanged
-		? data.results.map(() => [])
-		: data.results.map((words) => (words || []).filter((w) => w.locked && !w.filler));
-	app.soramimiMaker.generateFromTokens(
-		data.tokensList, db, data.param,
-		(result, i) => {
-			progress.textContent = `再変換中... ${i + 1}/${data.results.length}`;
-		},
-		(results) => {
-			data.results = results;
-			data.dirtyLines = []; // 全行を作り直したので編集済みの行はない
-			saveData();
-			renderAll();
-			progress.hidden = true;
-			setReconverting(false);
-		},
-		locksPerLine, noteLengthWeights());
-}
-
-// 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる。
-// 単語リストの切替が保留されていれば、それも一緒に適用される(絞り込みだけを
-// 古いリストに対して当てても意味のある結果にならないため)
-let facetTimer = null;
-function onFacetChange() {
-	if (!facetsEnabled) return;
-	clearTimeout(facetTimer);
-	facetTimer = setTimeout(reconvertAll, 400);
+	setSettingsBusy(true);
+	showSettingsStatus("設定を反映中…");
+	renderPanel();
+	try {
+		const engine = await prepareEngine(next);
+		const previousSource = data.wordlistSource || await wordlistSource(previousEntry);
+		if (revision !== settingsRevision) return;
+		pushHistory();
+		if (listChanged) {
+			data.results = data.results.map((words) => generatedWords(words, previousSource, true));
+		}
+		Object.assign(data, next);
+		if (originalDraftEntry === nextEntry) originalDraftEntry = null;
+		useEngine(engine, next);
+		data.dirtyLines = data.results.map((_, i) => i);
+		saveData();
+		setSettingsBusy(false);
+		showSettingsStatus();
+		renderAll();
+		renderPanel();
+	} catch (error) {
+		if (revision !== settingsRevision) return;
+		setSettingsBusy(false);
+		originalDraftEntry = null;
+		syncSettingsUi();
+		showSettingsStatus("設定を反映できませんでした: " + error.message);
+		scheduleReverseSearch();
+		renderPanel();
+	}
 }
 
 function setupSettingsPanel() {
@@ -2006,20 +2041,16 @@ function setupSettingsPanel() {
 		presetArea: $id("editor-preset-buttons"),
 		duplicateArea: $id("editor-duplicate-buttons"),
 		values: valuesFromParam(data.param),
+		onChange: saveSettings,
 	});
 	syncSettingsUi();
 	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)。
 	// リスト切替で出たり消えたりするので、リスナはコンテナに固定で付けておく
 	syncWordlistUi();
-	$id("editor-facets").addEventListener("change", onFacetChange);
+	$id("editor-facets").addEventListener("change", saveSettings);
+	$id("editor-note-length-alpha").addEventListener("input", saveSettings);
 	// 単語リストの選択肢は conf の取得を待つので、あとから足す
 	setupWordlistPicker().catch((err) => console.error(err));
-	// 再変換の進捗はツールバー側(#reconvert-progress)に出るので、押したら閉じる。
-	// モーダルに隠れて進捗が見えない状態を作らないため
-	$id("btn-reconvert").addEventListener("click", () => {
-		dialog.close();
-		reconvertAll();
-	});
 	$id("btn-settings").addEventListener("click", () => dialog.showModal());
 	$id("btn-settings-close").addEventListener("click", () => dialog.close());
 	// バックドロップ(ダイアログの外側)のクリックで閉じる。ダイアログ自身の
@@ -2072,7 +2103,7 @@ function moveSettingsBody(toSetup) {
 		return;
 	}
 	const dialog = $id("editor-settings");
-	dialog.insertBefore(body, dialog.querySelector(".editor-settings-actions"));
+	dialog.insertBefore(body, $id("editor-settings-status"));
 }
 
 function enterSetup() {
@@ -2375,6 +2406,7 @@ async function setupConvert() {
 	data.param = Object.assign({}, data.param, paramControls.getParam());
 	applyNoteLengthSetting();
 	data.wordlist = pickedWordlistEntry();
+	originalDraftEntry = null;
 	facetsEnabled = hasFacets(data.wordlist);
 	data.where = facetsEnabled
 		? compileWhere($id("editor-facets"), data.wordlist)
@@ -2406,7 +2438,7 @@ async function setupConvert() {
 		(results) => {
 			data.tokensList = tokensList;
 			data.unitsList = unitsList;
-			data.results = results;
+			data.results = results.map((words) => generatedWords(words, data.wordlistSource));
 			data.dirtyLines = []; // 変換直後はどの行も編集済みでない
 			data.history = [];
 			data.future = [];
@@ -2417,7 +2449,6 @@ async function setupConvert() {
 			renderAll();
 			updateHistoryButtons();
 			$id("btn-regenerate").disabled = false;
-			$id("btn-reconvert").disabled = false;
 		},
 		null, noteLengthWeights());
 }
@@ -2504,6 +2535,7 @@ function exportPayload() {
 		results: data.results,
 		param: data.param,
 		wordlist: data.wordlist,
+		wordlistSource: data.wordlistSource,
 		where: data.where,
 		unitsList: data.unitsList,
 		// 生ノート長があるときは現在のαで再計算し、旧版向け互換値も古くしない。
@@ -2691,7 +2723,7 @@ async function start() {
 		});
 		app = core.app;
 		appFor = core.appFor;
-		currentVowelRatio = data.param && data.param.VOWEL_RATIO;
+		engineVowelRatio = data.param?.VOWEL_RATIO;
 		mecab = core.mecab;
 		// 自作リストで来た(生成画面から/旧データ)場合は、DB構築に使う正規化CSVを
 		// エントリに焼き付けてから組む。以後は localStorage を書き換えても
@@ -2713,10 +2745,12 @@ async function start() {
 			db = await buildDatabase(app, data.wordlist, data.where);
 			dbWhere = data.where;
 			dbWordlistKey = wordlistKey(data.wordlist);
+			data.wordlistSource = await wordlistSource(data.wordlist);
+			saveData();
 		}
 		status.hidden = true;
+		settingsReady = true;
 		$id("btn-regenerate").disabled = !db;
-		$id("btn-reconvert").disabled = !db;
 		syncLineActions();
 		scheduleReverseSearch();
 		if (setupMode) {
@@ -2725,6 +2759,7 @@ async function start() {
 			syncSetupControls();
 		}
 		renderPanel(); // 読み込み中表示のパネルが開いていたら差し替える
+		if (settingsDirty) saveSettings();
 	} catch (err) {
 		console.error(err);
 		status.textContent = "候補機能の初期化に失敗しました: " + err.message;

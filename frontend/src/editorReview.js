@@ -94,7 +94,7 @@ export function setupReviewToolbar(review) {
 	menu.append(summary, body);
 	actions.append(menu);
 	if (!review) actions.prepend(document.getElementById("btn-video"));
-	toolbar.append(document.getElementById("regen-progress"), document.getElementById("reconvert-progress"));
+	toolbar.append(document.getElementById("regen-progress"), document.getElementById("settings-progress"));
 	toolbar.append(actions);
 	toolbar.append(document.getElementById("reverse-search"));
 }
@@ -152,13 +152,22 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	selected.append(title);
 	if (word?.kana && word.kana !== word.surface) selected.append(element("span", "review-selected-reading", word.kana));
 	header.append(close, selected);
+	const actions = element("div", "review-word-actions");
 	if (word && !word.filler) {
 		const lock = element("button", "btn btn-ghost panel-lock", word.locked ? "固定中" : "固定");
 		lock.type = "button";
 		lock.setAttribute("aria-pressed", String(!!word.locked));
 		lock.addEventListener("click", () => callbacks.lock(line, word));
-		header.append(lock);
+		actions.append(lock);
 	}
+	if ((data.results[line] || []).some((assigned) =>
+		!assigned.filler && assigned.period[0] < end && start < assigned.period[1])) {
+		const clear = element("button", "btn btn-ghost panel-clear", "割り当てを解除");
+		clear.type = "button";
+		clear.addEventListener("click", callbacks.clear);
+		actions.append(clear);
+	}
+	if (actions.childElementCount) header.append(actions);
 	panel.append(header);
 	const range = element("div", "review-range");
 	range.dataset.line = String(line);
@@ -187,11 +196,4 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		range.append(edit);
 	}
 	panel.append(range);
-	if ((data.results[line] || []).some((assigned) =>
-		!assigned.filler && assigned.period[0] < end && start < assigned.period[1])) {
-		const clear = element("button", "btn btn-ghost panel-clear", "割り当てを解除");
-		clear.type = "button";
-		clear.addEventListener("click", callbacks.clear);
-		range.append(clear);
-	}
 }

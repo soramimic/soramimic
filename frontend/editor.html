@@ -84,7 +84,7 @@
           <div class="toolbar-group">
             <button id="btn-settings" class="btn btn-ghost btn-icon" type="button"
               aria-label="変換のしかた" title="変換のしかた" aria-haspopup="dialog">⚙</button>
-            <span id="reconvert-progress" class="editor-status" hidden></span>
+            <span id="settings-progress" class="editor-status" role="status" hidden></span>
           </div>
           <div class="toolbar-group">
             <button id="btn-undo" class="btn btn-ghost" disabled title="直前の編集を取り消す">↩ 戻る</button>
@@ -109,9 +109,8 @@
           <details id="reverse-search" class="reverse-search">
             <summary>単語から当てはめ先を探す</summary>
             <div class="reverse-inputs">
-              <label for="reverse-word">使いたい単語の読み</label>
               <div class="reverse-word-field">
-                <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-describedby="reverse-status" spellcheck="false" disabled />
+                <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-label="使いたい単語の読み" aria-describedby="reverse-status" spellcheck="false" disabled />
                 <button id="reverse-clear" class="reverse-clear" type="button" aria-label="入力を消す" title="入力を消す" hidden>
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
                 </button>
@@ -176,8 +175,7 @@
             <select id="editor-wordlist" class="input" aria-label="単語リスト"></select>
             <button id="btn-original-edit" class="btn editor-original-edit" type="button" hidden>自作リストの内容を編集</button>
           </div>
-          <div class="field" id="editor-facet-field" hidden>
-            <h3 class="field-label">単語リストの絞り込み</h3>
+          <div class="field" id="editor-facet-field" role="group" aria-label="単語リストの絞り込み" hidden>
             <div id="editor-facets" class="wordlist-facets"></div>
           </div>
           <div class="field">
@@ -205,9 +203,7 @@
             </div>
           </details>
         </div>
-        <div class="dialog-buttons editor-settings-actions">
-          <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
-        </div>
+        <p id="editor-settings-status" class="editor-status" role="status" hidden></p>
       </dialog>
 
       <!-- 「自作リスト」を選んだときだけ開く登録画面。通常のリストを選んでいる間は
