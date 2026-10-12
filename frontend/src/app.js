@@ -110,7 +110,7 @@ export async function startApp() {
 			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
 			saveMainState();
-			status.textContent = `${file.name} を読み込みました`;
+			status.hidden = true;
 		} catch (error) {
 			lyricsFile.value = "";
 			status.textContent = "読み込めませんでした: " + error.message;
