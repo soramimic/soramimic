@@ -17,6 +17,8 @@ import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
+import { findPlacements, highlightOriginal } from "./reverseSearch.js";
+import { lineRegenerationInput } from "./editorRegeneration.js";
 import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
@@ -53,6 +55,10 @@ let facetsEnabled = false; // 単語リストに facets があるときだけ絞
 let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
 let reconverting = false; // 再変換中(多重実行を防ぐ)
 let regeneration = null;
+let reverseMatches = [];
+let reverseTimer = null;
+let reverseRequest = null;
+let reverseKana = "";
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
 let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
 let songRequest = null; // ホストに出した曲の依頼 {type, id, nonce}(応答待ち中だけ非null)
@@ -321,10 +327,48 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
-	return renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
+	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
 	});
+	if (!unitsOf(line).length) return row;
+	const original = row.querySelector(".review-original");
+	const heading = document.createElement("div");
+	heading.className = "review-line-heading";
+	const regenerateButton = document.createElement("button");
+	regenerateButton.type = "button";
+	regenerateButton.className = "btn btn-ghost line-regenerate";
+	regenerateButton.textContent = "↻";
+	regenerateButton.title = "この行を再生成（固定中の単語は保持）";
+	regenerateButton.setAttribute("aria-label", `${line + 1}行目を再生成（固定中の単語は保持）`);
+	regenerateButton.disabled = !db || reconverting || !!regeneration;
+	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
+	original.replaceWith(heading);
+	heading.append(original, regenerateButton);
+	const matches = reverseMatches.filter((match) => match.line === line);
+	highlightOriginal(original, unitsOf(line), matches);
+	if (matches.length) {
+		const choices = document.createElement("div");
+		choices.className = "reverse-choices";
+		for (const match of matches) {
+			const button = document.createElement("button");
+			button.type = "button";
+			button.className = "btn reverse-match";
+			button.dataset.start = match.start;
+			button.dataset.end = match.end;
+			button.textContent = `候補${reverseMatches.indexOf(match) + 1} · ${rangeKana(line, match.start, match.end)}`;
+			button.title = "この範囲に入力した単語を当てはめる";
+			button.addEventListener("click", () => {
+				setSelection({ line, start: match.start, end: match.end });
+				freeInputOpen = true;
+				freeInputDraft = { surface: $id("reverse-word").value.trim(), reading: reverseKana };
+				renderPanel();
+			});
+			choices.append(button);
+		}
+		heading.after(choices);
+	}
+	return row;
 }
 
 function rerenderLine(line) {
@@ -337,6 +381,68 @@ function renderAll() {
 	const container = $id("editor-lines");
 	container.textContent = "";
 	data.results.forEach((_, i) => container.appendChild(renderLine(i)));
+	scheduleReverseSearch();
+}
+
+function syncLineActions() {
+	for (const button of document.querySelectorAll(".line-regenerate")) {
+		button.disabled = !db || reconverting || !!regeneration;
+	}
+	$id("reverse-word").disabled = !app || reconverting || !!regeneration;
+	$id("reverse-reading").disabled = !app || reconverting || !!regeneration;
+}
+
+function setupReverseSearch() {
+	for (const id of ["reverse-word", "reverse-reading"]) {
+		$id(id).addEventListener("input", (event) => scheduleReverseSearch(event.isComposing));
+		$id(id).addEventListener("compositionend", () => scheduleReverseSearch());
+	}
+	$id("reverse-clear").addEventListener("click", () => {
+		$id("reverse-word").value = "";
+		$id("reverse-reading").value = "";
+		scheduleReverseSearch();
+		$id("reverse-word").focus();
+	});
+	$id("reverse-search").addEventListener("toggle", () => scheduleReverseSearch());
+}
+
+function scheduleReverseSearch(composing = false) {
+	clearTimeout(reverseTimer);
+	reverseRequest?.abort();
+	reverseRequest = null;
+	const previous = new Set(reverseMatches.map((match) => match.line));
+	reverseMatches = [];
+	for (const line of previous) rerenderLine(line);
+	const status = $id("reverse-status");
+	status.textContent = "";
+	if (!$id("reverse-search").open || !$id("reverse-word").value.trim() || !app || composing) return;
+	status.textContent = "当てはめ先を検索中…";
+	reverseTimer = setTimeout(async () => {
+		const request = new AbortController();
+		reverseRequest = request;
+		try {
+			const word = $id("reverse-word").value.trim();
+			const reading = $id("reverse-reading").value.trim() || mecab.getYomi(word) || word;
+			const kana = app.textAnalyzer.formatKana(reading);
+			const units = data.unitsList.map((row, line) => {
+				const derived = app.textAnalyzer.getYomiAndPhraseBreak(data.tokensList[line]);
+				return row.map((unit, i) => ({ ...unit,
+					char_index: derived.length === row.length ? derived[i].char_index : undefined,
+				}));
+			});
+			const matches = await findPlacements(app, kana, units, data.param,
+				noteLengthWeights(), request.signal);
+			if (request.signal.aborted) return;
+			reverseKana = kana;
+			reverseMatches = matches;
+			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
+			status.textContent = matches.length
+				? `読み：${kana} · 音が近い順に候補1〜${matches.length}。候補を押すと当てはめられます。`
+				: `読み：${kana} · 当てはめられる範囲がありません`;
+		} catch (error) {
+			if (!request.signal.aborted) status.textContent = error.message;
+		}
+	}, 250);
 }
 
 function toggleLock(line, word) {
@@ -753,6 +859,7 @@ function applyReadingFix(line, span, newYomiRaw, alignMode = "untouched", draftA
 	data.tokensList[line] = tokens;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
+	scheduleReverseSearch();
 	if (readingChanged) {
 		data.results[line] = (data.results[line] || [])
 			.filter((w) => w.period[1] <= span.unitStart || w.period[0] >= span.unitEnd)
@@ -1382,7 +1489,12 @@ function renderGroupPicker(panel, group, used) {
 // ---- 再生成・コピー ----
 
 // 🔒固定した単語(と差し替え済み単語)を残し、それ以外を作り直す
-function regenerate({ allUnlocked = false } = {}) {
+function showRegenerationError(error) {
+	$id("regen-progress").textContent = error.message;
+	$id("regen-progress").hidden = false;
+}
+
+function regenerate({ allUnlocked = false, line = null } = {}) {
 	if (regeneration) return regeneration;
 	if (reconverting || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
 	const btn = $id("btn-regenerate");
@@ -1398,11 +1510,14 @@ function regenerate({ allUnlocked = false } = {}) {
 	// 再生成のたびに埋め直しを試みる
 	const locksPerLine = data.results.map((words, i) =>
 		(words || []).filter((w) => !w.filler && ((allUnlocked || atRisk(i)) ? w.locked : true)));
+	const input = line === null
+		? { tokens: data.tokensList, db, locks: locksPerLine, weights: noteLengthWeights() }
+		: lineRegenerationInput(data, db, line, noteLengthWeights());
 	btn.disabled = true;
 	progress.hidden = false;
-	progress.textContent = `再生成中... 0/${data.results.length}`;
+	progress.textContent = line === null ? `再生成中... 0/${data.results.length}` : `${line + 1}行目を再生成中…`;
 	setSelection(null);
-	if (isVideoReview(data)) $id("app").inert = true;
+	$id("app").inert = true;
 	let handle, timeout;
 	regeneration = new Promise((resolve, reject) => {
 		timeout = setTimeout(() => {
@@ -1410,28 +1525,35 @@ function regenerate({ allUnlocked = false } = {}) {
 			reject(new Error("再生成に時間がかかっています。もう一度お試しください"));
 		}, 120000);
 		handle = app.soramimiMaker.generateFromTokens(
-			data.tokensList, db, data.param,
+			input.tokens, input.db, data.param,
 			(result, i) => {
-				progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
+				if (line === null) progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
 			},
 			(results) => {
 				try {
 					pushHistory();
-					data.results = results;
-					data.dirtyLines = [];
+					if (line === null) {
+						data.results = results;
+						data.dirtyLines = [];
+					} else {
+						data.results[line] = results[0];
+						data.dirtyLines = data.dirtyLines.filter((i) => i !== line);
+					}
 					saveData();
 					renderAll();
 					resolve();
 				} catch (error) { reject(error); }
 			},
-			locksPerLine, noteLengthWeights());
+			input.locks, input.weights);
 	}).finally(() => {
 		clearTimeout(timeout);
 		regeneration = null;
 		btn.disabled = false;
 		progress.hidden = true;
-		if (isVideoReview(data)) $id("app").inert = false;
+		$id("app").inert = false;
+		syncLineActions();
 	});
+	syncLineActions();
 	return regeneration;
 }
 
@@ -1745,6 +1867,7 @@ async function setupWordlistPicker() {
 
 function setReconverting(busy) {
 	reconverting = busy;
+	syncLineActions();
 	$id("btn-regenerate").disabled = busy || !db;
 	// 再変換中に⚙からモーダルを開いても設定をいじれないようにする。
 	// 閉じる操作だけは残したいので×は対象外
@@ -2421,6 +2544,7 @@ async function start() {
 	const empty = $id("editor-empty");
 	setupImportExport();
 	setupReadingFixDialog();
+	setupReverseSearch();
 
 	try {
 		data = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));
@@ -2495,10 +2619,7 @@ async function start() {
 	const toolbar = $id("editor-toolbar");
 	toolbar.hidden = false;
 	$id("btn-regenerate").disabled = true; // DB初期化が済むまで再生成は不可
-	$id("btn-regenerate").addEventListener("click", () => regenerate().catch((error) => {
-		$id("regen-progress").textContent = error.message;
-		$id("regen-progress").hidden = false;
-	}));
+	$id("btn-regenerate").addEventListener("click", () => regenerate().catch(showRegenerationError));
 	$id("btn-copy").addEventListener("click", copyResult);
 	$id("btn-undo").addEventListener("click", undo);
 	$id("btn-redo").addEventListener("click", redo);
@@ -2548,6 +2669,8 @@ async function start() {
 		status.hidden = true;
 		$id("btn-regenerate").disabled = !db;
 		$id("btn-reconvert").disabled = !db;
+		syncLineActions();
+		scheduleReverseSearch();
 		if (setupMode) {
 			$id("setup-progress").hidden = true;
 			// 初期化前に曲を選ぶ操作をしていたら、依頼中のロックは維持する

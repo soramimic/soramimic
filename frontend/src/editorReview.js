@@ -96,6 +96,7 @@ export function setupReviewToolbar(review) {
 	if (!review) actions.prepend(document.getElementById("btn-video"));
 	toolbar.append(document.getElementById("regen-progress"), document.getElementById("reconvert-progress"));
 	toolbar.append(actions);
+	toolbar.append(document.getElementById("reverse-search"));
 }
 
 export function renderReviewLine(data, line, selection, choose, lockIcon, decorate) {

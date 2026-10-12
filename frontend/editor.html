@@ -106,6 +106,22 @@
             <button id="btn-export" class="btn btn-ghost">書き出し</button>
             <button id="btn-video" class="btn" type="button" hidden>ビデオで作る ↗</button>
           </div>
+          <details id="reverse-search" class="reverse-search">
+            <summary>単語から当てはめ先を探す</summary>
+            <div class="reverse-inputs">
+              <label for="reverse-word">使いたい単語</label>
+              <div class="reverse-word-field">
+                <input id="reverse-word" class="input" type="search" maxlength="100" placeholder="単語を入力" disabled />
+                <button id="reverse-clear" class="btn btn-ghost" type="button">クリア</button>
+              </div>
+              <details class="reverse-reading-field">
+                <summary>読みを指定</summary>
+                <label for="reverse-reading">単語の読み（空欄なら自動）</label>
+                <input id="reverse-reading" class="input" maxlength="100" placeholder="ひらがな・カタカナ" disabled />
+              </details>
+              <p id="reverse-status" role="status" aria-live="polite"></p>
+            </div>
+          </details>
         </div>
         <input id="import-file" type="file" accept=".json,application/json" hidden />
         <section id="editor-lines" class="editor-lines"></section>

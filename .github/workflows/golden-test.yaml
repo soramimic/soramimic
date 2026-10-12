@@ -29,6 +29,8 @@ jobs:
         run: node tests/golden/run.cjs
       - name: 編集ツール向けAPI(候補取得・固定つき再生成)のテスト
         run: node tests/editor-api.mjs
+      - name: 逆引き検索・行単位の再生成のテスト
+        run: node tests/editor-placement.mjs
       - name: ン・ッ・ーの編集距離一貫性テスト
         run: node tests/editdist.mjs
       - name: 小書きカナ吸収のテスト

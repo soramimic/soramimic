@@ -549,15 +549,22 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	//単語リスト内のオブジェクトを直接返さずコピーする(呼び出し側の編集がDBを汚さないように)
 	//weights(省略可): targetと同じ長さのユニット位置別重み。省略時は従来と完全同一
 	function getCandidates(wordlist, target, parameter, length=30, weights=null){
+		return createCandidateSearch(wordlist, parameter)(target, length, weights);
+	}
+
+	// Reuse the distance matrix while searching many ranges with the same settings.
+	function createCandidateSearch(wordlist, parameter){
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
-		const w = normalizeWeights(weights, (target||[]).length, "getCandidates");
-		const configuredLimit = Number(param.APPROX_CANDIDATES);
-		const approximateLimit = Number.isFinite(configuredLimit) && configuredLimit>0
-			? Math.max(Math.floor(configuredLimit),length) : 0;
-		const words = getSimilarWord(wordlist,target,kanaDist,length,param.VARIATION_COST,w,
-			approximateLimit,param.VOWEL_RATIO??0.8) || [];
-		return words.slice(0, length).map(w=>Object.assign({}, w));
+		return (target, length=30, weights=null) => {
+			const w = normalizeWeights(weights, (target||[]).length, "getCandidates");
+			const configuredLimit = Number(param.APPROX_CANDIDATES);
+			const approximateLimit = Number.isFinite(configuredLimit) && configuredLimit>0
+				? Math.max(Math.floor(configuredLimit),length) : 0;
+			const words = getSimilarWord(wordlist,target,kanaDist,length,param.VARIATION_COST,w,
+				approximateLimit,param.VOWEL_RATIO??0.8) || [];
+			return words.slice(0, length).map(w=>Object.assign({}, w));
+		};
 	}
 
 	//weightsPerLine(省略可): 行ごとのユニット位置別重み。generateFromTokens と同じ意味
@@ -681,6 +688,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 		generate: generate,
 		generateFromTokens: generateFromTokens,
 		getCandidates: getCandidates,
+		createCandidateSearch: createCandidateSearch,
 		FILLER_COST: FILLER_COST //テスト・呼び出し側の検証用に公開する
 	}
 
