@@ -6,6 +6,8 @@ import "./style.css";
 import "./editor.css";
 import "./appBridge.js";
 import { validateEditorData } from "./editorData.js";
+import { setupVisualization } from "./editorVisualization.js";
+import "./editorVisualization.css";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -49,6 +51,7 @@ const SKIP_REGEN_CONFIRMATION_KEY = "soramimic-skip-regenerate-confirmation";
 const ORIGINAL_FILE_MAX = 10 * 1024 * 1024;
 
 let data = null;
+let visualization = null;
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
 let app = null;
 let mecab = null;
@@ -365,6 +368,7 @@ function renderLine(line) {
 	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
+		visualization?.decorate(chip, word, unitsOf(line).slice(...word.period).map((unit) => unit.pronunciation));
 		chip.classList.toggle("reverse-word-match", matches.some((match) =>
 			word.period[0] < match.end && match.start < word.period[1]));
 		if (current && word.period[0] < current.end && current.start < word.period[1]) {
@@ -394,12 +398,14 @@ function rerenderLine(line) {
 	const old = document.querySelector(`.editor-line[data-line="${line}"]`);
 	if (!old) return;
 	old.replaceWith(renderLine(line));
+	visualization?.refresh();
 }
 
 function renderAll() {
 	const container = $id("editor-lines");
 	container.textContent = "";
 	data.results.forEach((_, i) => container.appendChild(renderLine(i)));
+	visualization?.refresh();
 	scheduleReverseSearch();
 }
 
@@ -1815,6 +1821,7 @@ function useEngine(engine, settings) {
 	dbWhere = settings.where;
 	dbWordlistKey = engine.key;
 	data.wordlistSource = engine.source;
+	visualization?.refresh();
 }
 
 function engineMatches(settings = data) {
@@ -2809,6 +2816,7 @@ async function start() {
 	setupMode = !converted || data.setupFirst === true;
 	{
 		setupReviewToolbar(isVideoReview(data));
+		visualization = setupVisualization(() => ({ app, param: data.param }));
 		const panel = $id("editor-panel");
 		panel.addEventListener("cancel", (event) => {
 			event.preventDefault();
@@ -2889,6 +2897,7 @@ async function start() {
 		appFor = core.appFor;
 		engineVowelRatio = data.param?.VOWEL_RATIO;
 		mecab = core.mecab;
+		visualization?.refresh();
 		// 自作リストで来た(生成画面から/旧データ)場合は、DB構築に使う正規化CSVを
 		// エントリに焼き付けてから組む。以後は localStorage を書き換えても
 		// この編集セッションのDBはぶれず、書き出しJSONも自己完結する(csvText契約)

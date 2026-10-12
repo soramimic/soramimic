@@ -113,6 +113,7 @@ export function setupReviewToolbar(review) {
 	status.append(document.getElementById("regen-progress"), document.getElementById("settings-progress"));
 	document.body.append(status);
 	toolbar.append(actions);
+	toolbar.append(document.getElementById("editor-visualization"));
 	toolbar.append(document.getElementById("reverse-search"));
 	// Keep everything above the lyrics together while search hits scroll past.
 	const header = document.querySelector(".site-header");
