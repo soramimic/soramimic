@@ -1426,6 +1426,10 @@ function buildPanel() {
 		: null;
 	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
 	const used = usedIdSet(line, start, end);
+	const selectedWord = (data.results[line] || []).find((word) => !word.filler
+		&& word.period[0] === start && word.period[1] === end);
+	const isSelected = (cand) => !!selectedWord && isCurrentWord(selectedWord, data.wordlistSource)
+		&& cand.id === selectedWord.id && cand.surface === selectedWord.surface && cand.kana === selectedWord.kana;
 	const groups = [];
 	const byKey = new Map();
 	for (const cand of fetched) {
@@ -1440,7 +1444,7 @@ function buildPanel() {
 
 	// 同名グループを開いている場合は個別選択リストを出す
 	if (openGroupKey && byKey.has(openGroupKey)) {
-		renderGroupPicker(panel, byKey.get(openGroupKey), used);
+		renderGroupPicker(panel, byKey.get(openGroupKey), used, isSelected);
 		return;
 	}
 	if (freeInputOpen) {
@@ -1468,6 +1472,7 @@ function buildPanel() {
 		const btn = document.createElement("button");
 		btn.className = "btn candidate";
 		btn.dataset.candidateId = String(cand.id);
+		if (g.cands.some(isSelected)) btn.setAttribute("aria-current", "true");
 		if (allUsed) btn.classList.add("used");
 		const surface = document.createElement("span");
 		surface.className = "candidate-surface";
@@ -1514,7 +1519,7 @@ function buildPanel() {
 }
 
 // 同名候補(id違い)の個別選択リスト
-function renderGroupPicker(panel, group, used) {
+function renderGroupPicker(panel, group, used, isSelected) {
 	const back = document.createElement("button");
 	back.className = "btn panel-back";
 	back.textContent = "← 候補一覧に戻る";
@@ -1538,6 +1543,7 @@ function renderGroupPicker(panel, group, used) {
 		const row = document.createElement("button");
 		row.className = "btn group-entry";
 		row.dataset.candidateId = String(cand.id);
+		if (isSelected(cand)) row.setAttribute("aria-current", "true");
 		if (isUsed) row.classList.add("used");
 		const main = document.createElement("span");
 		main.textContent = cand.original || cand.surface;
