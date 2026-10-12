@@ -496,8 +496,8 @@ function scheduleReverseSearch(composing = false) {
 			const matches = await findPlacements(app, kana, units, data.param,
 				noteLengthWeights(), request.signal);
 			if (request.signal.aborted) return;
-			// Retain the ranked shortlist, then visit its hits in document order.
-			reverseMatches = matches.sort((a, b) => a.line - b.line || a.start - b.start || a.end - b.end);
+			// Visit the best-scoring placements first, in the search's ranked order.
+			reverseMatches = matches;
 			reverseIndex = matches.length ? 0 : -1;
 			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
 			syncReverseNavigation();
