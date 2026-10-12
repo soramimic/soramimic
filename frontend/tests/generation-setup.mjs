@@ -175,7 +175,8 @@ try {
 		assert(fileBounds.y >= inputBounds.y + inputBounds.height, "visible file picker follows the textarea");
 		for (const name of ["歌詞.txt", "歌詞.md", "歌詞.md"]) {
 			await load(name, "\uFEFF青い空\n白い雲");
-			await page.waitForFunction(() => document.getElementById("lyrics-file-status").textContent.includes("を読み込みました"));
+			await page.waitForFunction(() => !document.getElementById("lyrics-file").disabled);
+			assert(await page.locator("#lyrics-file-status").isHidden(), "successful file imports must not duplicate the file picker label");
 			assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲");
 			assert.equal(await page.locator("#lyrics-file").evaluate(input => input.files[0].name), name);
 			assert(!page.url().endsWith("editor.html"));
@@ -186,6 +187,7 @@ try {
 		for (const [name, contents] of [["長い歌詞.txt", "あ".repeat(10001)], ["invalid.json", "{"], ["invalid.json", "{}"], ["invalid.json", '{"results":[null],"unitsList":[[]]}']]) {
 			await load(name, contents);
 			await page.waitForFunction(() => document.getElementById("lyrics-file-status").textContent.startsWith("読み込めませんでした"));
+			assert(await page.locator("#lyrics-file-status").isVisible());
 			assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲");
 			assert(!page.url().endsWith("editor.html"));
 		}
