@@ -79,10 +79,19 @@ export function setupReviewToolbar(review) {
 		regenerate.textContent = "↻";
 		actions.append(regenerate);
 		body.append(document.getElementById("btn-settings"));
-		for (const id of ["btn-import", "btn-export"]) body.append(document.getElementById(id));
+		const files = element("div", "editor-file-actions");
+		for (const id of ["btn-import", "btn-export"]) files.append(document.getElementById(id));
+		body.append(files);
 		const copy = element("div", "editor-copy-options");
-		copy.append(document.querySelector('label[for="copy-format"]'),
-			document.getElementById("copy-format"), document.getElementById("btn-copy"));
+		const format = element("div", "editor-copy-format");
+		const select = document.getElementById("copy-format");
+		const formatLabel = element("span", "editor-copy-format-label");
+		formatLabel.setAttribute("aria-hidden", "true");
+		const updateFormat = () => { formatLabel.textContent = select.selectedOptions[0].textContent; };
+		select.addEventListener("change", updateFormat);
+		updateFormat();
+		format.append(formatLabel, select);
+		copy.append(document.querySelector('label[for="copy-format"]'), format, document.getElementById("btn-copy"));
 		body.append(copy);
 		for (const button of body.querySelectorAll("button")) {
 			button.addEventListener("click", () => { setOpen(false); });
@@ -100,7 +109,9 @@ export function setupReviewToolbar(review) {
 	menu.append(summary, body);
 	actions.append(menu);
 	if (!review) actions.prepend(document.getElementById("btn-video"));
-	toolbar.append(document.getElementById("regen-progress"), document.getElementById("settings-progress"));
+	const status = element("div", "review-toolbar-status");
+	status.append(document.getElementById("regen-progress"), document.getElementById("settings-progress"));
+	document.body.append(status);
 	toolbar.append(actions);
 	toolbar.append(document.getElementById("reverse-search"));
 }

@@ -36,6 +36,7 @@ const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
 const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
+const SKIP_REGEN_CONFIRMATION_KEY = "soramimic-skip-regenerate-confirmation";
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
 // stations.csv のような同梱リストも自作リストとして読み直せる容量にする。
@@ -1608,6 +1609,37 @@ function showRegenerationError(error) {
 	$id("regen-progress").hidden = false;
 }
 
+function setupRegenerationConfirmation() {
+	const dialog = $id("editor-regenerate-dialog");
+	const skip = $id("regenerate-skip-confirmation");
+	let skipConfirmation = false;
+	try { skipConfirmation = localStorage.getItem(SKIP_REGEN_CONFIRMATION_KEY) === "1"; } catch {}
+	$id("btn-regenerate").addEventListener("click", () => {
+		if (skipConfirmation) {
+			regenerate().catch(showRegenerationError);
+			return;
+		}
+		skip.checked = false;
+		dialog.showModal();
+	});
+	$id("btn-regenerate-cancel").addEventListener("click", () => dialog.close());
+	$id("btn-regenerate-confirm").addEventListener("click", () => {
+		if (!dialog.open) return;
+		if (skip.checked) {
+			skipConfirmation = true;
+			try { localStorage.setItem(SKIP_REGEN_CONFIRMATION_KEY, "1"); } catch {}
+		}
+		dialog.close();
+		regenerate().catch(showRegenerationError);
+	});
+	dialog.addEventListener("click", (event) => {
+		if (event.target !== dialog) return;
+		const bounds = dialog.getBoundingClientRect();
+		if (event.clientX < bounds.left || event.clientX > bounds.right
+			|| event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+	});
+}
+
 function regenerate({ allUnlocked = false, line = null } = {}) {
 	if (regeneration) return regeneration;
 	if (settingsUpdating || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
@@ -1672,9 +1704,9 @@ function regenerate({ allUnlocked = false, line = null } = {}) {
 	return regeneration;
 }
 
-// ---- 「変換のしかた」モーダル(パラメータ・絞り込み) ----
+// ---- 設定モーダル(パラメータ・絞り込み) ----
 // 生成画面へ戻らなくても変換のしかたを変えられるようにする(#17の続き)。
-// ツールバーの⚙から開くモーダル(dialog)で、パラメータUIは生成画面と同じ
+// 三点メニューから開くモーダル(dialog)で、パラメータUIは生成画面と同じ
 // 共有部品(convertControls.js)。初期値は引き継いだ data.param から逆算する
 
 // Prepare the engine against a captured settings value before committing it.
@@ -2530,7 +2562,7 @@ function setupSetupScreen() {
 }
 
 async function copyResult() {
-	const btn = $id("btn-copy");
+	const label = $id("copy-button-label");
 	let text = makeResultText(data.results, $id("copy-format").value);
 	// 末尾に使用単語の元表記(フルネーム等)を登場順で付ける。
 	// filler(未変換=元歌詞のまま)は使った単語ではないので載せない
@@ -2546,13 +2578,13 @@ async function copyResult() {
 	}
 	try {
 		await writeClipboard(text);
-		btn.textContent = "コピーしました";
+		label.textContent = "コピーしました";
 	} catch (err) {
 		console.error(err);
-		btn.textContent = "コピーに失敗しました";
+		label.textContent = "コピーに失敗しました";
 	}
 	setTimeout(() => {
-		btn.textContent = "コピー";
+		label.textContent = "コピー";
 	}, 1500);
 }
 
@@ -2748,7 +2780,7 @@ async function start() {
 	const toolbar = $id("editor-toolbar");
 	toolbar.hidden = false;
 	$id("btn-regenerate").disabled = true; // DB初期化が済むまで再生成は不可
-	$id("btn-regenerate").addEventListener("click", () => regenerate().catch(showRegenerationError));
+	setupRegenerationConfirmation();
 	$id("btn-copy").addEventListener("click", copyResult);
 	$id("btn-undo").addEventListener("click", undo);
 	$id("btn-redo").addEventListener("click", redo);

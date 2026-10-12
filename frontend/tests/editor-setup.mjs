@@ -1,4 +1,4 @@
-import { menuAction } from "./editor-ui.mjs";
+import { regenerateAll, menuAction } from "./editor-ui.mjs";
 // セットアップ画面(第1ステップ)のE2E。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけ、という契約を
 // 実ブラウザで確認する:
@@ -152,14 +152,14 @@ try {
 	await waitIdle(page);
 	assert(await wordsOf(page) === wordsFirst, "設定変更で歌詞が変わった");
 	await page.click("#btn-settings-close");
-	await page.click("#btn-regenerate");
+	await regenerateAll(page);
 	await waitIdle(page);
 	const afterReconvert = await readData(page);
 	assert(afterReconvert.param.WORD_NUMBER_PENALTY === 0,
 		"設定変更後の再変換でパラメータが反映されていない");
 	assert(await wordsOf(page) !== wordsFirst, "再変換したのに結果が同じ");
 	// 「固定中以外を再生成」も使える
-	await page.click("#btn-regenerate");
+	await regenerateAll(page);
 	await page.waitForFunction(() => document.getElementById("regen-progress").hidden,
 		undefined, { timeout: 180000 });
 
