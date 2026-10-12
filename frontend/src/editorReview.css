@@ -18,7 +18,6 @@
 .review-words { display: flex; flex-wrap: wrap; gap: .45rem; }
 .review-word { font: inherit; font-weight: 600; line-height: 1.5; min-height: 44px; padding: .45rem .7rem; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--panel); cursor: pointer; overflow-wrap: anywhere; max-width: 100%; }
 .review-word:hover, .review-word[aria-pressed="true"] { border-color: var(--accent); }
-.review-word.locked { background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-color: var(--accent); }
 .review-word .chip-lock-icon { width: .85em; height: .85em; margin-left: .35em; vertical-align: -.1em; color: inherit; }
 .review-word.filler { border-style: dashed; border-color: var(--muted); background: transparent; color: var(--muted); font-weight: 400; }
 .simple-editor.review-selecting { overflow: hidden; }
@@ -79,7 +78,6 @@
 #reverse-status { color: var(--muted); font-size: .8rem; margin: 0; overflow-wrap: anywhere; }
 .reverse-highlight { color: var(--text); background: color-mix(in srgb, #edb932 32%, var(--bg)); border-radius: 3px; }
 .review-word.reverse-word-match { background: color-mix(in srgb, #edb932 25%, var(--panel)); border-color: #ac8318; color: var(--text); }
-.review-word.reverse-word-match.locked { box-shadow: inset 0 -3px var(--accent); }
 .review-word-actions { display: flex; gap: .25rem; flex: none; }
 .review-word-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; min-width: 44px; min-height: 44px; padding: .5rem; font-size: .8rem; white-space: nowrap; }
 .review-word-actions svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
