@@ -1264,9 +1264,9 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		fields.className = "panel-free-fields";
 		const surfaceLabel = document.createElement("label");
 		surfaceLabel.className = "panel-replacement-field";
-		surfaceLabel.innerHTML = '<span>替え歌歌詞</span>';
 		const surfaceInput = document.createElement("input");
 		surfaceInput.className = "input panel-free-surface";
+		surfaceInput.setAttribute("aria-label", "替え歌歌詞");
 		surfaceInput.value = freeInputDraft.surface;
 		surfaceLabel.appendChild(surfaceInput);
 		const readingLabel = document.createElement("label");
