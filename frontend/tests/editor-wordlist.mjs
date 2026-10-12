@@ -1,5 +1,5 @@
 import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
-// 編集ツールの⚙モーダルにある「単語リスト」選択のE2E。
+// 編集ツールの設定モーダルにある「単語リスト」選択のE2E。
 // リストを切り替えても今の歌詞と固定を保持し、新しい候補を使えること、
 // 設定変更を戻る1回で取り消せること、
 // 自作リストをその場で書いて使えること、書き出しJSONが自作リストごと
@@ -81,7 +81,7 @@ async function openSettings(page) {
 	const open = await page.$eval("#editor-settings", (d) => d.open);
 	if (!open) {
 		await closeSelection(page);
-		await page.click("#btn-settings");
+		await menuAction(page, "#btn-settings");
 	}
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
@@ -294,7 +294,7 @@ try {
 		"登録した自作リストが localStorage に保存されていない");
 	await waitIdle(editor);
 	await closeSettings(editor);
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 	const afterOriginal = await readData(editor);
 	assert(afterOriginal.wordlist.value === "ORIGINAL",
@@ -334,7 +334,7 @@ try {
 		"ファイルから登録した内容がlocalStorageに保存されていない");
 	await waitIdle(editor);
 	await closeSettings(editor);
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 	const wordsFromFile = (await wordsOf(editor)).split("|").filter(Boolean);
 	assert(wordsFromFile.length > 0, "ファイルから読み込んだ自作リストでの結果が空");
@@ -433,7 +433,7 @@ try {
 	await editor.click("#btn-original-register");
 	await waitIdle(editor);
 	await closeSettings(editor);
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 	const guessedCsv = (await readData(editor)).wordlist.csvText;
 	const kanjiRow = guessedCsv.split("\n").find((r) => r.split(",")[2] === "林檎");

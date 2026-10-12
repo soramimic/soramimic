@@ -94,7 +94,7 @@ try {
 		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 
 	// ---- 語数の少ない自作リストで再変換する ----
-	await editor.click("#btn-settings");
+	await menuAction(editor, "#btn-settings");
 	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await editor.selectOption("#editor-wordlist", "ORIGINAL");
@@ -103,7 +103,7 @@ try {
 	await editor.click("#btn-original-register");
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 
 	// ---- 空行にならず、埋まらない区間が filler になっている ----

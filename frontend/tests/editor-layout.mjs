@@ -49,7 +49,12 @@ try {
 		for (const width of [320, 390, 1200]) {
 			await page.setViewportSize({ width, height: 740 });
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "lyrics overflow");
-			assert(await page.locator("#btn-settings").isVisible(), "settings must stay directly accessible");
+			const regenerate = page.getByRole("button", { name: "固定中以外を再生成", exact: true });
+			assert(await regenerate.isVisible(), "regeneration must stay directly accessible");
+			assert.equal(await regenerate.textContent(), "↻");
+			const buttonBounds = await regenerate.boundingBox();
+			assert(buttonBounds.width >= 44 && buttonBounds.height >= 44, "regeneration must be touch accessible");
+			assert(await page.locator("#btn-settings").isHidden(), "settings must be in the menu");
 			if (width === 390 && colorScheme === "dark") await screenshot("overview");
 			await first.click();
 			await page.locator(".review-unit").first().scrollIntoViewIfNeeded();
@@ -63,15 +68,18 @@ try {
 			await page.click(".panel-close");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
+			assert(await page.getByRole("button", { name: "変換のしかた", exact: true }).isVisible());
 			assert(await page.locator("#copy-format").isVisible());
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "menu overflows");
+			if (width === 390 && colorScheme === "dark") await screenshot("menu");
 			await page.keyboard.press("Escape");
 			assert.equal(await page.locator(".review-menu").evaluate((menu) => !menu.querySelector(".review-menu-body").hidden), false);
 		}
 	}
 	await page.setViewportSize({ width: 390, height: 740 });
 	await page.emulateMedia({ colorScheme: "dark" });
-	await page.click("#btn-settings");
+	await menuAction(page, "#btn-settings");
+	assert(await page.locator(".review-menu-body").isHidden(), "opening settings must dismiss the menu");
 	for (const selector of ["#editor-wordlist", "#editor-preset-buttons"]) {
 		assert(await page.locator(selector).isVisible(), `${selector} settings retained`);
 	}
@@ -86,6 +94,8 @@ try {
 	}
 	await screenshot("settings-expanded");
 	await page.click("#btn-settings-close");
+	assert(await page.locator(".review-menu-toggle").evaluate((button) => button === document.activeElement),
+		"closing settings must return focus to the menu toggle");
 	await first.click();
 	await page.locator(".panel-close").focus();
 	await page.keyboard.press("Shift+Tab");

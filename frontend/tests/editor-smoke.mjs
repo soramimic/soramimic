@@ -85,8 +85,9 @@ try {
 		"冒頭の操作説明が残っている");
 	assert(await editor.locator(".review-line .review-unit").count() === 0,
 		"読みの範囲が歌詞一覧に常駐している");
-	assert(await editor.locator("#btn-settings").isVisible(), "設定を直接開けない");
-	for (const id of ["#btn-regenerate", "#btn-copy", "#btn-export", "#btn-import"]) {
+	assert(await editor.getByRole("button", { name: "固定中以外を再生成", exact: true }).isVisible(),
+		"再生成を直接実行できない");
+	for (const id of ["#btn-settings", "#btn-copy", "#btn-export", "#btn-import"]) {
 		assert(await editor.locator(id).isHidden(), `${id}が通常画面に常駐している`);
 	}
 	const kanaBefore = await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor"))
@@ -565,7 +566,7 @@ try {
 		"やり直しで候補の差し替えが復元されない");
 
 	// ---- 固定中以外を再生成: 固定した単語が保持される ----
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
 		undefined, { timeout: 120000 },

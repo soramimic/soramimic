@@ -337,13 +337,12 @@ try {
 		"選択解除を取り消しても元の割り当てに戻らない");
 
 	// ---- 「変換のしかた」モーダルがタッチで開けて操作できること ----
-	// ツールバーの⚙・中のプリセット・×は、指でも押せる大きさで並んでいる必要がある
-	const gearEl = editor.locator("#btn-settings");
-	await gearEl.scrollIntoViewIfNeeded();
-	const gear = await gearEl.boundingBox();
-	assert(gear.width >= 28 && gear.height >= 28,
-		`⚙がタッチには小さい: ${gear.width}x${gear.height}`);
-	await editor.touchscreen.tap(gear.x + gear.width / 2, gear.y + gear.height / 2);
+	// 三点メニュー・設定項目・中のプリセット・×をタッチで操作する
+	await editor.locator(".review-menu-toggle").tap();
+	const settings = await editor.locator("#btn-settings").boundingBox();
+	assert(settings.width >= 28 && settings.height >= 28,
+		`設定項目がタッチには小さい: ${settings.width}x${settings.height}`);
+	await editor.touchscreen.tap(settings.x + settings.width / 2, settings.y + settings.height / 2);
 	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await editor.waitForSelector("#editor-param-area input[type=range]", { state: "attached", timeout: 10000 });
