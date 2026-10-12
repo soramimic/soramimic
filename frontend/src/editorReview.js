@@ -160,10 +160,10 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	const word = (data.results[line] || []).find((w) => w.period[0] === start && w.period[1] === end);
 	const kana = units.slice(start, end).map((u) => u.pronunciation).join("");
 	const header = element("div", "panel-header review-panel-header");
-	const close = element("button", "btn btn-ghost panel-close", "←");
+	const close = element("button", "btn btn-primary panel-close panel-done", "決定");
 	close.type = "button";
-	close.setAttribute("aria-label", "確定して歌詞一覧に戻る");
-	close.title = "確定して歌詞一覧に戻る";
+	close.setAttribute("aria-label", "決定して歌詞一覧に戻る");
+	close.title = "決定して歌詞一覧に戻る";
 	close.addEventListener("click", callbacks.close);
 	const title = element("h2", "review-selected-word", word?.surface || kana);
 	const selected = element("div", "review-selected");
@@ -171,7 +171,7 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	name.append(title);
 	if (word?.kana && word.kana !== word.surface) name.append(element("span", "review-selected-reading", word.kana));
 	selected.append(name);
-	header.append(close, selected);
+	header.append(selected);
 	const actions = element("div", "review-word-actions");
 	if (word && !word.filler) {
 		const lock = element("button", "btn btn-ghost panel-lock");
@@ -184,6 +184,7 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		actions.append(lock);
 	}
 	if (actions.childElementCount) header.append(actions);
+	header.append(close);
 	panel.append(header);
 	const range = element("div", "review-range");
 	range.dataset.line = String(line);
