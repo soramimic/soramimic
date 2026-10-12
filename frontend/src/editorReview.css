@@ -79,6 +79,11 @@
 .review-original mark, .review-original.reverse-line-match { color: var(--text); background: color-mix(in srgb, #edb932 32%, var(--bg)); border-radius: 3px; }
 .reverse-choices { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .65rem; }
 .reverse-match { min-height: 44px; font-size: .8rem; border-color: #ac8318; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.review-range .panel-clear { display: block; min-height: 44px; margin: .5rem 0 0 auto; font-size: .85rem; }
+.assignment-conflict-dialog p, .assignment-conflict-dialog li { overflow-wrap: anywhere; line-height: 1.7; }
+.assignment-conflict-dialog .dialog-buttons { flex-wrap: wrap; }
+.assignment-conflict-dialog .btn { min-height: 44px; }
+.assignment-conflict-context { display: block; color: var(--muted); font-size: .85rem; margin-bottom: .5rem; }
 @media (max-width: 360px) {
 	.simple-editor #app { padding-left: .5rem; padding-right: .5rem; }
 	.simple-editor .review-tools { gap: .1rem; }

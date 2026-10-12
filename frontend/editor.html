@@ -128,6 +128,16 @@
         <dialog id="editor-panel" class="editor-panel" aria-label="替え歌を編集"></dialog>
       </main>
 
+      <dialog id="editor-assignment-dialog" class="assignment-conflict-dialog" aria-labelledby="assignment-conflict-title" aria-describedby="assignment-conflict-description">
+        <h2 id="assignment-conflict-title">どちらの箇所を優先しますか？</h2>
+        <p id="assignment-conflict-description"></p>
+        <ul id="assignment-conflict-locations"></ul>
+        <div class="dialog-buttons">
+          <button id="btn-assignment-keep" class="btn" type="button" autofocus>元の箇所を優先</button>
+          <button id="btn-assignment-move" class="btn btn-primary" type="button">ここを優先</button>
+        </div>
+      </dialog>
+
       <!-- 候補選択とは独立した元歌詞の読み修正。実際の修正対象を簡潔に示す。 -->
       <dialog id="editor-reading-dialog" class="reading-fix-dialog" aria-labelledby="reading-fix-title">
         <div class="dialog-header">
