@@ -50,9 +50,11 @@ function longWordGraph(units){
 const MAX_ENUMERATED_VARIATIONS = 256;
 
 export class PronunciationSearch {
-	constructor(target, lengths){
+	// Diagnostics may restrict alternatives without changing normal searches.
+	constructor(target, lengths, {expandLongVowels=true, allowSoundChanges=true}={}){
 		this.levels = target.flatMap((syllable, source)=>syllable === null ? [] : [{
-			source, options: syllableVariations(syllable).map(({u,c})=>({
+			source, options: syllableVariations(syllable,expandLongVowels)
+				.filter(({c})=>allowSoundChanges || c===0).map(({u,c})=>({
 				units:u.filter(unit=>unit!==""), cost:c,
 			})),
 		}]);
