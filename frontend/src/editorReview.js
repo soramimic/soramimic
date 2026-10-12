@@ -45,7 +45,7 @@ export function setupReviewToolbar(review) {
 	const toolbar = document.getElementById("editor-toolbar");
 	const actions = element("div", "review-tools");
 	for (const [id, label, icon] of [
-		["btn-undo", "元に戻す", "↶"], ["btn-redo", "やり直す", "↷"],
+		["btn-undo", "元に戻す", "←"], ["btn-redo", "やり直す", "→"],
 	]) {
 		const button = document.getElementById(id);
 		button.textContent = icon;
