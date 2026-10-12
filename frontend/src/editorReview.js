@@ -121,6 +121,19 @@ export function setupReviewToolbar(review) {
 	header.before(pageHeader);
 	pageHeader.append(header, document.getElementById("editor-status"),
 		document.getElementById("bridge-status"), toolbar);
+	const main = document.querySelector("main");
+	document.getElementById("reverse-search").addEventListener("toggle", (event) => {
+		const open = event.currentTarget.open;
+		const top = open ? window.scrollY : main.scrollTop;
+		document.documentElement.classList.toggle("reverse-search-open", open);
+		// Transfer the lyric position when changing between page and lyric scrolling.
+		if (open) {
+			window.scrollTo({ top: 0, behavior: "instant" });
+			main.scrollTo({ top, behavior: "instant" });
+		} else {
+			window.scrollTo({ top, behavior: "instant" });
+		}
+	});
 }
 
 export function renderReviewLine(data, line, selection, choose, lockIcon, decorate) {

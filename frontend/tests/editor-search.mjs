@@ -40,7 +40,7 @@ try {
 		await new Promise((resolve) => setTimeout(resolve, 300));
 	}
 	browser = await (process.env.EDITOR_SEARCH_BROWSER === "webkit" ? webkit : chromium).launch();
-	const context = await browser.newContext({ viewport: { width: 390, height: 740 } });
+	const context = await browser.newContext({ viewport: { width: 390, height: 740 }, isMobile: true, hasTouch: true });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
 	const page = await context.newPage();
 	const errors = [];
@@ -217,7 +217,14 @@ try {
 				return { x, y, width, height };
 			}));
 		let initialUpperPositions = await upperPositions();
+		await page.evaluate(() => {
+			window.navigationScrolls = [];
+			window.addEventListener("scroll", () => window.navigationScrolls.push(scrollY));
+		});
 		const assertCurrent = async (index, line, character) => {
+			await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+			assert.equal(await page.evaluate(() => scrollY), 0, "hit navigation must not scroll the page behind the header");
+			assert.deepEqual(await page.evaluate(() => window.navigationScrolls), [], "navigation must not move the page even temporarily");
 			assert.equal(await page.textContent("#reverse-count"), `${index} / 3`);
 			const current = page.locator("mark.reverse-current");
 			assert.equal(await current.count(), 1, "only the active source hit is emphasized");
@@ -231,21 +238,21 @@ try {
 			assert.equal(await page.locator("#editor-panel").evaluate((node) => node.open), false, "navigation does not open the editor");
 			const hitBox = await current.boundingBox();
 			const toolbarBox = await page.locator("#editor-toolbar").boundingBox();
-			assert(hitBox.y >= toolbarBox.y + toolbarBox.height && hitBox.y + hitBox.height <= 640,
+			assert(hitBox.y >= toolbarBox.y + toolbarBox.height && hitBox.y + hitBox.height <= page.viewportSize().height,
 				"the active hit is visible below the search controls");
 			const nextBox = await page.locator("#reverse-next").boundingBox();
-			assert(nextBox.y >= 0 && nextBox.y + nextBox.height <= 640, "controls stay on screen after moving");
+			assert(nextBox.y >= 0 && nextBox.y + nextBox.height <= page.viewportSize().height, "controls stay on screen after moving");
 			assert.deepEqual(await upperPositions(), initialUpperPositions,
 				"the header, search toolbar and arrows stay in the same positions when visiting hits");
 		};
 		await assertCurrent(1, 0, 0);
-		await page.click("#reverse-next");
+		await page.locator("#reverse-next").tap();
 		await assertCurrent(2, 0, 1);
-		await page.click("#reverse-next");
+		await page.locator("#reverse-next").tap();
 		await assertCurrent(3, 25, 0);
-		await page.click("#reverse-next");
+		await page.locator("#reverse-next").tap();
 		await assertCurrent(1, 0, 0);
-		await page.click("#reverse-previous");
+		await page.locator("#reverse-previous").tap();
 		await assertCurrent(3, 25, 0);
 		await page.locator("#reverse-word").press("Shift+Enter");
 		await assertCurrent(2, 0, 1);
@@ -256,12 +263,19 @@ try {
 		await assertCurrent(3, 25, 0);
 		for (const width of [390, 1200]) {
 			await page.setViewportSize({ width, height: 640 });
-			await page.click("#reverse-next");
+			await page.locator("#reverse-next").tap();
 			initialUpperPositions = await upperPositions();
 			await assertCurrent(1, 0, 0);
-			await page.click("#reverse-previous");
+			await page.locator("#reverse-previous").tap();
 			await assertCurrent(3, 25, 0);
 		}
+		await page.setViewportSize({ width: 390, height: 420 });
+		await page.locator("#reverse-next").tap();
+		initialUpperPositions = await upperPositions();
+		await assertCurrent(1, 0, 0);
+		await page.locator("#reverse-previous").tap();
+		await assertCurrent(3, 25, 0);
+		assert(await page.locator("main").evaluate((node) => node.scrollTop > 500), "distant hits scroll inside the lyrics");
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
@@ -271,8 +285,8 @@ try {
 		await page.fill("#reverse-word", "ソラソラ");
 		await searchDone();
 		assert.equal(await page.textContent("#reverse-count"), "1 / 1");
-		await page.click("#reverse-next");
-		await page.click("#reverse-previous");
+		await page.locator("#reverse-next").tap();
+		await page.locator("#reverse-previous").tap();
 		assert.equal(await page.textContent("#reverse-count"), "1 / 1", "a single hit wraps to itself");
 		await page.click("#reverse-clear");
 		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
@@ -367,7 +381,7 @@ try {
 	await searchDone();
 	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);
-	print("[ok] standalone/review kana search, hit navigation and wrapping, keyboard/IME, sticky controls, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
+	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, short viewport, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid, "SIGTERM"); } catch {}
