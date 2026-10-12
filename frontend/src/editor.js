@@ -8,6 +8,7 @@ import "./appBridge.js";
 import { validateEditorData } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
 import "./editorVisualization.css";
+import { createGenerationHistoryRepository } from "./generationHistory.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -180,6 +181,21 @@ function setupEmbedNavigation() {
 }
 
 let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
+const generationHistory = createGenerationHistoryRepository();
+const pendingHistoryWrites = new Set();
+let historyFailureNotified = false;
+
+function saveGenerationHistory() {
+	if (!data?.generationHistoryId) return;
+	const write = generationHistory.update(data.generationHistoryId, data);
+	pendingHistoryWrites.add(write);
+	write.then(() => { pendingHistoryWrites.delete(write); }, () => {
+		pendingHistoryWrites.delete(write);
+		if (historyFailureNotified) return;
+		historyFailureNotified = true;
+		alert("編集内容を履歴に保存できませんでした。「書き出し」でファイルに保存してください。");
+	});
+}
 
 // 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
 // それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
@@ -187,6 +203,7 @@ let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作の
 function saveData() {
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+		saveGenerationHistory();
 		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
@@ -195,6 +212,7 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+			saveGenerationHistory();
 			return true;
 		} catch (err2) {
 			console.error(err2);
@@ -2746,6 +2764,7 @@ async function importFile(file) {
 	// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
 	// 生成画面から開いたときと同じ起動フローに乗る
 	delete obj.format;
+	delete obj.generationHistoryId;
 	obj.history = [];
 	obj.future = [];
 	try {
@@ -2942,6 +2961,15 @@ async function start() {
 }
 
 setupEmbedNavigation();
+if (window.parent === window) {
+	$id("editor-brand").addEventListener("click", async event => {
+		if (!data?.generationHistoryId || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+		event.preventDefault();
+		const href = event.currentTarget.href;
+		await Promise.all([...pendingHistoryWrites].map(write => write.catch(() => {})));
+		location.assign(href);
+	});
+}
 setupReplacementPanel();
 const initialization = (async () => {
 	const status = $id("bridge-status");

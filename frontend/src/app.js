@@ -1,6 +1,7 @@
 // UIの配線。機能は旧 widget/(SettingArea, ConversionArea, NavigationButtons)と同等。
 import { fetchText, fetchJson } from "./api.js";
 import { validateEditorData } from "./editorData.js";
+import { createGenerationHistoryRepository } from "./generationHistory.js";
 import {
 	loadEngine, buildDatabase, unitsListFromTokens,
 } from "./appCore.js";
@@ -83,6 +84,7 @@ export async function startApp() {
 		delete payload.setupFirst;
 		delete payload.host;
 		delete payload.hostRequest;
+		delete payload.generationHistoryId;
 		payload.history = [];
 		payload.future = [];
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
@@ -743,6 +745,14 @@ export async function startApp() {
 	// ---- 変換 ----
 	let pastResult = null;
 	let lastConversion = null; // 直近の変換入力(編集ツールへの受け渡し用)
+	let editorPayload = null;
+	let selectedHistoryId = null;
+	let historyEntries = [];
+	let historyBusy = false;
+	const historyRepository = createGenerationHistoryRepository();
+	const historySelect = $id("history-select");
+	const historyDelete = $id("history-delete");
+	const historyStatus = $id("history-status");
 
 	function saveMainState() {
 		try {
@@ -757,8 +767,10 @@ export async function startApp() {
 				phrase: values.phrase,
 				wordnum: values.wordnum,
 				duplicate: String(values.duplicate),
-				pastResult,
-				lastConversion,
+				historyId: selectedHistoryId,
+				unsavedResult: !selectedHistoryId ? editorPayload : undefined,
+				pastResult: !selectedHistoryId && !editorPayload ? pastResult : undefined,
+				lastConversion: !selectedHistoryId && !editorPayload ? lastConversion : undefined,
 			}));
 		} catch (err) {
 			console.warn("生成画面の状態保存に失敗:", err);
@@ -774,19 +786,23 @@ export async function startApp() {
 	let convertMeta = null; // 変換1回分の計測情報(convertイベント用)
 
 	const btnOpenEditor = $id("btn-open-editor");
+	async function makeEditorPayload(conversion = lastConversion, results = pastResult) {
+		const engine = await enginePromise;
+		return {
+			phrases: conversion.phrases,
+			tokensList: conversion.tokensList,
+			results,
+			param: conversion.param,
+			wordlist: conversion.wordlist,
+			where: conversion.where,
+			unitsList: unitsListFromTokens(engine.app, conversion.tokensList),
+		};
+	}
 	async function openEditor() {
-		if (!pastResult || pastResult.length === 0 || !lastConversion) return;
-		({ app } = await enginePromise);
-		const unitsList = unitsListFromTokens(app, lastConversion.tokensList);
-		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify({
-			phrases: lastConversion.phrases,
-			tokensList: lastConversion.tokensList,
-			results: pastResult,
-			param: lastConversion.param,
-			wordlist: lastConversion.wordlist,
-			where: lastConversion.where,
-			unitsList,
-		}));
+		if (!pastResult?.length) return;
+		const payload = structuredClone(editorPayload || await makeEditorPayload());
+		if (selectedHistoryId) payload.generationHistoryId = selectedHistoryId;
+		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
 		track("open_editor", {});
 		window.location.assign("editor.html");
 	}
@@ -798,6 +814,102 @@ export async function startApp() {
 		status.hidden = false;
 	}
 	btnOpenEditor.addEventListener("click", () => openEditor().catch(showGenerationError));
+
+	function showHistoryStatus(message) {
+		historyStatus.textContent = message;
+		historyStatus.hidden = !message;
+		if (message) { outputField.hidden = false; outputField.open = true; }
+	}
+	function renderHistoryOptions() {
+		historySelect.replaceChildren();
+		if (!selectedHistoryId) historySelect.append(new Option("今回の結果（未保存）", ""));
+		for (const entry of historyEntries) {
+			const date = new Date(entry.createdAt).toLocaleString("ja-JP", {
+				year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+			});
+			const firstLine = entry.payload.phrases?.find(line => line.trim()) || entry.sourceText || "";
+			const name = entry.payload.wordlist?.text || "単語リスト";
+			historySelect.append(new Option(`${date} · ${name} · ${firstLine.slice(0, 32)}`, entry.id));
+		}
+		historySelect.value = selectedHistoryId || "";
+		historySelect.disabled = historyBusy || historyEntries.length === 0;
+		historyDelete.disabled = historyBusy || !selectedHistoryId;
+		btnOpenEditor.disabled = historyBusy;
+		$id("history-count").textContent = historyEntries.length ? `（${historyEntries.length}件）` : "";
+	}
+	function selectHistoryEntry(entry) {
+		selectedHistoryId = entry?.id || null;
+		editorPayload = entry ? structuredClone(entry.payload) : null;
+		pastResult = editorPayload?.results || null;
+		outputText.value = pastResult?.length ? makeResultText(pastResult, formatSelect.value) : "";
+		btnCopyResult.disabled = !outputText.value;
+		btnOpenEditor.hidden = !pastResult?.length;
+		outputField.hidden = !historyEntries.length && !editorPayload && historyStatus.hidden;
+		renderHistoryOptions();
+		saveMainState();
+	}
+	historySelect.addEventListener("change", () => {
+		const entry = historyEntries.find(item => item.id === historySelect.value);
+		if (entry) selectHistoryEntry(entry);
+	});
+	historyDelete.addEventListener("click", async () => {
+		const id = selectedHistoryId;
+		if (!id || !confirm("選択した生成結果を履歴から削除しますか？")) return;
+		historyDelete.disabled = true;
+		try {
+			await historyRepository.remove(id);
+			historyEntries = await historyRepository.list();
+			showHistoryStatus("");
+			selectHistoryEntry(historyEntries[0]);
+		} catch {
+			showHistoryStatus("生成結果を削除できませんでした。もう一度お試しください。");
+			renderHistoryOptions();
+		}
+	});
+
+	async function initializeHistory() {
+		if (savedMain?.unsavedResult?.results?.length) {
+			editorPayload = savedMain.unsavedResult;
+			pastResult = editorPayload.results;
+			outputText.value = makeResultText(pastResult, formatSelect.value);
+			btnOpenEditor.hidden = false;
+			btnCopyResult.disabled = false;
+		}
+		try {
+			historyEntries = await historyRepository.list();
+			if (pastResult?.length && lastConversion) {
+				// 前回1件だけのセッション保存を、重複させずに永続履歴へ移す。
+				const payload = await makeEditorPayload();
+				const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
+				const id = "legacy-" + [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+				try {
+					const entry = await historyRepository.add(payload, payload.phrases.join("\n"), { id });
+					historyEntries = await historyRepository.list();
+					selectHistoryEntry(entry);
+				} catch {
+					editorPayload = payload;
+					showHistoryStatus("この結果を履歴に保存できませんでした。編集画面の「書き出し」で保存できます。");
+					renderHistoryOptions();
+				}
+				return;
+			}
+			if (savedMain?.unsavedResult?.results?.length) {
+				editorPayload = savedMain.unsavedResult;
+				pastResult = editorPayload.results;
+				outputText.value = makeResultText(pastResult, formatSelect.value);
+				btnOpenEditor.hidden = false;
+				btnCopyResult.disabled = false;
+				showHistoryStatus("この結果は履歴に保存されていません。編集画面の「書き出し」で保存できます。");
+				renderHistoryOptions();
+				return;
+			}
+			const entry = historyEntries.find(item => item.id === savedMain?.historyId) || historyEntries[0];
+			selectHistoryEntry(entry);
+		} catch {
+			showHistoryStatus("過去の生成結果を読み込めませんでした。再読み込みしてお試しください。");
+			renderHistoryOptions();
+		}
+	}
 
 	// 変換の世代トークン。中止・再実行のたびに進め、エンジン・辞書ロード中
 	// (=生成チェーン開始前)に中止された変換が後から走り出すのを防ぐ。
@@ -814,10 +926,12 @@ export async function startApp() {
 	}
 
 	function setGenerationBusy(busy) {
+		historyBusy = busy;
 		for (const control of document.querySelectorAll(".generation-card button, .generation-card input, .generation-card textarea, .generation-card select")) {
 			if (control !== btnCancel) control.disabled = busy;
 		}
 		if (!busy) updateConvertLabel();
+		renderHistoryOptions();
 	}
 
 	btnCancel.addEventListener("click", () => {
@@ -837,7 +951,7 @@ export async function startApp() {
 		resetConvertUi();
 	});
 
-	function setResult(result) {
+	async function setResult(result, gen) {
 		if (convertMeta) {
 			track("convert", {
 				text_length: convertMeta.textLength,
@@ -849,6 +963,8 @@ export async function startApp() {
 			convertMeta = null;
 		}
 		pastResult = result;
+		selectedHistoryId = null;
+		editorPayload = null;
 		outputField.hidden = false;
 		if (result.length === 0) {
 			outputText.value = "うまく変換できる単語を見つけられませんでした";
@@ -859,6 +975,25 @@ export async function startApp() {
 			btnOpenEditor.hidden = false;
 		}
 		btnCopyResult.disabled = outputText.value.length === 0;
+		if (result.length > 0) {
+			const conversion = lastConversion;
+			const payload = await makeEditorPayload(conversion, result);
+			try {
+				const entry = await historyRepository.add(payload, conversion.sourceText || conversion.phrases.join("\n"));
+				historyEntries = await historyRepository.list();
+				if (gen !== convertGen) return;
+				showHistoryStatus("");
+				selectHistoryEntry(entry);
+			} catch {
+				if (gen !== convertGen) return;
+				editorPayload = payload;
+				showHistoryStatus("この結果を履歴に保存できませんでした。編集画面の「書き出し」で保存できます。");
+				resetConvertUi();
+				saveMainState();
+				return;
+			}
+		}
+		if (gen !== convertGen) return;
 		resetConvertUi();
 		saveMainState();
 		if (result.length > 0) openEditor().catch(showGenerationError);
@@ -933,6 +1068,7 @@ export async function startApp() {
 			btnOpenEditor.hidden = false;
 		}
 	}
+	await initializeHistory();
 
 	btnConvert.addEventListener("click", () => {
 		const text = inputText.value;
@@ -998,7 +1134,7 @@ export async function startApp() {
 				const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された
 				lastConversion = {
-					phrases, tokensList, param, wordlist: entry, where,
+					phrases, tokensList, param, wordlist: entry, where, sourceText: text,
 				};
 				btnConvert.textContent = "生成中...";
 				const updateFunc = (result, i) => {
@@ -1008,7 +1144,7 @@ export async function startApp() {
 				convertHandle = app.soramimiMaker.generateFromTokens(tokensList, db, param, updateFunc, (result) => {
 					if (gen !== convertGen) return; // 中止済みの結果は捨てる
 					convertHandle = null;
-					setResult(result);
+					setResult(result, gen).catch(error => { showGenerationError(error); resetConvertUi(); });
 				});
 			} catch (err) {
 				if (gen !== convertGen) return;
