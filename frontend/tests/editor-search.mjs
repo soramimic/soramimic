@@ -207,6 +207,20 @@ try {
 			"たけ highlights 畑 despite starting inside its reading");
 		assert.deepEqual(await state(), beforeSearch, "partial reading search changes no saved editor state");
 	}
+	// Longer, worse matches must not crowd a closer short range out of the top ten.
+	const rankingPhrases = [...Array(10).fill("キンンンン"), "キ"];
+	const rankingTokens = app.textAnalyzer.tokenizeTogether(rankingPhrases);
+	const rankingSeed = { ...structuredClone(seed), phrases: rankingPhrases, tokensList: rankingTokens,
+		unitsList: rankingTokens.map((row) => app.textAnalyzer.getYomiAndPhraseBreak(row)),
+		results: rankingPhrases.map(() => []), history: [], future: [], dirtyLines: [], weightsList: null };
+	await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), rankingSeed);
+	await page.reload();
+	await ready();
+	await page.click("#reverse-search > summary");
+	await page.fill("#reverse-word", "か");
+	await searchDone();
+	assert.equal(await page.locator('[data-line="10"] mark.reverse-highlight').textContent(), "キ",
+		"longer ranges with more deletion penalties must not displace the closer short match");
 	// Edit a source reading while reverse highlights are visible. The automatic
 	// character allocation loses part of this token's spelling, but not the line.
 	const source = "負われて見たのは、いつの日か";

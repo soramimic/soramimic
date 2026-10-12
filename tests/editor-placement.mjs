@@ -37,6 +37,20 @@ await assert.rejects(findPlacements(app, "123", units, param), /かな/);
 await assert.rejects(findPlacements(app, "ン".repeat(30), units, param), /複雑/);
 assert.deepEqual(await findPlacements(app, "ソラ", units, param, null, { aborted: true }), []);
 
+// Extra deletable sounds must retain their cost, not improve a range's rank.
+const shortQueryDb = await app.wordList.parsePlain("カ,カ");
+const shortScore = app.soramimiMaker.getCandidates(shortQueryDb, ["キ"], param, 1)[0].sim;
+for (const extraSound of ["ン", "ッ"]) {
+	for (const count of [1, 3, 8]) {
+		const target = ["キ", ...Array(count).fill(extraSound)];
+		const [best] = await findPlacements(app, "カ", [target.map((pronunciation) => ({ pronunciation }))], param);
+		assert.deepEqual([best.start, best.end], [0, 1], "extending a match with deletions must not outrank its shorter prefix");
+		assert.equal(best.score, shortScore, "reverse search uses the same total distance as word candidates");
+		const longerScore = app.soramimiMaker.getCandidates(shortQueryDb, target, param, 1)[0].sim;
+		assert.equal(longerScore, shortScore + count * param.VARIATION_COST, "every deleted sound retains its full penalty");
+	}
+}
+
 const original = "負われて見たのは、いつの日か";
 const corrected = app.textAnalyzer.tokenizeTogether([original])[0];
 corrected[0].pronunciation = "コトーゲ";
