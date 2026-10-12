@@ -42,17 +42,20 @@
 .simple-editor .editor-panel.open { transform: none; }
 .review-panel-header { position: sticky; top: 0; z-index: 2; background: var(--bg); align-items: flex-start; gap: .7rem; padding: calc(.6rem + env(safe-area-inset-top)) 0 .6rem; margin: 0; }
 .review-panel-header .panel-close { min-width: 44px; min-height: 44px; font-size: 1.25rem; }
-.review-selected { flex: 1; min-width: 0; }
+.review-selected { flex: 1; min-width: 0; display: flow-root; }
+.review-selected-name { overflow-wrap: anywhere; }
+/* The summary sits beside the name; expanded facts use the full selected area. */
+.review-selected:has(.review-word-details:not([hidden])) .review-selected-name { float: left; max-width: 45%; margin-right: .65rem; }
 .review-selected-reading { color: var(--muted); font-size: .8rem; }
 .review-selected-word { font-size: 1.1rem; margin: 0; flex: 1; overflow-wrap: anywhere; }
-.review-word-details { margin-top: .15rem; font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+.review-word-details { font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .review-word-details > summary { display: flex; align-items: flex-start; gap: .35rem; min-height: 44px; padding: .2rem 0; color: var(--muted); cursor: pointer; list-style: none; }
 .review-word-details > summary::-webkit-details-marker { display: none; }
 .review-word-details > summary::after { content: "⌄"; flex: none; }
 .review-word-details[open] > summary::after { content: "⌃"; }
 .review-word-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
-.review-word-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.review-word-details dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: .2rem .5rem; margin: .2rem 0 0; max-height: min(10rem, 30dvh); overflow: auto; }
+.review-word-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; overflow: hidden; }
+.review-word-details dl { clear: both; display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: .2rem .5rem; margin: .2rem 0 0; max-height: min(10rem, 30dvh); overflow: auto; }
 .review-word-details dt { color: var(--muted); }
 .review-word-details dd { margin: 0; white-space: pre-line; }
 .review-range { border-bottom: 1px solid var(--border); padding: .5rem 0 .8rem; margin-bottom: 1rem; color: var(--muted); font-size: .85rem; }
