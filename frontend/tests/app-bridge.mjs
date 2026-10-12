@@ -98,6 +98,33 @@ try {
 	await source.evaluate(({nonce,payload,editor}) => window.pending.postMessage({type:"soramimic:lyrics-transfer/1", action:"data", nonce, payload},editor), {nonce,payload,editor});
 	await pending.waitForFunction(() => JSON.parse(sessionStorage.getItem("soramimic-editor"))?.lyrics === "沈む");
 	assert.equal(await pending.evaluate(() => window.opener), null);
+
+	// Start at the real conversion screen. Long annotations and separators in
+	// their surface must preserve the supplied reading all the way to Video.
+	const input = await context.newPage();
+	await input.goto(editor + "/");
+	await input.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+	await input.locator("#wordlist-trigger").click();
+	await input.locator('#wordlist-buttons button[data-value="POKEMON"]').click();
+	const annotated = `｜${"未来".repeat(10)}《${"ミライ".repeat(10)}》\n｜雲/空《クモソラ》`;
+	await input.locator("#input-text").fill(annotated);
+	await input.locator("#btn-convert").click();
+	await input.waitForURL(editor + "/editor.html", { timeout: 180000 });
+	const annotatedEditor = input;
+	await annotatedEditor.locator("#btn-video").waitFor({ state: "visible" });
+	await annotatedEditor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	const annotatedVideoPromise = context.waitForEvent("page");
+	await annotatedEditor.locator("#btn-video").click();
+	const annotatedVideo = await annotatedVideoPromise;
+	await annotatedVideo.waitForFunction(() => window.received);
+	const annotatedResult = await annotatedVideo.evaluate(() => window.received);
+	assert.equal(annotatedResult.phrases.length, 2);
+	assert.equal(annotatedResult.unitsList.flat().map((u) => u.pronunciation).join(""),
+		"ミライ".repeat(10) + "クモソラ");
+	assert.deepEqual(annotatedResult.tokensList.map((row) => row.map((t) => t.surface_form).join("")),
+		["未来".repeat(10), "雲/空"]);
+	console.log("[ok] annotated lyrics keep reading and spelling from conversion to Video");
+
 	await target.evaluate(() => { window.open = () => null; });
 	await target.click("#btn-video");
 	await target.waitForFunction(() => document.getElementById("bridge-status").textContent.includes("ポップアップを許可"));

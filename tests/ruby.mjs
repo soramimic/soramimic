@@ -91,6 +91,29 @@ print(`parseRuby: ${PARSE_CASES.length - failed}/${PARSE_CASES.length} 件一致
 assert.strictEqual(hasRuby("｜本気《マジ》"), true);
 assert.strictEqual(hasRuby("本気《マジ》"), false);
 
+// Phrase limits and separators must not turn a valid reading annotation into
+// literal punctuation or let its surface text acquire a different reading.
+const { textToPhrases } = await import(
+	pathToFileURL(path.join(ROOT, "frontend/src/convert.js")).href);
+for (const input of [
+	`｜${"空".repeat(24)}《${"ソラ".repeat(24)}》`,
+	`${"あ".repeat(35)}｜未来《ミライ》${"え".repeat(12)}`,
+	`｜赤,青/緑《アオ》${"あ".repeat(45)}`,
+	`${"｜本気《マジ》".repeat(12)}`,
+]) {
+	const phrases = textToPhrases(input);
+	const parsed = phrases.map(parseRuby);
+	assert.strictEqual(parsed.map((row) => row.plain).join(""), parseRuby(input).plain,
+		`phrase splitting preserves surface: ${input}`);
+	assert.deepStrictEqual(parsed.flatMap((row) => row.annotations.map((a) => a.reading)),
+		parseRuby(input).annotations.map((a) => a.reading),
+		`phrase splitting preserves explicit readings: ${input}`);
+}
+assert.deepStrictEqual(textToPhrases("一行目\r\n二行目/三行目\n"),
+	["一行目", "二行目", "三行目", ""]);
+const longAnnotation = `｜${"未来".repeat(10)}《${"ミライ".repeat(10)}》`;
+assert.deepStrictEqual(textToPhrases(longAnnotation), [longAnnotation]);
+
 // ---- トークナイズ入口での読み上書き(kuromoji経路) ----
 const harness = await buildApp();
 const ta = harness.app.textAnalyzer;
