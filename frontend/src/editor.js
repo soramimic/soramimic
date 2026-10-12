@@ -1246,6 +1246,7 @@ function closeFreeInput() {
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
 	renderPanel();
+	$id("editor-panel").querySelector(".panel-free-toggle")?.focus({ preventScroll: true });
 }
 
 function appendReplacementControls(panel) {
@@ -1288,12 +1289,10 @@ function appendReplacementControls(panel) {
 		const actions = document.createElement("div");
 		actions.className = "panel-free-actions";
 		const back = document.createElement("button");
-		back.className = "btn btn-ghost panel-close panel-free-back";
+		back.className = "btn panel-free-back";
 		back.type = "button";
-		back.textContent = "×";
-		back.setAttribute("aria-label", "候補選択に戻る");
-		back.title = "候補選択に戻る";
-		panel.querySelector(".panel-close").replaceWith(back);
+		back.textContent = "キャンセル";
+		back.setAttribute("aria-label", "キャンセルして候補選択に戻る");
 		// ソフトウェアキーボード表示中は通常の click がパネル移動で消えることがあるため、
 		// touch は pointerup で確定する。スクロール開始点がボタン上でも誤って閉じないよう、
 		// 指が動いた場合はタップとして扱わない。
@@ -1352,7 +1351,7 @@ function appendReplacementControls(panel) {
 				if (e.key === "Enter") applyFree();
 			});
 		}
-		actions.append(apply);
+		actions.append(back, apply);
 		free.append(heading, fields, note, actions);
 		panel.appendChild(free);
 		queueMicrotask(() => focusReadingInput(surfaceInput));
@@ -1376,6 +1375,12 @@ function buildPanel() {
 	}
 	panel.textContent = "";
 	panel.classList.add("open");
+	panel.setAttribute("aria-label", freeInputOpen ? "歌詞を入力" : "替え歌を編集");
+	if (freeInputOpen) {
+		appendReplacementControls(panel);
+		panel.scrollTop = 0;
+		return;
+	}
 	const { line, start, end } = selection;
 	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
@@ -1431,11 +1436,6 @@ function buildPanel() {
 		renderGroupPicker(panel, byKey.get(openGroupKey), used, isSelected);
 		return;
 	}
-	if (freeInputOpen) {
-		appendReplacementControls(panel);
-		return;
-	}
-
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
 	const listTitle = document.createElement("h3");

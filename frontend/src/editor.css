@@ -140,7 +140,7 @@ html.editor-free-input-open .editor-toolbar {
 }
 
 .panel-free {
-	margin-top: 0.7rem;
+	margin-top: calc(0.7rem + env(safe-area-inset-top));
 	padding: 0.7rem;
 	border: 1px solid var(--border);
 	border-radius: 8px;
@@ -159,11 +159,19 @@ html.editor-free-input-open .editor-toolbar {
 }
 
 .panel-free-actions {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.5rem;
 	margin-top: 0.5rem;
+}
+
+.panel-free-actions .btn {
+	min-height: 44px;
+}
+
+.panel-free .input {
+	min-height: 44px;
+	font-size: 1rem;
 }
 
 .panel-note {
@@ -448,11 +456,6 @@ html.editor-free-input-open .editor-toolbar {
 
 	.panel-replacement-note {
 		grid-column: 1;
-	}
-
-	.panel-free-actions {
-		align-items: stretch;
-		flex-direction: column;
 	}
 }
 
