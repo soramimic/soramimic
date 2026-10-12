@@ -147,14 +147,39 @@ try {
 		assert.deepEqual(after.tokensList, before.tokensList);
 		assert.deepEqual(after.unitsList, before.unitsList);
 		assert.deepEqual(after.results[1], before.results[1]);
+		await completed();
+		assert.equal(await input.inputValue(), "ﾏｰｻﾁｪｲｽ", "selecting a hit preserves the query");
+		assert(await page.locator(".panel-suggestions").isHidden(), "selection keeps the search results visible");
+		assert.equal(await hit.getAttribute("aria-pressed"), "true", "the chosen search hit is highlighted");
+		if (process.env.EDITOR_SCREENSHOTS && !review) {
+			await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/wordlist-search-selected-mobile.png`, animations: "disabled" });
+		}
+		await input.fill("チェイス");
+		await completed();
+		await page.locator(".wordlist-search-results .candidate:has(.candidate-count)").tap();
+		await page.locator('.group-entry[data-candidate-id="3"]').tap();
+		await completed();
+		assert.equal(await input.inputValue(), "チェイス", "choosing a duplicate ID also preserves the query");
+		assert.equal(await page.locator('.wordlist-search-results .candidate[data-candidate-id="2"]').getAttribute("aria-pressed"), "true");
+		const second = await state();
+		assert.equal(second.results[0][0].id, "3");
+		await page.getByRole("button", { name: "検索を消す", exact: true }).tap();
+		assert.equal(await input.inputValue(), "");
+		assert(await page.locator(".panel-suggestions").isVisible(), "only clearing the query returns to normal candidates");
+		assert(await page.locator(".wordlist-search-results").isHidden());
+		assert.deepEqual(await state(), second, "clearing search does not undo the chosen word");
 		await page.locator(".panel-close").click();
+		await page.click("#btn-undo");
+		assert.deepEqual((await state()).results, after.results);
 		await page.click("#btn-undo");
 		assert.deepEqual((await state()).results, before.results);
 		await page.click("#btn-redo");
 		assert.deepEqual((await state()).results, after.results);
+		await page.click("#btn-redo");
+		assert.deepEqual((await state()).results, second.results);
 		await page.reload();
 		await ready();
-		assert.deepEqual((await state()).results, after.results, "search selection persists across reload");
+		assert.deepEqual((await state()).results, second.results, "search selection persists across reload");
 	}
 	assert.deepEqual(errors, []);
 	print("[ok] list search: full filtered DB, spelling/name/kana, bounded results, duplicate IDs, IME, keyboard, responsive layout, saved replacement and undo/redo");

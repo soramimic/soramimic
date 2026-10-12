@@ -535,10 +535,10 @@ function panelResultsSnapshot(results) {
 	}))));
 }
 
-function setSelection(next) {
+function setSelection(next, { keepSearch = false } = {}) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
-	wordlistSearchQuery = "";
+	if (!keepSearch) wordlistSearchQuery = "";
 	openSearchGroup = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
@@ -749,7 +749,7 @@ function applyReplacement(word, conflicts = []) {
 	words.sort((a, b) => a.period[0] - b.period[0]);
 	data.results[line] = words;
 	saveData();
-	setSelection(selection);
+	setSelection(selection, { keepSearch: true });
 	$id("editor-panel").scrollTop = 0;
 	for (const otherLine of new Set(conflicts.map((conflict) => conflict.line))) {
 		if (otherLine !== line) rerenderLine(otherLine);
@@ -1411,7 +1411,7 @@ function appendWordlistSearch(panel, used, isSelected) {
 	section.append(field, status, results);
 	panel.append(section);
 	let timer, composing = false;
-	const update = () => {
+	const update = (delay = 150) => {
 		clearTimeout(timer);
 		wordlistSearchController?.abort();
 		wordlistSearchQuery = input.value;
@@ -1445,7 +1445,7 @@ function appendWordlistSearch(panel, used, isSelected) {
 				if (controller.signal.aborted || !section.isConnected) return;
 				status.textContent = "検索できませんでした。もう一度入力してください";
 			}
-		}, 150);
+		}, delay);
 	};
 	input.addEventListener("input", (event) => {
 		composing = event.isComposing;
@@ -1459,7 +1459,7 @@ function appendWordlistSearch(panel, used, isSelected) {
 		update();
 		input.focus({ preventScroll: true });
 	});
-	queueMicrotask(() => { if (section.isConnected) update(); });
+	queueMicrotask(() => { if (section.isConnected) update(0); });
 }
 
 function buildPanel() {
