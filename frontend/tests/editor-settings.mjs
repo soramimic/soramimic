@@ -1,3 +1,4 @@
+import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
 // 編集ツールの「変換のしかた」モーダル(ツールバーの⚙から開く)のE2E: 生成画面へ戻らずに
 // 変換パラメータ・単語重複・ファセット絞り込みを変えて再変換できること、
 // 再変換が「戻る」1回で取り消せること、位置別重み(weightsList)が
@@ -35,7 +36,7 @@ function assert(cond, message) {
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 
 const wordsOf = (page) =>
-	page.$$eval(".chip-word-surface", (els) => els.map((e) => e.textContent).join("|"));
+	page.$$eval(".review-word-surface", (els) => els.map((e) => e.textContent).join("|"));
 
 const sliderValues = (page) =>
 	page.$$eval("#editor-param-area input[type=range]", (els) => els.map((e) => Number(e.value)));
@@ -63,7 +64,10 @@ function waitIdle(page) {
 // ⚙でモーダルを開く(既に開いていれば何もしない)
 async function openSettings(page) {
 	const open = await page.$eval("#editor-settings", (d) => d.open);
-	if (!open) await page.click("#btn-settings");
+	if (!open) {
+		await closeSelection(page);
+		await page.click("#btn-settings");
+	}
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 }
@@ -123,7 +127,7 @@ try {
 		if (m.type() === "warning") warnings.push(m.text());
 	});
 
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-reconvert").disabled,
 		{ timeout: 120000 },
@@ -209,7 +213,7 @@ try {
 	await editor.click("#btn-settings-close");
 	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	const candBefore = await candidateSurfaces(editor);
 	assert(candBefore.some((s) => !registeredSurfaces.has(s)),
@@ -229,7 +233,7 @@ try {
 	assert(await settingsOpen(editor), "絞り込みの再変換でモーダルが閉じてしまった");
 	await editor.click("#btn-settings-close");
 
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	const candAfter = await candidateSurfaces(editor);
 	assert(candAfter.length > 0, "絞り込み後に候補が出ない");
@@ -238,8 +242,8 @@ try {
 
 	// 固定した単語は絞り込みの対象外になっても残る
 	await editor.click(".panel-candidates .candidate");
-	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
-	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
+	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
+	const lockedSurface = await editor.textContent(".review-word.locked .review-word-surface");
 	await openSettings(editor);
 	await editor.check("#editor-facets input[value='family']");
 	await editor.waitForFunction((k) => {
@@ -248,7 +252,7 @@ try {
 	}, EDITOR_KEY, { timeout: 180000 });
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
-	const lockedAfter = await editor.$$eval(".chip-word.locked .chip-word-surface",
+	const lockedAfter = await editor.$$eval(".review-word.locked .review-word-surface",
 		(els) => els.map((e) => e.textContent));
 	assert(lockedAfter.includes(lockedSurface),
 		`絞り込みの変更で固定単語が失われた: ${lockedSurface}`);
@@ -287,7 +291,7 @@ try {
 
 	// 候補計算(getCandidates)にも選択範囲ぶんの導出重みが渡ること
 	warnings.length = 0;
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates, .panel-note", { timeout: 30000 });
 	assert(warnings.some((w) => w.includes("getCandidates")),
 		"候補計算にノート長重みが届いていない: " + warnings.join(" / "));
@@ -295,7 +299,7 @@ try {
 	// ---- 書き出し: 生重みとαがラウンドトリップで消えない ----
 	const [download] = await Promise.all([
 		editor.waitForEvent("download"),
-		editor.click("#btn-export"),
+		menuAction(editor, "#btn-export"),
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
 	assert(Array.isArray(exported.noteLengthRawList)

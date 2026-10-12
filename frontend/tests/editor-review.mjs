@@ -33,7 +33,7 @@ try {
 	await page.fill("#editor-original-text", "青森,アオモリ\n空豆,ソラマメ\n白玉,シラタマ\n雲丹,ウニ\n小松菜,コマツナ\n風車,カザグルマ\n神田,カンダ\n京都,キョート\n酢,ス");
 	await page.click("#btn-original-register");
 	await page.click("#btn-setup-convert");
-	await page.waitForSelector(".chip-word", { timeout: 60000 });
+	await page.waitForSelector(".review-word", { timeout: 60000 });
 	const seed = await page.evaluate(() => {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
 		data.host = { review: true, songs: [], canUploadSong: false };

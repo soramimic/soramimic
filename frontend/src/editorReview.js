@@ -1,4 +1,4 @@
-// Compact review UI for a host that has already analyzed the song.
+// Shared compact editor layout. Host review controls source-editing capabilities.
 // The host owns originalLines; do not infer display spelling from phonetic units.
 import "./editorReview.css";
 
@@ -39,8 +39,9 @@ function reviewWords(data, line) {
 	return words;
 }
 
-export function setupReviewToolbar() {
-	document.documentElement.classList.add("video-review");
+export function setupReviewToolbar(review) {
+	document.documentElement.classList.add("simple-editor");
+	document.documentElement.classList.toggle("video-review", review);
 	const toolbar = document.getElementById("editor-toolbar");
 	const actions = element("div", "review-tools");
 	for (const [id, label, icon] of [
@@ -52,6 +53,7 @@ export function setupReviewToolbar() {
 		button.title = label;
 		actions.append(button);
 	}
+	if (!review) actions.append(document.getElementById("btn-settings"));
 	const menu = element("details", "review-menu");
 	const summary = element("summary", "btn btn-ghost", "•••");
 	summary.setAttribute("aria-label", "その他の操作");
@@ -59,12 +61,36 @@ export function setupReviewToolbar() {
 	const regenerate = document.getElementById("btn-regenerate");
 	regenerate.addEventListener("click", () => { menu.open = false; });
 	body.append(regenerate);
+	if (!review) {
+		for (const id of ["btn-import", "btn-export"]) body.append(document.getElementById(id));
+		const copy = element("div", "editor-copy-options");
+		copy.append(document.querySelector('label[for="copy-format"]'),
+			document.getElementById("copy-format"), document.getElementById("btn-copy"));
+		body.append(copy);
+		for (const button of body.querySelectorAll("button")) {
+			button.addEventListener("click", () => { menu.open = false; });
+		}
+	}
+	document.addEventListener("click", (event) => {
+		if (!menu.contains(event.target)) menu.open = false;
+	});
+	menu.addEventListener("keydown", (event) => {
+		if (event.key !== "Escape") return;
+		menu.open = false;
+		summary.focus();
+		event.stopPropagation();
+	});
+	menu.addEventListener("toggle", () => {
+		if (!menu.open && body.contains(document.activeElement)) summary.focus();
+	});
 	menu.append(summary, body);
-	actions.append(menu, document.getElementById("regen-progress"));
+	actions.append(menu);
+	if (!review) actions.prepend(document.getElementById("btn-video"));
+	toolbar.append(document.getElementById("regen-progress"), document.getElementById("reconvert-progress"));
 	toolbar.append(actions);
 }
 
-export function renderReviewLine(data, line, selection, choose, lockIcon) {
+export function renderReviewLine(data, line, selection, choose, lockIcon, decorate) {
 	const row = element("div", "editor-line review-line");
 	row.dataset.line = String(line);
 	if (!data.unitsList[line]?.length) {
@@ -92,6 +118,7 @@ export function renderReviewLine(data, line, selection, choose, lockIcon) {
 		}
 		chip.setAttribute("aria-pressed", String(selection?.line === line
 			&& selection.start === word.period[0] && selection.end === word.period[1]));
+		decorate?.(chip, word);
 		chip.addEventListener("click", () => choose(line, word));
 		words.append(chip);
 	}
@@ -99,8 +126,8 @@ export function renderReviewLine(data, line, selection, choose, lockIcon) {
 	return row;
 }
 
-// Original readings remain read-only because the host has already aligned these
-// units to the song's notes. Keep the reading and range visible while editing.
+// Reading and range stay visible while editing. Only standalone sessions may
+// change source readings; reviewed songs keep the host's note alignment.
 export function appendReviewHeader(panel, data, selection, callbacks) {
 	const { line, start, end } = selection;
 	const units = data.unitsList[line] || [];
@@ -112,7 +139,10 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	close.setAttribute("aria-label", "歌詞一覧に戻る");
 	close.addEventListener("click", callbacks.close);
 	const title = element("h2", "review-selected-word", word?.surface || kana);
-	header.append(close, title);
+	const selected = element("div", "review-selected");
+	selected.append(title);
+	if (word?.kana && word.kana !== word.surface) selected.append(element("span", "review-selected-reading", word.kana));
+	header.append(close, selected);
 	if (word && !word.filler) {
 		const lock = element("button", "btn btn-ghost panel-lock", word.locked ? "固定中" : "固定");
 		lock.type = "button";
@@ -122,6 +152,7 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	}
 	panel.append(header);
 	const range = element("div", "review-range");
+	range.dataset.line = String(line);
 	range.setAttribute("role", "group");
 	range.setAttribute("aria-label", "読みと範囲");
 	range.append(element("p", "review-original", reviewOriginal(data, line)));
@@ -130,10 +161,21 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		const button = element("button", "btn review-unit", unit.pronunciation);
 		button.type = "button";
 		button.dataset.index = String(index);
+		button.title = unit.surface_form;
+		button.setAttribute("aria-label", `${unit.surface_form}、読み ${unit.pronunciation}。範囲を選択`);
 		button.setAttribute("aria-pressed", String(index >= start && index < end));
-		button.addEventListener("click", (event) => callbacks.unit(line, index, event.shiftKey));
+		button.addEventListener("click", (event) => callbacks.unit(line, index, event.shiftKey, event.detail === 0));
+		button.addEventListener("pointerdown", (event) => callbacks.pointer?.(line, index, event));
 		buttons.append(button);
 	});
 	range.append(buttons);
+	if (callbacks.reading) {
+		const edit = element("button", "btn btn-ghost panel-yomi-toggle", "✏️");
+		edit.type = "button";
+		edit.title = callbacks.reading.label;
+		edit.setAttribute("aria-label", callbacks.reading.label);
+		edit.addEventListener("click", callbacks.reading.open);
+		range.append(edit);
+	}
 	panel.append(range);
 }

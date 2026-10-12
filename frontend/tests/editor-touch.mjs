@@ -1,3 +1,4 @@
+import { openLine, selectRange, selectReading } from "./editor-ui.mjs";
 // 編集ツール(#17)のタッチ操作E2E: モバイル相当の環境(狭い画面+実タッチイベント)で
 // タップによる選択の伸縮・ドラッグ範囲選択・長押し詳細を検証する。
 // マウスとタッチでイベント経路が異なる(clickが飛ばない・指の揺れ等)ため、
@@ -74,7 +75,7 @@ try {
 		page.click("#btn-open-editor"),
 	]);
 	editor.on("pageerror", (e) => pageErrors.push(e));
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
 		{ timeout: 120000 },
@@ -84,9 +85,9 @@ try {
 
 	// iPhoneでも「読みを修正」を開くと入力欄へ自動フォーカスする。
 	// 実機ではvisualViewportに合わせて専用小窓を持ち上げ、入力欄への重なりを防ぐ。
-	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await selectReading(editor, 0, "コ");
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
-	const selectedBeforeReadingDialog = await editor.$$eval(".chip-unit.selected",
+	const selectedBeforeReadingDialog = await editor.$$eval(".review-unit[aria-pressed=true]",
 		(els) => els.map((e) => e.textContent).join(""));
 	await editor.locator(".panel-yomi-toggle").tap();
 	assert(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open) &&
@@ -126,7 +127,7 @@ try {
 		}));
 	await editor.locator("#btn-reading-fix-cancel").tap();
 	assert(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")) &&
-		await editor.$$eval(".chip-unit.selected",
+		await editor.$$eval(".review-unit[aria-pressed=true]",
 			(els) => els.map((e) => e.textContent).join("")) === selectedBeforeReadingDialog,
 		"読み修正のキャンセルで背後の候補選択が変わった");
 
@@ -136,38 +137,30 @@ try {
 	await editor.waitForTimeout(500);
 	assert(!(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open)) &&
 		!(await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open"))) &&
-		await editor.locator(".chip-unit.selected").count() === 0,
+		await editor.locator(".review-unit[aria-pressed=true]").count() === 0,
 		"変更適用後の遅延タップで読み修正小窓が開き直した");
 
 	// 後続のパネル閉じる操作のため、通常のタップが再び有効になってから選び直す。
-	await editor.locator(".chip-unit", { hasText: "コ" }).first().tap();
+	await selectReading(editor, 0, "コ");
 	await editor.waitForSelector(".editor-panel.open", { timeout: 10000 });
 	await editor.locator(".panel-close").tap();
 	await editor.waitForFunction(() =>
 		!document.getElementById("editor-panel").classList.contains("open"));
 
-	// 固定アイコンは3行目を増やさず、指で直接切り替えられる大きさにする
-	const firstLock = editor.locator(".chip-word:not(.filler) .chip-lock").first();
-	const lockBox = await firstLock.boundingBox();
-	assert(lockBox && lockBox.width >= 28 && lockBox.height >= 28,
-		`固定アイコンがタッチには小さい: ${lockBox?.width}x${lockBox?.height}`);
-	const lockInput = firstLock.locator(".chip-lock-input");
-	const initiallyLocked = await lockInput.isChecked();
-	await editor.touchscreen.tap(lockBox.x + lockBox.width / 2, lockBox.y + lockBox.height / 2);
-	await editor.waitForFunction((expected) =>
-		document.querySelector(".chip-word:not(.filler) .chip-lock-input")?.checked === expected,
-		!initiallyLocked, { timeout: 5000 });
-	assert(!await editor.locator("#editor-panel").evaluate((el) => el.classList.contains("open")),
-		"固定アイコンのタップで候補パネルが開いた");
-	const toggledLock = await editor.locator(".chip-word:not(.filler) .chip-lock").first().boundingBox();
-	await editor.touchscreen.tap(
-		toggledLock.x + toggledLock.width / 2,
-		toggledLock.y + toggledLock.height / 2,
-	); // 初期状態へ戻す
+	// 固定は単語編集内からタッチで切り替える。
+	await editor.locator(".review-word:not(.filler)").first().tap();
+	const lock = editor.locator(".panel-lock");
+	const lockBox = await lock.boundingBox();
+	assert(lockBox.width >= 44 && lockBox.height >= 44, "固定ボタンがタッチには小さい");
+	const initiallyLocked = await lock.getAttribute("aria-pressed") === "true";
+	await lock.tap();
+	assert((await lock.getAttribute("aria-pressed") === "true") === !initiallyLocked,
+		"タッチで固定を切り替えられない");
+	await lock.tap();
 
 	// ユニットチップの中心座標(再描画で要素が入れ替わるため毎回取り直す)
 	async function unitCenter(i) {
-		const box = await editor.locator(".chip-unit").nth(i).boundingBox();
+		const box = await editor.locator(".review-unit").nth(i).boundingBox();
 		assert(box, `ユニット${i}が見つからない`);
 		return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 	}
@@ -175,10 +168,9 @@ try {
 	async function selTitle() {
 		return editor.evaluate(() => {
 			const panel = document.getElementById("editor-panel");
-			const surface = panel.querySelector(".panel-original-surface");
-			const reading = panel.querySelector(".panel-original-reading");
-			return panel.classList.contains("open") && surface && reading
-				? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
+			const units = [...panel.querySelectorAll(".review-unit[aria-pressed=true]")];
+			return panel.classList.contains("open")
+				? `${units.map((u) => u.title).join("")}(${units.map((u) => u.textContent).join("")})` : "(選択なし)";
 		});
 	}
 
@@ -189,10 +181,9 @@ try {
 		try {
 			await editor.waitForFunction((exp) => {
 				const panel = document.getElementById("editor-panel");
-				const surface = panel.querySelector(".panel-original-surface");
-				const reading = panel.querySelector(".panel-original-reading");
-				const title = panel.classList.contains("open") && surface && reading
-					? `${surface.textContent}(${reading.textContent})` : "(選択なし)";
+				const units = [...panel.querySelectorAll(".review-unit[aria-pressed=true]")];
+				const title = panel.classList.contains("open")
+					? `${units.map((u) => u.title).join("")}(${units.map((u) => u.textContent).join("")})` : "(選択なし)";
 				return exp === "(選択なし)" ? title === exp : title.includes(exp);
 			}, expected, { timeout: 5000 });
 		} catch {
@@ -204,12 +195,13 @@ try {
 	}
 
 	// ---- タップでの選択の伸縮(実タッチ) ----
-	await tapAndExpect(0, "忘(", "タップで新規選択されない");
+	await selectRange(editor, 0, 0);
 	await tapAndExpect(1, "ワス", "隣接タップで拡張されない");
 	await tapAndExpect(1, "忘(", "端タップで縮小されない");
 	await tapAndExpect(0, "(選択なし)", "単独再タップで解除されない");
 
 	// ---- タッチドラッグでの範囲選択 ----
+	await openLine(editor, 0);
 	const from = await unitCenter(0);
 	const to = await unitCenter(3);
 	await cdp.send("Input.dispatchTouchEvent", {
@@ -224,15 +216,15 @@ try {
 		});
 		await editor.waitForTimeout(30);
 	}
-	// ドラッグ中はパネルが出ないこと
+	// ドラッグ中も範囲ボタンの位置を保つこと
 	const openDuringDrag = await editor.evaluate(
 		() => document.getElementById("editor-panel").classList.contains("open"));
 	await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-	assert(!openDuringDrag, "ドラッグ中にパネルが表示されている");
+	assert(openDuringDrag, "ドラッグ中に範囲ボタンが消えた");
 	try {
 		await editor.waitForFunction(() => {
-			const t = document.querySelector("#editor-panel.open .panel-original-reading");
-			return t && t.textContent.includes("ワスレガ");
+			return [...document.querySelectorAll("#editor-panel.open .review-unit[aria-pressed=true]")]
+				.map((unit) => unit.textContent).join("") === "ワスレガ";
 		}, undefined, { timeout: 5000 });
 	} catch {
 		throw new Error("ドラッグで範囲選択されない: " + await selTitle());
@@ -242,7 +234,7 @@ try {
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	// パネル表示時の自動スムーススクロールが座標取得とずれないよう静定を待つ
 	await editor.waitForTimeout(600);
-	const lockedBefore = await editor.locator(".chip-word.locked").count();
+	const lockedBefore = await editor.locator(".review-word.locked").count();
 	const cand = await editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first().boundingBox();
 	await cdp.send("Input.dispatchTouchEvent", {
 		type: "touchStart", touchPoints: [{ x: cand.x + 10, y: cand.y + 10 }],
@@ -257,7 +249,7 @@ try {
 	await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 	await editor.waitForTimeout(300);
 	assert(popoverShown, "長押しで詳細ポップオーバーが出ない");
-	const lockedAfter = await editor.locator(".chip-word.locked").count();
+	const lockedAfter = await editor.locator(".review-word.locked").count();
 	assert(lockedAfter === lockedBefore, "長押しなのに差し替えが発火した");
 
 	// ---- 自由入力から候補選択へは、キーボード表示中でも1タップで戻れる ----
@@ -326,8 +318,8 @@ try {
 	const candSurface = await single.locator(".candidate-surface").textContent();
 	await single.tap();
 	await editor.waitForSelector("#editor-panel.open", { state: "hidden", timeout: 10000 });
-	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
-	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
+	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
+	const lockedSurface = await editor.textContent(".review-word.locked .review-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`タップ差し替えが反映されない: 候補=${candSurface} チップ=${lockedSurface}`);
 

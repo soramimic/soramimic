@@ -25,79 +25,10 @@
 	margin-bottom: 0.4rem;
 }
 
-.editor-line-caption {
-	color: var(--muted);
-	font-size: 0.8rem;
-	margin-bottom: 0.4rem;
-	white-space: nowrap;
-}
-
-.editor-grid {
-	display: grid;
-	gap: 4px 2px;
-	width: max-content;
-}
-
-.chip {
-	border-radius: 6px;
-	text-align: center;
-	white-space: nowrap;
-	user-select: none;
-}
-
-.chip-unit {
-	background: var(--bg);
-	border: 1px solid var(--border);
-	color: var(--muted);
-	font-size: 0.85rem;
-	padding: 0.1rem 0.3rem;
-	/* ドラッグ範囲選択のため、チップ上ではブラウザのスクロール処理を止める */
-	touch-action: none;
-}
-
-/* 文節の始まりを左のアクセント線で示す */
-.chip-unit.phrase-start {
-	border-left: 3px solid var(--accent);
-}
-
-.chip-word {
-	background: #eff6ff;
-	color: #1e293b;
-	border: 1px solid var(--accent);
-	padding: 0.15rem 0.4rem;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	position: relative;
-}
-
-.chip-word-main {
-	padding: 0 1rem;
-}
-
-.chip-word-surface {
-	font-weight: 600;
-}
-
-.chip-word-kana {
-	color: #475569;
-	font-size: 0.75rem;
-}
-
 .editor-status {
 	color: var(--muted);
 	font-size: 0.85rem;
 	margin: 0 0 0.6rem;
-}
-
-.editor-row-label {
-	align-self: center;
-	color: var(--muted);
-	font-size: 0.72rem;
-	font-weight: 600;
-	padding-right: 0.45rem;
-	text-align: right;
 }
 
 .editor-toolbar {
@@ -120,32 +51,6 @@
 	flex: 1;
 }
 
-.chip-lock {
-	display: grid;
-	place-items: center;
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 1.75rem;
-	height: 1.75rem;
-	cursor: pointer;
-}
-
-.chip-lock-input {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	margin: 0;
-	opacity: 0;
-	cursor: pointer;
-}
-
-.chip-lock-input:focus-visible + .chip-lock-icon {
-	outline: 2px solid var(--accent);
-	outline-offset: -2px;
-}
-
 .chip-lock-icon {
 	width: 1rem;
 	height: 1rem;
@@ -162,67 +67,16 @@
 	display: none;
 }
 
-.chip-lock-input:checked + .chip-lock-icon {
-	color: #d97706;
-}
-
 .chip-lock-icon.is-locked {
 	color: #d97706;
 }
 
-.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-open,
 .chip-lock-icon.is-locked .chip-lock-icon-open {
 	display: none;
 }
 
-.chip-lock-input:checked + .chip-lock-icon .chip-lock-icon-closed,
 .chip-lock-icon.is-locked .chip-lock-icon-closed {
 	display: initial;
-}
-
-/* filler(置ける単語が無く、元歌詞のまま残った区間)。替え歌単語と一目で
-   区別できるよう、破線のグレーで控えめに出す。文字は元歌詞のかなそのもの */
-.chip-word.filler {
-	background: var(--bg);
-	border: 1px dashed var(--border);
-	color: var(--muted);
-}
-
-.chip-word.filler .chip-word-surface {
-	font-weight: 400;
-}
-
-.chip-word.filler:hover {
-	background: var(--bg);
-	border-color: var(--accent);
-}
-
-.chip-word.locked {
-	border-color: #d97706;
-	background: #fef3c7;
-}
-
-.chip-unit,
-.chip-word {
-	cursor: pointer;
-}
-
-.chip-unit:hover {
-	border-color: var(--accent);
-}
-
-.chip-word:hover {
-	background: #dbeafe;
-}
-
-/* 固定チップは通常のホバー色で上書きせず、固定色系のまま少しだけ変える */
-.chip-word.locked:hover {
-	background: #fde68a;
-}
-
-.chip.selected {
-	outline: 2px solid var(--accent);
-	outline-offset: 1px;
 }
 
 /* 候補パネル: 画面下部のオーバーレイ(fixed)。レイアウトに参加しないので
@@ -279,38 +133,6 @@ html.editor-free-input-open .editor-toolbar {
 	justify-content: space-between;
 	gap: 0.8rem;
 	margin-bottom: 0.7rem;
-}
-
-.panel-source {
-	display: grid;
-	gap: 0.25rem;
-	min-width: 0;
-}
-
-.panel-source-row {
-	display: grid;
-	grid-template-columns: 8.5rem minmax(0, auto) auto;
-	align-items: center;
-	justify-content: start;
-	gap: 0.4rem;
-}
-
-.panel-source-label {
-	color: var(--muted);
-	font-size: 0.85rem;
-}
-
-.panel-original-surface,
-.panel-original-reading {
-	font-weight: 600;
-	overflow-wrap: anywhere;
-}
-
-.panel-header-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	flex: 0 0 auto;
 }
 
 .panel-close {
@@ -593,10 +415,6 @@ html.editor-free-input-open .editor-toolbar {
 		/* 内容の開閉で高さが変わっても、中央基準で上下に跳ねないよう上端を固定する。 */
 		margin-block-start: max(1rem, env(safe-area-inset-top));
 		margin-block-end: auto;
-	}
-
-	.panel-source-row {
-		grid-template-columns: 7rem minmax(0, auto) auto;
 	}
 
 	.panel-header {

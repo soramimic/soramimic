@@ -1,3 +1,4 @@
+import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
 // 編集ツールの⚙モーダルにある「単語リスト」選択のE2E。
 // 生成画面に戻らずカタログのリストを切り替えられること、切替時は固定(🔒)が
 // 解除されて全行が新リストで作り直され、戻る1回で完全に元へ戻ること、
@@ -53,10 +54,10 @@ function assert(cond, message) {
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 
 const wordsOf = (page) =>
-	page.$$eval(".chip-word-surface", (els) => els.map((e) => e.textContent).join("|"));
+	page.$$eval(".review-word-surface", (els) => els.map((e) => e.textContent).join("|"));
 
 const lockedOf = (page) =>
-	page.$$eval(".chip-word.locked .chip-word-surface", (els) => els.map((e) => e.textContent));
+	page.$$eval(".review-word.locked .review-word-surface", (els) => els.map((e) => e.textContent));
 
 const facetGroupCount = (page) =>
 	page.$$eval("#editor-facets .facet-group", (els) => els.length);
@@ -78,7 +79,10 @@ function waitIdle(page) {
 
 async function openSettings(page) {
 	const open = await page.$eval("#editor-settings", (d) => d.open);
-	if (!open) await page.click("#btn-settings");
+	if (!open) {
+		await closeSelection(page);
+		await page.click("#btn-settings");
+	}
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 }
@@ -100,7 +104,7 @@ async function openCandidates(page) {
 			() => !document.getElementById("editor-panel").classList.contains("open"),
 			undefined, { timeout: 10000 });
 	}
-	await page.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(page, 0, 0);
 	await page.waitForSelector(CANDIDATE, { timeout: 30000 });
 }
 
@@ -113,7 +117,7 @@ async function openCandidatesForWord(page) {
 			() => !document.getElementById("editor-panel").classList.contains("open"),
 			undefined, { timeout: 10000 });
 	}
-	await page.locator(".editor-line[data-line='0'] .chip-word").first().click();
+	await page.locator(".editor-line[data-line='0'] .review-word").first().click();
 	await page.waitForSelector(CANDIDATE, { timeout: 30000 });
 }
 
@@ -175,7 +179,7 @@ try {
 		page.click("#btn-open-editor"),
 	]);
 	editor.on("pageerror", (e) => pageErrors.push(e));
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
 
@@ -195,7 +199,7 @@ try {
 	// ---- 切替前に単語をひとつ固定しておく ----
 	await openCandidates(editor);
 	await editor.click(CANDIDATE);
-	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
+	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
 	const lockedBefore = await lockedOf(editor);
 	assert(lockedBefore.length > 0, "固定した単語がない");
 	const wordsBefore = await wordsOf(editor);
@@ -233,6 +237,7 @@ try {
 	assert(candLeaked.length === 0, "候補に旧リストの単語が出ている: " + candLeaked.join(","));
 
 	// ---- 戻る1回でリスト・結果・固定がまとめて元に戻る ----
+	await closeSelection(editor);
 	await editor.click("#btn-undo");
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-redo").disabled, { timeout: 10000 });
@@ -386,7 +391,7 @@ try {
 	// ---- 書き出し: 自作リストのCSVごと自己完結する ----
 	const [download] = await Promise.all([
 		editor.waitForEvent("download"),
-		editor.click("#btn-export"),
+		menuAction(editor, "#btn-export"),
 	]);
 	const exportPath = await download.path();
 	const exported = JSON.parse(await readFile(exportPath, "utf8"));
@@ -404,7 +409,7 @@ try {
 	await editor.reload();
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 30000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });
 	assert((await wordsOf(editor)).split("|").filter(Boolean).join("|") === wordsOriginal.join("|"),
 		"読み込みで自作リストの結果が変わった");
 	await editor.waitForFunction(
@@ -439,7 +444,7 @@ try {
 	exitCode = 0;
 	await browser.close();
 } catch (err) {
-	console.error("[FAIL]", err.message);
+	console.error("[FAIL]", err);
 } finally {
 	try {
 		process.kill(-preview.pid);

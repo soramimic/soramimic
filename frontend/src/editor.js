@@ -321,144 +321,16 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
-	if (isVideoReview(data)) return renderReviewLine(data, line, selection, onWordClick, makeLockIcon);
-	const units = unitsOf(line);
-	const words = data.results[line] || [];
-	const el = document.createElement("div");
-	el.className = "editor-line";
-	el.dataset.line = String(line);
-
-	// 空行(改行だけの行)は行間スペーサとして表示する
-	if (units.length === 0) {
-		el.classList.add("editor-line-blank");
-		return el;
-	}
-
-	const caption = document.createElement("div");
-	caption.className = "editor-line-caption";
-	caption.textContent = (data.phrases && data.phrases[line]) || "";
-	// 元歌詞(字幕用)が対応づいていれば、ホバーでその行を確かめられるようにする
-	// (レイアウトは変えたくないのでツールチップだけ)
-	const original = Array.isArray(data.originalLines) ? data.originalLines[line] : "";
-	if (original) caption.title = original;
-	el.appendChild(caption);
-
-	// 1行 = 発音ユニット数分の列を持つグリッド。
-	// 上段: 元歌詞のユニットチップ(1列ずつ)
-	// 下段: 替え歌単語チップ(period[開始,終了) の列にまたがる)
-	const grid = document.createElement("div");
-	grid.className = "editor-grid";
-	grid.style.gridTemplateColumns = `auto repeat(${units.length}, minmax(2.4em, max-content))`;
-
-	const sourceLabel = document.createElement("span");
-	sourceLabel.className = "editor-row-label";
-	sourceLabel.textContent = "元歌詞の読み";
-	sourceLabel.style.gridRow = "1";
-	sourceLabel.style.gridColumn = "1";
-	const resultLabel = document.createElement("span");
-	resultLabel.className = "editor-row-label";
-	resultLabel.textContent = "替え歌";
-	resultLabel.style.gridRow = "2";
-	resultLabel.style.gridColumn = "1";
-	grid.append(sourceLabel, resultLabel);
-
-	const inSelection = (i) =>
-		selection && selection.line === line && i >= selection.start && i < selection.end;
-
-	units.forEach((unit, i) => {
-		const chip = document.createElement("span");
-		chip.className = "chip chip-unit";
-		// 文節の切れ目を視覚的に示す
-		if (i > 0 && unit.phrase !== units[i - 1].phrase) {
-			chip.classList.add("phrase-start");
-		}
-		if (inSelection(i)) chip.classList.add("selected");
-		chip.textContent = unit.pronunciation;
-		chip.title = unit.surface_form;
-		chip.setAttribute("aria-label", `${unit.surface_form}、読み ${unit.pronunciation}。範囲を選択`);
-		chip.dataset.index = String(i);
-		chip.style.gridRow = "1";
-		chip.style.gridColumn = `${i + 2}`;
-		chip.addEventListener("click", (e) => onUnitClick(line, i, e.shiftKey));
-		chip.addEventListener("pointerdown", (e) => onUnitPointerDown(line, i, e));
-		grid.appendChild(chip);
-	});
-
-	for (const word of words) {
-		const chip = document.createElement("span");
-		chip.className = "chip chip-word";
-		// filler(未変換=元歌詞のまま)は破線グレーの控えめな見た目にする。
-		// タップすれば通常の単語と同じように候補パネルが開き、差し替えられる
-		if (word.filler) chip.classList.add("filler");
-		if (word.locked) chip.classList.add("locked");
-		chip.dataset.start = String(word.period[0]);
-		chip.dataset.end = String(word.period[1]);
-		if (selection && selection.line === line &&
-			selection.start === word.period[0] && selection.end === word.period[1]) {
-			chip.classList.add("selected");
-		}
-		chip.style.gridRow = "2";
-		chip.style.gridColumn = `${word.period[0] + 2} / ${word.period[1] + 2}`;
-		const surface = document.createElement("span");
-		surface.className = "chip-word-surface";
-		surface.textContent = word.surface;
-		const kana = document.createElement("span");
-		kana.className = "chip-word-kana";
-		kana.textContent = word.kana;
-		if (word.filler) {
-			// 未変換なので表記と読みが同じ。二重に出さず、🔒(固定)も出さない
-			// (元歌詞のままの区間を固定しても意味がないため)
-			chip.append(surface);
-			chip.title = wordDetail(word);
-			attachLongPress(chip, () => wordDetail(word));
-			chip.addEventListener("click", () => onWordClick(line, word));
-			grid.appendChild(chip);
-			continue;
-		}
-		const main = document.createElement("span");
-		main.className = "chip-word-main";
-		const lockControl = document.createElement("label");
-		lockControl.className = "chip-lock";
-		lockControl.title = word.locked ? "固定を解除" : "この単語を固定";
-		const lock = document.createElement("input");
-		lock.className = "chip-lock-input";
-		lock.type = "checkbox";
-		lock.checked = !!word.locked;
-		lock.setAttribute("aria-label", `${word.surface}を固定`);
-		lock.addEventListener("change", () => {
-			const [start, end] = word.period;
-			toggleLock(line, word);
-			document.querySelector(
-				`.editor-line[data-line="${line}"] .chip-word[data-start="${start}"]` +
-				`[data-end="${end}"] .chip-lock-input`,
-			)?.focus({ preventScroll: true });
-		});
-		// 固定トグルへの操作で候補パネルや長押し詳細が誤発火しないようにする
-		lockControl.addEventListener("click", (e) => e.stopPropagation());
-		lockControl.addEventListener("pointerdown", (e) => e.stopPropagation());
-		lockControl.append(lock, makeLockIcon());
-		main.append(surface, lockControl);
-		chip.append(main, kana);
-		// PCはホバーで詳細(標準ツールチップ)、スマホは長押しでポップオーバー。
-		// 候補パネルと同じく、どのidの単語かまで分かるようにする
+	return renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
-		chip.addEventListener("click", () => onWordClick(line, word));
-		grid.appendChild(chip);
-	}
-
-	el.appendChild(grid);
-	return el;
+	});
 }
 
 function rerenderLine(line) {
 	const old = document.querySelector(`.editor-line[data-line="${line}"]`);
 	if (!old) return;
-	// 長い行の横スクロール位置を保つ(ドラッグ選択中の再描画で先頭に戻らないように)
-	const scrollLeft = old.scrollLeft;
-	const el = renderLine(line);
-	old.replaceWith(el);
-	el.scrollLeft = scrollLeft;
+	old.replaceWith(renderLine(line));
 }
 
 function renderAll() {
@@ -487,8 +359,7 @@ function setSelection(next) {
 	selection = next;
 	if (prev) rerenderLine(prev.line);
 	if (next && (!prev || prev.line !== next.line)) rerenderLine(next.line);
-	// ドラッグ中はパネルを出さない。下部の行をドラッグ中にパネルが現れると
-	// チップに覆い被さって、なぞっている位置がずれるため(表示はドラッグ終了時)
+	// ドラッグ中は範囲ボタンの位置を保ち、候補は指を離してから更新する。
 	if (!pendingUnit) renderPanel();
 }
 
@@ -530,8 +401,8 @@ function unitTapAction(line, index) {
 
 // clickはShiftクリック(PCの範囲指定)専用。通常のタップはpointerup側で処理済み
 // (タッチではpointerdownをpreventDefaultするとclickが飛ばない環境があるため)
-function onUnitClick(line, index, shift) {
-	if (performance.now() < suppressClickUntil) return;
+function onUnitClick(line, index, shift, keyboard = false) {
+	if (!keyboard && performance.now() < suppressClickUntil) return;
 	if (shift && anchorUnit && anchorUnit.line === line) {
 		const [s, e] = [Math.min(anchorUnit.index, index), Math.max(anchorUnit.index, index)];
 		setSelection({ line, start: s, end: e + 1 });
@@ -546,6 +417,7 @@ function onUnitClick(line, index, shift) {
 // 閾値はタッチを広めにする
 
 function onUnitPointerDown(line, index, e) {
+	suppressClickUntil = 0; // 新しい操作は直前のpointerupに伴うclickではない。
 	if (e.shiftKey) return; // Shiftクリックの範囲指定はclickハンドラに任せる
 	if (e.pointerType === "mouse" && e.button !== 0) return;
 	e.preventDefault(); // ドラッグ中のテキスト選択を防ぐ
@@ -560,15 +432,6 @@ function onUnitPointerDown(line, index, e) {
 	document.addEventListener("pointercancel", onDragEnd);
 }
 
-// 長い行で画面外までドラッグ選択できるよう、行の端に近づいたら自動スクロール
-function autoScrollLine(e) {
-	const lineEl = document.querySelector(`.editor-line[data-line="${pendingUnit.line}"]`);
-	if (!lineEl || lineEl.scrollWidth <= lineEl.clientWidth) return;
-	const r = lineEl.getBoundingClientRect();
-	if (e.clientX > r.right - 36) lineEl.scrollLeft += 16;
-	else if (e.clientX < r.left + 36) lineEl.scrollLeft -= 16;
-}
-
 function onDragMove(e) {
 	if (!pendingUnit) return;
 	if (!dragging) {
@@ -577,16 +440,12 @@ function onDragMove(e) {
 		if (dx * dx + dy * dy < pendingUnit.slop * pendingUnit.slop) return;
 		dragging = true;
 		anchorUnit = { line: pendingUnit.line, index: pendingUnit.index };
-		// 開いていたパネルはドラッグ中は退ける(下の行のチップに覆い被さるため)。
-		// パネルはfixedオーバーレイなので、消してもチップの位置はずれない
-		$id("editor-panel").classList.remove("open");
 	}
-	autoScrollLine(e);
-	// setSelectionで行が再描画されて要素が入れ替わるため、毎回座標から引き直す
+	// 折り返した範囲ボタンも、ポインタの位置から選択する。
 	const el = document.elementFromPoint(e.clientX, e.clientY);
-	const chip = el && el.closest(".chip-unit");
+	const chip = el && el.closest(".review-unit");
 	if (!chip) return;
-	const lineEl = chip.closest(".editor-line");
+	const lineEl = chip.closest(".review-range");
 	if (!lineEl || Number(lineEl.dataset.line) !== pendingUnit.line) return;
 	const index = Number(chip.dataset.index);
 	const start = Math.min(pendingUnit.index, index);
@@ -594,6 +453,10 @@ function onDragMove(e) {
 	if (selection && selection.line === pendingUnit.line &&
 		selection.start === start && selection.end === end) return;
 	setSelection({ line: pendingUnit.line, start, end });
+	for (const unit of lineEl.querySelectorAll(".review-unit")) {
+		const selected = Number(unit.dataset.index) >= start && Number(unit.dataset.index) < end;
+		unit.setAttribute("aria-pressed", String(selected));
+	}
 }
 
 function onDragEnd(e) {
@@ -607,7 +470,7 @@ function onDragEnd(e) {
 	// この操作から生じるclickをタップとして二重処理しないようにする
 	suppressClickUntil = performance.now() + 400;
 	if (wasDragging) {
-		renderPanel(); // ドラッグ中に抑制していたパネルをここで出す
+		renderPanel(); // ドラッグ完了後に候補を更新する
 	} else if (pending && e.type === "pointerup") {
 		unitTapAction(pending.line, pending.index); // タップはここで確定する
 	}
@@ -965,8 +828,8 @@ function applyReadingFixFromDialog() {
 		return;
 	}
 	// 読みの長さでユニット境界が変わり得るため、古い候補範囲は引き継がない。
-	setSelection(null);
 	closeReadingFixDialog();
+	setSelection(null);
 }
 
 function setupReadingFixDialog() {
@@ -1025,27 +888,16 @@ function usedIdSet(excludeLine, start, end) {
 	return used;
 }
 
-// 選択中の行がパネルに隠れていたら、パネルの上に見えるまでスクロールする
-// (タップした場所がパネルの裏に消えて見失わないように)
-function ensureSelectionVisible(line) {
-	const lineEl = document.querySelector(`.editor-line[data-line="${line}"]`);
-	const panel = $id("editor-panel");
-	if (!lineEl) return;
-	const panelTop = window.innerHeight - panel.offsetHeight;
-	const r = lineEl.getBoundingClientRect();
-	if (r.bottom > panelTop - 8) {
-		window.scrollBy({ top: r.bottom - (panelTop - 8), behavior: "smooth" });
-	}
-}
-
 function renderPanel() {
 	const focusedUnit = document.activeElement?.closest(".review-unit")?.dataset.index;
+	const focusedLock = document.activeElement?.matches(".panel-lock");
 	buildPanel();
-	if (isVideoReview(data)) {
+	{
 		const panel = $id("editor-panel");
 		document.documentElement.classList.toggle("review-selecting", !!selection);
 		$id("editor-lines").inert = !!selection;
 		$id("editor-toolbar").inert = !!selection;
+		document.querySelector(".site-header").inert = !!selection;
 		panel.inert = !selection;
 		panel.setAttribute("role", "dialog");
 		panel.setAttribute("aria-modal", "true");
@@ -1053,18 +905,19 @@ function renderPanel() {
 		if (selection) {
 			const target = focusedUnit !== undefined
 				? panel.querySelector(`.review-unit[data-index="${focusedUnit}"]`)
-				: panel.querySelector(".panel-close");
+				: panel.querySelector(focusedLock ? ".panel-lock" : ".panel-close");
 			target?.focus({ preventScroll: true });
 		} else if (reviewPreviousSelection) {
 			const { line, start } = reviewPreviousSelection;
-			document.querySelector(`.review-line[data-line="${line}"] .review-word[data-start="${start}"]`)
+			const row = document.querySelector(`.review-line[data-line="${line}"]`);
+			(row?.querySelector(`.review-word[data-start="${start}"]`) || row?.querySelector(".review-word"))
 				?.focus({ preventScroll: true });
 		}
 		reviewPreviousSelection = selection;
-		if (window.parent !== window) window.parent.postMessage({
+		if (isVideoReview(data) && window.parent !== window) window.parent.postMessage({
 			type: "soramimic:review-selection", open: !!selection,
 		}, window.location.origin);
-	} else if (selection) ensureSelectionVisible(selection.line);
+	}
 }
 
 // ---- 表層↔モーラの手動割当 ----
@@ -1239,7 +1092,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		free.className = "panel-free";
 		const heading = document.createElement("h3");
 		heading.className = "panel-free-title";
-		heading.textContent = isVideoReview(data) ? "歌詞を入力" : "候補にない歌詞を入力";
+		heading.textContent = "歌詞を入力";
 		const fields = document.createElement("div");
 		fields.className = "panel-free-fields";
 		const surfaceLabel = document.createElement("label");
@@ -1259,14 +1112,14 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		readingLabel.appendChild(readingInput);
 		fields.append(surfaceLabel);
 		const readingDisclosure = document.createElement("details");
-		if (isVideoReview(data)) {
+		{
 			readingDisclosure.className = "review-reading-input";
 			const summary = document.createElement("summary");
 			summary.textContent = "読みを指定";
 			readingDisclosure.open = !!freeInputDraft.reading;
 			readingDisclosure.append(summary, readingLabel);
 			fields.append(readingDisclosure);
-		} else fields.append(readingLabel);
+		}
 		const note = document.createElement("span");
 		note.className = "panel-replacement-note";
 		note.setAttribute("role", "alert");
@@ -1312,7 +1165,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		});
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
-		apply.textContent = isVideoReview(data) ? "変更する" : "この歌詞で差し替え";
+		apply.textContent = "変更する";
 		const applyFree = () => {
 			const text = surfaceInput.value.trim();
 			if (text === "") {
@@ -1322,7 +1175,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 			const custom = makeCustomWord(text, readingInput.value, target, rangeWeights);
 			if (!custom) {
 				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
-				if (isVideoReview(data)) readingDisclosure.open = true;
+				readingDisclosure.open = true;
 				focusReadingInput(readingInput);
 				return;
 			}
@@ -1350,7 +1203,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 	const freeToggle = document.createElement("button");
 	freeToggle.className = "panel-free-toggle";
 	freeToggle.type = "button";
-	freeToggle.textContent = isVideoReview(data) ? "自分で入力" : "候補にない歌詞を自由入力する";
+	freeToggle.textContent = "自分で入力";
 	freeToggle.setAttribute("aria-expanded", "false");
 	freeToggle.addEventListener("click", () => {
 		freeInputOpen = true;
@@ -1367,8 +1220,8 @@ function buildPanel() {
 		"editor-free-input-open", !!selection && freeInputOpen);
 	hidePopover();
 	if (!selection) {
-		// 中身は残したまま下へスライドアウトさせる
 		panel.classList.remove("open");
+		panel.replaceChildren();
 		return;
 	}
 	panel.textContent = "";
@@ -1376,67 +1229,14 @@ function buildPanel() {
 	const { line, start, end } = selection;
 	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
-	if (isVideoReview(data)) {
-		appendReviewHeader(panel, data, selection, {
-			close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
-		});
-	} else {
-		const header = document.createElement("div");
-		header.className = "panel-header";
-		const source = document.createElement("div");
-		source.className = "panel-source";
-		const sourceSurface = document.createElement("div");
-		sourceSurface.className = "panel-source-row";
-		sourceSurface.innerHTML =
-			'<span class="panel-source-label">元歌詞</span><span class="panel-original-surface"></span>';
-		sourceSurface.querySelector(".panel-original-surface").textContent =
-			rangeSurface(line, start, end);
-		const sourceReading = document.createElement("div");
-		sourceReading.className = "panel-source-row";
-		const sourceReadingLabel = document.createElement("span");
-		sourceReadingLabel.className = "panel-source-label";
-		sourceReadingLabel.textContent = "元歌詞の読み";
-		const sourceReadingValue = document.createElement("span");
-		sourceReadingValue.className = "panel-original-reading";
-		sourceReadingValue.textContent = rangeKana(line, start, end);
-		sourceReading.append(sourceReadingLabel, sourceReadingValue);
-		if (span) {
-			const toggle = document.createElement("button");
-			toggle.className = "panel-yomi-toggle";
-			toggle.type = "button";
-			toggle.textContent = "✏️";
-			const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
-			toggle.title = editLabel;
-			toggle.setAttribute("aria-label", editLabel);
-			toggle.addEventListener("click", () => openReadingFixDialog(line, start, end, span));
-			sourceReading.appendChild(toggle);
-		}
-		source.append(sourceSurface, sourceReading);
-		header.appendChild(source);
-		const headerActions = document.createElement("div");
-		headerActions.className = "panel-header-actions";
-		// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
-		// (チップ上の鍵はスマホだと小さいため)
-		const word = (data.results[line] || []).find(
-			(w) => w.period[0] === start && w.period[1] === end);
-		if (word) {
-			const lockBtn = document.createElement("button");
-			lockBtn.className = "btn panel-lock";
-			lockBtn.setAttribute("aria-pressed", String(!!word.locked));
-			const lockLabel = document.createElement("span");
-			lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
-			lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
-			lockBtn.addEventListener("click", () => toggleLock(line, word));
-			headerActions.appendChild(lockBtn);
-		}
-		const close = document.createElement("button");
-		close.className = "btn panel-close";
-		close.textContent = "✕";
-		close.addEventListener("click", () => setSelection(null));
-		headerActions.appendChild(close);
-		header.appendChild(headerActions);
-		panel.appendChild(header);
-	}
+	appendReviewHeader(panel, data, selection, {
+		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
+		pointer: onUnitPointerDown,
+		reading: !isVideoReview(data) && span ? {
+			label: `「${span.surface}（${span.yomi}）」の読みを修正`,
+			open: () => openReadingFixDialog(line, start, end, span),
+		} : null,
+	});
 
 	if (!db) {
 		const note = document.createElement("p");
@@ -1478,7 +1278,7 @@ function buildPanel() {
 		appendReplacementControls(panel, target, rangeWeights);
 		return;
 	}
-	if (isVideoReview(data)) appendReplacementControls(panel, target, rangeWeights);
+	appendReplacementControls(panel, target, rangeWeights);
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
@@ -1490,7 +1290,7 @@ function buildPanel() {
 	if (shown.length === 0) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
-		note.textContent = isVideoReview(data) ? "候補がありません" : "候補が見つかりませんでした。自由入力をお使いください。";
+		note.textContent = "候補がありません";
 		list.appendChild(note);
 	}
 	for (const g of shown) {
@@ -1542,7 +1342,6 @@ function buildPanel() {
 		list.appendChild(more);
 	}
 	panel.appendChild(list);
-	if (!isVideoReview(data)) appendReplacementControls(panel, target, rangeWeights);
 }
 
 // 同名候補(id違い)の個別選択リスト
@@ -2649,11 +2448,22 @@ async function start() {
 		return;
 	}
 	setupMode = !converted || data.setupFirst === true;
-	if (isVideoReview(data)) {
-		setupReviewToolbar();
+	{
+		setupReviewToolbar(isVideoReview(data));
 		$id("editor-panel").inert = true;
 		document.addEventListener("keydown", (event) => {
-			if (event.key === "Escape" && selection && !event.defaultPrevented) {
+			if (event.key === "Tab" && selection && !document.querySelector("dialog[open]")) {
+				const controls = [...$id("editor-panel").querySelectorAll("button, input, summary")]
+					.filter((node) => !node.disabled && node.getClientRects().length);
+				const first = controls[0], last = controls.at(-1);
+				if (event.shiftKey && document.activeElement === first) {
+					event.preventDefault(); last?.focus();
+				} else if (!event.shiftKey && document.activeElement === last) {
+					event.preventDefault(); first?.focus();
+				}
+			}
+			if (event.key === "Escape" && selection && !event.defaultPrevented
+				&& !document.querySelector("dialog[open]")) {
 				event.preventDefault();
 				setSelection(null);
 			}
