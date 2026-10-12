@@ -156,6 +156,18 @@ for (const [input, surface, reading] of [
 	assert.strictEqual(ruby[0].pronunciation, reading, `${input}: ${ruby[0].pronunciation}`);
 }
 
+// 表層への読み割り当てが拗音の途中で分かれても発音ユニットを保つ。
+for (const [input, expected] of [
+	["｜キ空《キョラ》", ["キョ", "ラ"]],
+	["｜テ空《ティラ》", ["ティ", "ラ"]],
+	["｜シ空《シェラ》", ["シェ", "ラ"]],
+]) {
+	const [tokens] = ta.tokenizeTogether([input]);
+	const units = ta.getYomiAndPhraseBreak(tokens);
+	assert.deepStrictEqual(units.map((unit) => unit.pronunciation), expected, input);
+	assert.strictEqual(units.map((unit) => unit.surface_form).join(""), parseRuby(input).plain);
+}
+
 // 3. 後方互換: 記法を含まない行はルビ処理の前後で出力が完全一致する
 {
 	const plain = ["夢は今もめぐりて 忘れがたきふるさと", "ぴえんー! 超えもい", "1じにあっ"];

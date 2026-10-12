@@ -106,7 +106,7 @@ try {
 	await input.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 	await input.locator("#wordlist-trigger").click();
 	await input.locator('#wordlist-buttons button[data-value="POKEMON"]').click();
-	const annotated = `｜${"未来".repeat(10)}《${"ミライ".repeat(10)}》\n｜雲/空《クモソラ》`;
+	const annotated = `｜${"未来".repeat(10)}《${"ミライ".repeat(10)}》\n｜雲/空《クモソラ》\n｜キ空《キョラ》`;
 	await input.locator("#input-text").fill(annotated);
 	await input.locator("#btn-convert").click();
 	await input.waitForURL(editor + "/editor.html", { timeout: 180000 });
@@ -118,11 +118,12 @@ try {
 	const annotatedVideo = await annotatedVideoPromise;
 	await annotatedVideo.waitForFunction(() => window.received);
 	const annotatedResult = await annotatedVideo.evaluate(() => window.received);
-	assert.equal(annotatedResult.phrases.length, 2);
+	assert.equal(annotatedResult.phrases.length, 3);
 	assert.equal(annotatedResult.unitsList.flat().map((u) => u.pronunciation).join(""),
-		"ミライ".repeat(10) + "クモソラ");
+		"ミライ".repeat(10) + "クモソラキョラ");
+	assert.deepEqual(annotatedResult.unitsList[2].map((u) => u.pronunciation), ["キョ", "ラ"]);
 	assert.deepEqual(annotatedResult.tokensList.map((row) => row.map((t) => t.surface_form).join("")),
-		["未来".repeat(10), "雲/空"]);
+		["未来".repeat(10), "雲/空", "キ空"]);
 	console.log("[ok] annotated lyrics keep reading and spelling from conversion to Video");
 
 	await target.evaluate(() => { window.open = () => null; });

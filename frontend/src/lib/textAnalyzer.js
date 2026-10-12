@@ -276,10 +276,14 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 			let kana = []
 			let last_subword = -1;
 			for(let token of tokens){
-				// コ / ーラ のように長音から始まる断片は、直前の音節の続き。
+				// 表層への読み割り当てが拗音の途中で分かれても、発音単位は分けない。
+				const smallContinuation = /^[ァィゥェォャュョヮ]/.test(token.pronunciation)
+					&& kana.length > 0
+					&& k2s.split(kana.at(-1).slice(-1) + token.pronunciation[0]).length === 1;
+				// コ / ーラ のように長音から始まる断片も、直前の音節の続き。
 				// 音節分割前につなぎ、表層と読みの位置対応に使う全文字を保つ。
 				if(token.subword !== last_subword &&
-					(token.pronunciation !== "ー" || kana.length === 0)){
+					!smallContinuation && (token.pronunciation !== "ー" || kana.length === 0)){
 					kana.push(token.pronunciation);
 				}else{
 					kana[kana.length-1] += token.pronunciation;
