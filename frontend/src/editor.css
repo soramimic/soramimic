@@ -174,10 +174,36 @@ html.editor-free-input-open .editor-toolbar {
 	margin: 0.3rem 0;
 }
 
-.panel-candidates {
+.panel-candidates,
+.wordlist-search-results {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.4rem;
+}
+
+.panel-candidates[hidden],
+.wordlist-search-results[hidden],
+.panel-suggestions[hidden] {
+	display: none;
+}
+
+.wordlist-search {
+	margin-bottom: .8rem;
+}
+
+.wordlist-search-label {
+	display: block;
+	margin-bottom: .4rem;
+	font-size: .85rem;
+	color: var(--muted);
+}
+
+.wordlist-search-field .input {
+	font-size: 1rem;
+}
+
+.wordlist-search-status:empty {
+	display: none;
 }
 
 .panel-candidates-title {

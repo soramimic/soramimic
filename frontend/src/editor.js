@@ -24,6 +24,7 @@ import { lineRegenerationInput } from "./editorRegeneration.js";
 import { lockPanelViewport } from "./editorPanelViewport.js";
 import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
 import { appendWordDetails } from "./editorWordDetails.js";
+import { normalizeWordSearch, searchWordlist } from "./editorWordlistSearch.js";
 import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
@@ -83,6 +84,9 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
+let wordlistSearchQuery = "";
+let openSearchGroup = null;
+let wordlistSearchController = null;
 let readingFixContext = null; // 読み修正ダイアログの下書き {line, span, draftAlign, alignMode}
 let freeInputReturnClickUntil = 0;
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
@@ -534,6 +538,8 @@ function panelResultsSnapshot(results) {
 function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
+	wordlistSearchQuery = "";
+	openSearchGroup = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
 	const prev = selection;
@@ -1374,7 +1380,88 @@ function setCandidateSelected(button, selected) {
 	button.setAttribute("aria-pressed", String(selected));
 }
 
+function appendWordlistSearch(panel, used, isSelected) {
+	const section = document.createElement("section");
+	section.className = "wordlist-search";
+	const label = document.createElement("label");
+	label.className = "wordlist-search-label";
+	label.htmlFor = "wordlist-search-input";
+	label.textContent = "単語リストから検索";
+	const field = document.createElement("div");
+	field.className = "reverse-word-field wordlist-search-field";
+	const input = document.createElement("input");
+	input.id = "wordlist-search-input";
+	input.className = "input";
+	input.placeholder = "表記・正式名称・読み";
+	input.autocomplete = "off";
+	input.value = wordlistSearchQuery;
+	const clear = document.createElement("button");
+	clear.className = "reverse-clear wordlist-search-clear";
+	clear.type = "button";
+	clear.setAttribute("aria-label", "検索を消す");
+	clear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>';
+	const status = document.createElement("p");
+	status.className = "panel-note wordlist-search-status";
+	status.setAttribute("role", "status");
+	const results = document.createElement("div");
+	results.className = "wordlist-search-results";
+	field.append(input, clear);
+	section.append(label, field, status, results);
+	panel.append(section);
+	let timer, composing = false;
+	const update = () => {
+		clearTimeout(timer);
+		wordlistSearchController?.abort();
+		wordlistSearchQuery = input.value;
+		clear.hidden = !input.value;
+		results.replaceChildren();
+		const searching = !!normalizeWordSearch(input.value);
+		results.hidden = !searching;
+		panel.querySelector(".panel-suggestions")?.toggleAttribute("hidden", searching);
+		status.textContent = searching && !composing ? "検索中…" : "";
+		if (!searching || composing) return;
+		const controller = new AbortController();
+		wordlistSearchController = controller;
+		timer = setTimeout(async () => {
+			if (!section.isConnected) return;
+			try {
+				const found = await searchWordlist(db, input.value, { signal: controller.signal });
+				if (controller.signal.aborted || !section.isConnected) return;
+				const shown = found.groups.reduce((count, group) => count + group.cands.length, 0);
+				status.textContent = !found.total ? "一致する単語がありません"
+					: `${found.total}件` + (shown < found.total ? `（${shown}件を表示・検索語を絞るとさらに探せます）` : "");
+				for (const group of found.groups) {
+					const canonical = { ...group, cands: group.cands.map((word) => ({
+						...word, pronunciation: app.textAnalyzer.yomiToSyllable(word.kana), vcost: 0,
+					})) };
+					results.append(candidateButton(canonical, used, isSelected, (chosen) => {
+						openSearchGroup = chosen;
+						renderPanel();
+					}));
+				}
+			} catch (error) {
+				if (controller.signal.aborted || !section.isConnected) return;
+				status.textContent = "検索できませんでした。もう一度入力してください";
+			}
+		}, 150);
+	};
+	input.addEventListener("input", (event) => {
+		composing = event.isComposing;
+		update();
+	});
+	input.addEventListener("compositionstart", () => { composing = true; update(); });
+	input.addEventListener("compositionend", () => { composing = false; update(); });
+	clear.addEventListener("click", () => {
+		input.value = "";
+		composing = false;
+		update();
+		input.focus({ preventScroll: true });
+	});
+	queueMicrotask(() => { if (section.isConnected) update(); });
+}
+
 function buildPanel() {
+	wordlistSearchController?.abort();
 	readingInputLayoutCleanup?.();
 	const panel = $id("editor-panel");
 	document.documentElement.classList.toggle(
@@ -1418,8 +1505,23 @@ function buildPanel() {
 		return;
 	}
 
-	// 候補の取得と同姓同名(表記+読みが同じでidが違う)のグループ化。
-	// 単語重複なしの判定はid単位なので、同名でも別idはそれぞれ選べるようにする
+	const used = usedIdSet(line, start, end);
+	const isSelected = (cand) => !!selectedWord && cand.id === selectedWord.id
+		&& cand.surface === selectedWord.surface && cand.kana === selectedWord.kana
+		&& (cand.wordlistSource || data.wordlistSource) === (selectedWord.wordlistSource || data.wordlistSource);
+	if (openSearchGroup) {
+		renderGroupPicker(panel, openSearchGroup, used, isSelected, () => {
+			openSearchGroup = null;
+			renderPanel();
+			$id("wordlist-search-input")?.focus({ preventScroll: true });
+		});
+		return;
+	}
+	appendWordlistSearch(panel, used, isSelected);
+	const suggestions = document.createElement("div");
+	suggestions.className = "panel-suggestions";
+	suggestions.hidden = !!normalizeWordSearch(wordlistSearchQuery);
+	panel.append(suggestions);
 	const target = unitsOf(line).slice(start, end).map((u) => u.pronunciation);
 	// 位置別の重み(汎用weightsList、または生ノート長とαから導出)があれば、
 	// 選択範囲に対応する区間を切り出して候補計算にも効かせる
@@ -1428,10 +1530,7 @@ function buildPanel() {
 		? allWeights[line].slice(start, end)
 		: null;
 	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
-	const used = usedIdSet(line, start, end);
-	const isSelected = (cand) => !!selectedWord && cand.id === selectedWord.id
-		&& cand.surface === selectedWord.surface && cand.kana === selectedWord.kana
-		&& (cand.wordlistSource || data.wordlistSource) === (selectedWord.wordlistSource || data.wordlistSource);
+	// 同じ表記と読みでもIDの異なる単語は個別に選べるようにまとめる。
 	const groups = [];
 	const byKey = new Map();
 	for (const cand of fetched) {
@@ -1446,7 +1545,7 @@ function buildPanel() {
 
 	// 同名グループを開いている場合は個別選択リストを出す
 	if (openGroupKey && byKey.has(openGroupKey)) {
-		renderGroupPicker(panel, byKey.get(openGroupKey), used, isSelected);
+		renderGroupPicker(suggestions, byKey.get(openGroupKey), used, isSelected);
 		return;
 	}
 	const list = document.createElement("div");
@@ -1480,51 +1579,10 @@ function buildPanel() {
 		list.appendChild(note);
 	}
 	for (const g of shown) {
-		const cand = g.cands[0];
-		const allUsed = g.cands.every((c) => used.has(c.id));
-		const btn = document.createElement("button");
-		btn.className = "btn candidate";
-		btn.dataset.candidateId = String(cand.id);
-		const selected = g.cands.some(isSelected);
-		setCandidateSelected(btn, selected);
-		if (allUsed) btn.classList.add("used");
-		const surface = document.createElement("span");
-		surface.className = "candidate-surface";
-		surface.textContent = cand.surface;
-		if (g.cands.length > 1) {
-			const count = document.createElement("span");
-			count.className = "candidate-count";
-			count.textContent = `×${g.cands.length}`;
-			surface.appendChild(count);
-		}
-		const kana = document.createElement("span");
-		kana.className = "candidate-kana";
-		kana.textContent = cand.kana + (allUsed ? "・使用中" : "");
-		btn.append(surface, kana);
-		if (isCustomWord(cand)) {
-			const source = document.createElement("span");
-			source.className = "candidate-source";
-			source.textContent = "手入力";
-			btn.appendChild(source);
-		}
-		if (g.cands.length === 1) {
-			btn.title = candidateDetail(cand, used.has(cand.id));
-			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
-			btn.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
-		} else {
-			btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
-			attachLongPress(btn, () =>
-				`${g.cands.length}件の同名候補:\n` +
-				g.cands.slice(0, 8).map((c) => c.original || c.surface).join("\n") +
-				(g.cands.length > 8 ? "\n…" : ""));
-			btn.addEventListener("click", () => {
-				if (selected) return clearSelectionAssignment();
-				openGroupKey = g.key;
-				renderPanel();
-			});
-		}
-		if (selected) btn.title = "選択中（もう一度タップすると解除）";
-		list.appendChild(btn);
+		list.appendChild(candidateButton(g, used, isSelected, (group) => {
+			openGroupKey = group.key;
+			renderPanel();
+		}));
 	}
 	if (groups.length > shownCount && shownCount < GROUP_MAX) {
 		const more = document.createElement("button");
@@ -1537,15 +1595,63 @@ function buildPanel() {
 		});
 		list.appendChild(more);
 	}
-	panel.appendChild(list);
+	suggestions.appendChild(list);
+}
+
+function candidateButton(g, used, isSelected, openGroup) {
+	const cand = g.cands[0];
+	const allUsed = g.cands.every((c) => used.has(c.id));
+	const btn = document.createElement("button");
+	btn.className = "btn candidate";
+	btn.dataset.candidateId = String(cand.id);
+	const selected = g.cands.some(isSelected);
+	setCandidateSelected(btn, selected);
+	if (allUsed) btn.classList.add("used");
+	const surface = document.createElement("span");
+	surface.className = "candidate-surface";
+	surface.textContent = cand.surface;
+	if (g.cands.length > 1) {
+		const count = document.createElement("span");
+		count.className = "candidate-count";
+		count.textContent = `×${g.cands.length}`;
+		surface.appendChild(count);
+	}
+	const kana = document.createElement("span");
+	kana.className = "candidate-kana";
+	kana.textContent = cand.kana + (allUsed ? "・使用中" : "");
+	btn.append(surface, kana);
+	if (isCustomWord(cand)) {
+		const source = document.createElement("span");
+		source.className = "candidate-source";
+		source.textContent = "手入力";
+		btn.appendChild(source);
+	}
+	if (g.cands.length === 1) {
+		btn.title = candidateDetail(cand, used.has(cand.id));
+		attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
+		btn.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
+	} else {
+		btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
+		attachLongPress(btn, () =>
+			`${g.cands.length}件の同名候補:\n` +
+			g.cands.slice(0, 8).map((c) => c.original || c.surface).join("\n") +
+			(g.cands.length > 8 ? "\n…" : ""));
+		btn.addEventListener("click", () => {
+			if (selected) return clearSelectionAssignment();
+			openGroup(g);
+		});
+	}
+	if (selected) btn.title = "選択中（もう一度タップすると解除）";
+	return btn;
 }
 
 // 同名候補(id違い)の個別選択リスト
-function renderGroupPicker(panel, group, used, isSelected) {
+function renderGroupPicker(panel, group, used, isSelected, onBack) {
 	const back = document.createElement("button");
 	back.className = "btn panel-back";
 	back.textContent = "← 候補一覧に戻る";
 	back.addEventListener("click", () => {
+		if (onBack) return onBack();
 		openGroupKey = null;
 		renderPanel();
 	});
