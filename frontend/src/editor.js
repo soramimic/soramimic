@@ -1383,16 +1383,18 @@ function setCandidateSelected(button, selected) {
 function appendWordlistSearch(panel, used, isSelected) {
 	const section = document.createElement("section");
 	section.className = "wordlist-search";
-	const label = document.createElement("label");
-	label.className = "wordlist-search-label";
-	label.htmlFor = "wordlist-search-input";
-	label.textContent = "単語リストから検索";
 	const field = document.createElement("div");
 	field.className = "reverse-word-field wordlist-search-field";
+	const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	icon.classList.add("wordlist-search-icon");
+	icon.setAttribute("viewBox", "0 0 24 24");
+	icon.setAttribute("aria-hidden", "true");
+	icon.innerHTML = '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>';
 	const input = document.createElement("input");
 	input.id = "wordlist-search-input";
 	input.className = "input";
-	input.placeholder = "表記・正式名称・読み";
+	input.placeholder = "検索";
+	input.setAttribute("aria-label", "単語リストから検索");
 	input.autocomplete = "off";
 	input.value = wordlistSearchQuery;
 	const clear = document.createElement("button");
@@ -1405,8 +1407,8 @@ function appendWordlistSearch(panel, used, isSelected) {
 	status.setAttribute("role", "status");
 	const results = document.createElement("div");
 	results.className = "wordlist-search-results";
-	field.append(input, clear);
-	section.append(label, field, status, results);
+	field.append(icon, input, clear);
+	section.append(field, status, results);
 	panel.append(section);
 	let timer, composing = false;
 	const update = () => {

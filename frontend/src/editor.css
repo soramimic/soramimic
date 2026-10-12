@@ -191,14 +191,23 @@ html.editor-free-input-open .editor-toolbar {
 	margin-bottom: .8rem;
 }
 
-.wordlist-search-label {
-	display: block;
-	margin-bottom: .4rem;
-	font-size: .85rem;
+.wordlist-search-icon {
+	position: absolute;
+	left: .8rem;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 1.1rem;
+	height: 1.1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.75;
+	stroke-linecap: round;
 	color: var(--muted);
+	pointer-events: none;
 }
 
 .wordlist-search-field .input {
+	padding-left: 2.4rem;
 	font-size: 1rem;
 }
 
