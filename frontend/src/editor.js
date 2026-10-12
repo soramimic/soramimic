@@ -19,6 +19,7 @@ import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 import { findPlacements, highlightOriginal } from "./reverseSearch.js";
 import { lineRegenerationInput } from "./editorRegeneration.js";
+import { lockPanelViewport } from "./editorPanelViewport.js";
 import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
 import { appendWordDetails } from "./editorWordDetails.js";
 import {
@@ -85,6 +86,7 @@ let freeInputOpen = false; // 希少な自由入力は必要なときだけ開�
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
 let reviewPreviousSelection = null;
+let reviewPanelViewportCleanup = null;
 
 function $id(id) {
 	return document.getElementById(id);
@@ -100,6 +102,11 @@ function focusReadingInput(input, container = $id("editor-panel"), keepPositionU
 	readingInputLayoutCleanup?.();
 	if (!isIOSDevice() || !window.visualViewport) {
 		input.focus({ preventScroll: true });
+		return;
+	}
+	if (container === $id("editor-panel")) {
+		// The full-screen panel tracks the complete visual viewport while open.
+		input.focus();
 		return;
 	}
 	// iOS Safariの固定パネルはキーボードに隠れるため、visual viewportの下端まで
@@ -1041,9 +1048,15 @@ function renderPanel() {
 	buildPanel();
 	{
 		const panel = $id("editor-panel");
-		document.documentElement.classList.toggle("review-selecting", !!selection);
-		if (selection && !panel.open) panel.showModal();
-		else if (!selection && panel.open) panel.close();
+		if (selection && !panel.open) {
+			reviewPanelViewportCleanup = lockPanelViewport(panel);
+			panel.showModal();
+			panel.scrollTop = 0;
+		} else if (!selection && panel.open) {
+			panel.close();
+			reviewPanelViewportCleanup?.();
+			reviewPanelViewportCleanup = null;
+		}
 		if (selection) {
 			const target = focusedUnit !== undefined
 				? panel.querySelector(`.review-unit[data-index="${focusedUnit}"]`)

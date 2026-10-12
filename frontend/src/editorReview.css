@@ -21,10 +21,26 @@
 .review-word .chip-lock-icon { width: .85em; height: .85em; margin-left: .35em; vertical-align: -.1em; color: inherit; }
 .review-word.filler { border-style: dashed; border-color: var(--muted); background: transparent; color: var(--muted); font-weight: 400; }
 .simple-editor.review-selecting { overflow: hidden; }
-.simple-editor .editor-panel { inset: 0; width: 100%; height: 100dvh; max-width: 820px; max-height: none; border: 0; border-radius: 0; padding: 0 1rem 1rem; background: var(--bg); box-shadow: none; transform: translateX(105%); }
+.simple-editor .editor-panel {
+	inset: auto;
+	top: var(--review-panel-top, 0px);
+	left: var(--review-panel-left, 0px);
+	width: var(--review-panel-width, 100vw);
+	height: var(--review-panel-height, 100dvh);
+	max-height: var(--review-panel-height, 100dvh);
+	max-width: 820px;
+	margin: 0 0 0 max(0px, calc((var(--review-panel-width, 100vw) - 820px) / 2));
+	border: 0;
+	border-radius: 0;
+	padding: 0 1rem 1rem;
+	background: var(--bg);
+	box-shadow: none;
+	transform: none;
+	transition: none;
+}
 .simple-editor .editor-panel::backdrop { background: var(--bg); }
-.simple-editor .editor-panel.open { transform: translateX(0); }
-.review-panel-header { position: sticky; top: 0; z-index: 2; background: var(--bg); align-items: center; gap: .7rem; padding: .6rem 0; margin: 0; }
+.simple-editor .editor-panel.open { transform: none; }
+.review-panel-header { position: sticky; top: 0; z-index: 2; background: var(--bg); align-items: center; gap: .7rem; padding: calc(.6rem + env(safe-area-inset-top)) 0 .6rem; margin: 0; }
 .review-panel-header .panel-close { min-width: 44px; min-height: 44px; font-size: 1.25rem; }
 .review-selected { flex: 1; min-width: 0; }
 .review-selected-reading { color: var(--muted); font-size: .8rem; }
@@ -79,7 +95,7 @@
 .review-range:has(.panel-yomi-toggle) .review-original { padding-right: 44px; }
 .review-range > .panel-yomi-toggle { position: absolute; top: 0; right: 0; min-width: 44px; min-height: 44px; }
 .review-unit { touch-action: none; user-select: none; }
-.simple-editor.review-selecting body { overflow: hidden; }
+.simple-editor.review-selecting body { position: fixed; top: var(--review-page-y); left: var(--review-page-x); width: 100%; overflow: hidden; }
 .simple-editor .editor-panel { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 .simple-editor .editor-panel:not(.open) { visibility: hidden; }
 
