@@ -2,15 +2,17 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const local = "http://127.0.0.1:4624";
 const editor = "https://dev.soramimic.pages.dev";
 const video = "https://dev-video.soramimic.com";
 const bridge = await readFile(new URL("../src/appBridge.js", import.meta.url), "utf8");
-const preview = spawn("npx", ["vite", "preview", "--host", "127.0.0.1", "--port", "4624", "--strictPort"], {
-	stdio: "ignore", detached: true,
-});
+const preview = spawn(process.execPath, [
+	fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
+	"preview", "--host", "127.0.0.1", "--port", "4624", "--strictPort",
+], { cwd: new URL("..", import.meta.url), stdio: "ignore", detached: true });
 let browser;
 try {
 	for (let i = 0; ; i++) {
