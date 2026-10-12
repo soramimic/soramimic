@@ -114,6 +114,12 @@ export function setupReviewToolbar(review) {
 	document.body.append(status);
 	toolbar.append(actions);
 	toolbar.append(document.getElementById("reverse-search"));
+	// Keep everything above the lyrics together while search hits scroll past.
+	const header = document.querySelector(".site-header");
+	const pageHeader = element("div", "review-page-header");
+	header.before(pageHeader);
+	pageHeader.append(header, document.getElementById("editor-status"),
+		document.getElementById("bridge-status"), toolbar);
 }
 
 export function renderReviewLine(data, line, selection, choose, lockIcon, decorate) {

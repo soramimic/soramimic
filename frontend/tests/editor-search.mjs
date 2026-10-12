@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import { buildApp } from "../../tests/golden/harness-lib.mjs";
 import { selectRange } from "./editor-ui.mjs";
 
@@ -39,7 +39,7 @@ try {
 		if (i > 100) throw new Error("preview server did not start");
 		await new Promise((resolve) => setTimeout(resolve, 300));
 	}
-	browser = await chromium.launch();
+	browser = await (process.env.EDITOR_SEARCH_BROWSER === "webkit" ? webkit : chromium).launch();
 	const context = await browser.newContext({ viewport: { width: 390, height: 740 } });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
 	const page = await context.newPage();
@@ -211,6 +211,12 @@ try {
 		const beforeNavigation = await state();
 		await page.fill("#reverse-word", "ソラ");
 		await searchDone();
+		const upperPositions = () => page.locator(".site-header, #editor-toolbar, #reverse-next").evaluateAll(
+			(nodes) => nodes.map((node) => {
+				const { x, y, width, height } = node.getBoundingClientRect();
+				return { x, y, width, height };
+			}));
+		let initialUpperPositions = await upperPositions();
 		const assertCurrent = async (index, line, character) => {
 			assert.equal(await page.textContent("#reverse-count"), `${index} / 3`);
 			const current = page.locator("mark.reverse-current");
@@ -229,6 +235,8 @@ try {
 				"the active hit is visible below the search controls");
 			const nextBox = await page.locator("#reverse-next").boundingBox();
 			assert(nextBox.y >= 0 && nextBox.y + nextBox.height <= 640, "controls stay on screen after moving");
+			assert.deepEqual(await upperPositions(), initialUpperPositions,
+				"the header, search toolbar and arrows stay in the same positions when visiting hits");
 		};
 		await assertCurrent(1, 0, 0);
 		await page.click("#reverse-next");
@@ -246,6 +254,14 @@ try {
 		assert(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement), "keyboard navigation preserves input focus");
 		await page.locator("#reverse-word").dispatchEvent("keydown", { key: "Enter", isComposing: true });
 		await assertCurrent(3, 25, 0);
+		for (const width of [390, 1200]) {
+			await page.setViewportSize({ width, height: 640 });
+			await page.click("#reverse-next");
+			initialUpperPositions = await upperPositions();
+			await assertCurrent(1, 0, 0);
+			await page.click("#reverse-previous");
+			await assertCurrent(3, 25, 0);
+		}
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
@@ -261,6 +277,10 @@ try {
 		await page.click("#reverse-clear");
 		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
 		assert.equal(await page.locator(".reverse-current").count(), 0);
+		await page.click("#reverse-search > summary");
+		await page.locator('.review-line[data-line="25"]').scrollIntoViewIfNeeded();
+		assert(await page.locator("#editor-toolbar").evaluate((node) => node.getBoundingClientRect().bottom < 0),
+			"closing search restores the normal scrolling header");
 	}
 	// A query may end or start inside a kanji's reading; its surface still highlights.
 	const partialPhrases = ["夕焼小焼の、赤とんぼ", "畑"];
@@ -303,10 +323,16 @@ try {
 	await searchDone();
 	assert.equal(await page.locator('[data-line="10"] mark.reverse-highlight').textContent(), "キ",
 		"longer ranges with more deletion penalties must not displace the closer short match");
+	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10",
+		"navigation starts with the best-scoring hit even when it appears last in the lyrics");
+	await page.click("#reverse-next");
 	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "0",
-		"navigation starts in document order, independently of similarity ranking");
+		"next visits the next-best score, with tied scores in lyric order");
 	await page.click("#reverse-previous");
 	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10");
+	await page.click("#reverse-previous");
+	assert.equal(await page.textContent("#reverse-count"), "10 / 10",
+		"previous wraps from the best score to the last hit in the ranked shortlist");
 	// Edit a source reading while reverse highlights are visible. The automatic
 	// character allocation loses part of this token's spelling, but not the line.
 	const source = "負われて見たのは、いつの日か";
