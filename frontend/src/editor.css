@@ -147,11 +147,6 @@ html.editor-free-input-open .editor-toolbar {
 	background: rgba(100, 116, 139, 0.06);
 }
 
-.panel-free-title {
-	margin: 0 0 0.5rem;
-	font-size: 0.9rem;
-}
-
 .panel-free-fields {
 	display: grid;
 	grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr);

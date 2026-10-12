@@ -1201,9 +1201,6 @@ function appendReplacementControls(panel) {
 	if (freeInputOpen) {
 		const free = document.createElement("div");
 		free.className = "panel-free";
-		const heading = document.createElement("h3");
-		heading.className = "panel-free-title";
-		heading.textContent = "歌詞を入力";
 		const fields = document.createElement("div");
 		fields.className = "panel-free-fields";
 		const surfaceLabel = document.createElement("label");
@@ -1300,7 +1297,7 @@ function appendReplacementControls(panel) {
 			});
 		}
 		actions.append(back, apply);
-		free.append(heading, fields, note, actions);
+		free.append(fields, note, actions);
 		panel.appendChild(free);
 		queueMicrotask(() => focusReadingInput(surfaceInput));
 	}
