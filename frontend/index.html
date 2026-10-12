@@ -54,11 +54,12 @@
         <section id="tab-home">
           <section class="generation-card" aria-label="替え歌を生成">
             <div class="field">
-              <textarea id="input-text" class="input" maxlength="10000" rows="7" aria-label="歌詞"
-                placeholder="替え歌にしたい歌詞を入力（1万文字以内）"></textarea>
+              <textarea id="input-text" class="input" rows="7" aria-label="歌詞またはソラミミックの歌詞JSON"
+                placeholder="歌詞を行ごとに入力、またはソラミミックの歌詞JSONを貼り付け"></textarea>
+              <input id="lyrics-file" class="generation-file-input" type="file"
+                accept=".txt,.md,.json,text/plain,text/markdown,application/json"
+                aria-label="歌詞またはJSONファイル" aria-describedby="lyrics-file-hint" disabled />
               <div class="generation-input-actions">
-                <button id="btn-lyrics-file" class="generation-source-link" type="button"
-                  aria-describedby="lyrics-file-hint" disabled>ファイルを読み込む</button>
                 <button id="btn-sample-lyrics" class="generation-source-link" type="button"
                   aria-controls="sample-picker" aria-expanded="false" disabled>サンプル歌詞で試す</button>
               </div>
@@ -71,7 +72,6 @@
                   <option value="sample_lyric/akatombo.txt">赤とんぼ</option>
                 </select>
               </div>
-              <input id="lyrics-file" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" hidden />
               <p id="lyrics-file-status" class="midi-status" role="status" hidden></p>
             </div>
             <div class="field generation-wordlist-row">
