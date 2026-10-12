@@ -1,3 +1,4 @@
+import { menuAction } from "./editor-ui.mjs";
 // セットアップ画面(第1ステップ)のE2E。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけ、という契約を
 // 実ブラウザで確認する:
@@ -40,7 +41,7 @@ function assert(cond, message) {
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 
 const wordsOf = (page) =>
-	page.$$eval(".chip-word-surface", (els) => els.map((e) => e.textContent).join("|"));
+	page.$$eval(".review-word-surface", (els) => els.map((e) => e.textContent).join("|"));
 
 // hidden属性だけでなく、CSSのdisplay指定で見えてしまっていないかまで見る
 const isHidden = (page, sel) => page.isHidden(sel);
@@ -54,7 +55,7 @@ const waitSetupReady = (page) =>
 
 // 編集画面(結果表示)に入るまで待つ
 const waitEditor = (page) =>
-	page.waitForSelector(".editor-line .chip-word", { timeout: 180000 });
+	page.waitForSelector(".editor-line .review-word", { timeout: 180000 });
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
@@ -155,7 +156,7 @@ try {
 		"⚙からの再変換でパラメータが反映されていない");
 	assert(await wordsOf(page) !== wordsFirst, "再変換したのに結果が同じ");
 	// 「固定中以外を再生成」も使える
-	await page.click("#btn-regenerate");
+	await menuAction(page, "#btn-regenerate");
 	await page.waitForFunction(() => document.getElementById("regen-progress").hidden,
 		undefined, { timeout: 180000 });
 

@@ -1,3 +1,4 @@
+import { selectReading } from "./editor-ui.mjs";
 // 回帰テスト: 読み修正で「かなsurfaceに、そのかなが途中一致する長い読み」を与えても
 // クラッシュ・状態汚染・undo/redo不整合が起きないこと。
 //
@@ -81,20 +82,19 @@ try {
 	]);
 	editor.on("pageerror", (e) => pageErrors.push(e));
 
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
 		{ timeout: 120000 },
 	);
 
 	// 前提確認: 「変換する」がヘンカンスルと読まれていること
-	const kanaBefore = await editor.$$eval(".chip-unit",
-		(els) => els.map((e) => e.textContent).join(""));
+	const kanaBefore = await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList.flat().map((unit) => unit.pronunciation).join(""));
 	assert(kanaBefore === "ヘンカンスル",
 		"前提: アライン表示の読みが想定外(kuromoji非決定?): " + kanaBefore);
 
 	// ---- かなトークン「する」を選択(チップ「ス」をクリック→トークン境界スナップ) ----
-	await editor.locator(".chip-unit", { hasText: "ス" }).first().click();
+	await selectReading(editor, 0, "ス");
 	await editor.waitForSelector(".editor-panel.open .panel-yomi-toggle", { timeout: 10000 });
 	const editLabel = await editor.getAttribute(".panel-yomi-toggle", "aria-label");
 	// 対象が かなトークン「する」(読みスル) であること = 先頭セグメントかな経路を通す前提
@@ -115,7 +115,7 @@ try {
 		{ timeout: 10000 },
 	);
 	// 描画の静定を待つ
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 10000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 10000 });
 	await editor.waitForTimeout(300);
 
 	// (a) この時点までにページエラー(kanaAllocateのthrow等)が出ていないこと
@@ -145,8 +145,7 @@ try {
 		"unitsListのsurfaceが複製された: " + flatUnitSurface);
 
 	// 修正が実際に反映され、表示が変化していること(=テストが意味を持つことの確認)
-	const kanaAfterFix = await editor.$$eval(".chip-unit",
-		(els) => els.map((e) => e.textContent).join(""));
+	const kanaAfterFix = await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList.flat().map((unit) => unit.pronunciation).join(""));
 	assert(kanaAfterFix !== kanaBefore,
 		"読み修正が反映されていない(表示が変わらない): " + kanaAfterFix);
 
@@ -158,8 +157,7 @@ try {
 		{ timeout: 10000 },
 	);
 	await editor.waitForTimeout(200);
-	const kanaAfterUndo = await editor.$$eval(".chip-unit",
-		(els) => els.map((e) => e.textContent).join(""));
+	const kanaAfterUndo = await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList.flat().map((unit) => unit.pronunciation).join(""));
 	assert(kanaAfterUndo === kanaBefore,
 		`undoで元の読みに戻らない: 期待="${kanaBefore}" 実際="${kanaAfterUndo}"`);
 
@@ -169,8 +167,7 @@ try {
 		{ timeout: 10000 },
 	);
 	await editor.waitForTimeout(200);
-	const kanaAfterRedo = await editor.$$eval(".chip-unit",
-		(els) => els.map((e) => e.textContent).join(""));
+	const kanaAfterRedo = await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).unitsList.flat().map((unit) => unit.pronunciation).join(""));
 	assert(kanaAfterRedo === kanaAfterFix,
 		`redoで修正後の状態に戻らない: 期待="${kanaAfterFix}" 実際="${kanaAfterRedo}"`);
 
