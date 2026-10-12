@@ -336,10 +336,11 @@ export async function startApp() {
 		return svg;
 	}
 
-	function makeWordlistOption(entry) {
+	function makeWordlistOption(entry, subitem = false) {
 		const choose = document.createElement("button");
 		choose.type = "button";
 		choose.className = "custom-wordlist-menu-select";
+		if (subitem) choose.classList.add("custom-wordlist-menu-subitem");
 		choose.setAttribute("role", "menuitemradio");
 		choose.setAttribute("aria-label", entry.text);
 		choose.setAttribute("aria-checked", String(entry.value === selectedWordlist?.value));
@@ -377,13 +378,24 @@ export async function startApp() {
 		customMenu.replaceChildren();
 		for (const item of config.wordlist) {
 			if (item.items) addWordlistHeading(item.label);
-			for (const entry of item.items || [item]) customMenu.append(makeWordlistOption(entry));
+			for (const entry of item.items || [item]) customMenu.append(makeWordlistOption(entry, !!item.items));
 		}
 		addWordlistHeading("自作リスト");
+		const add = document.createElement("button");
+		add.type = "button";
+		add.className = "custom-wordlist-menu-new custom-wordlist-menu-subitem";
+		add.setAttribute("role", "menuitem");
+		add.textContent = "＋ 新しいリスト";
+		add.addEventListener("click", (event) => {
+			event.stopPropagation();
+			closeCustomMenu(false);
+			openOriginalDialog();
+		});
+		customMenu.appendChild(add);
 		for (const list of customLists) {
 			const entry = customEntry(list);
 			const row = document.createElement("div");
-			row.className = "custom-wordlist-menu-row";
+			row.className = "custom-wordlist-menu-row custom-wordlist-menu-subitem";
 			const choose = makeWordlistOption(entry);
 			const edit = document.createElement("button");
 			edit.type = "button";
@@ -410,17 +422,6 @@ export async function startApp() {
 			customMenu.appendChild(row);
 			wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(entry) });
 		}
-		const add = document.createElement("button");
-		add.type = "button";
-		add.className = "custom-wordlist-menu-new";
-		add.setAttribute("role", "menuitem");
-		add.textContent = "＋ 新しいリスト";
-		add.addEventListener("click", (event) => {
-			event.stopPropagation();
-			closeCustomMenu(false);
-			openOriginalDialog();
-		});
-		customMenu.appendChild(add);
 		positionCustomMenu();
 	}
 	renderCustomOptions();
@@ -430,7 +431,7 @@ export async function startApp() {
 		if (customMenu.hidden) return;
 		const triggerRect = customTrigger.getBoundingClientRect();
 		const gutter = 8;
-		const width = Math.min(Math.max(352, triggerRect.width), window.innerWidth - gutter * 2);
+		const width = Math.min(Math.max(320, triggerRect.width), window.innerWidth - gutter * 2);
 		customMenu.style.width = `${width}px`;
 		customMenu.style.left = `${Math.max(gutter, Math.min(
 			triggerRect.left, window.innerWidth - width - gutter))}px`;
