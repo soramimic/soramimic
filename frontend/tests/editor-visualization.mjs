@@ -54,6 +54,9 @@ try {
 	assert.equal(await page.locator(".visualization-badge").count(), 0);
 	const before = await page.evaluate(() => sessionStorage.getItem("soramimic-editor"));
 	await page.locator("#editor-visualization summary").click();
+	await page.waitForFunction(() => document.getElementById("visualization-count-long").textContent === "4か所");
+	assert.equal(await page.locator("#visualization-count-long").textContent(), "4か所");
+	assert.equal(await page.locator("#visualization-count-nasal").textContent(), "1か所");
 	for (const [kind, count] of [["vowel", 1], ["distance", 1], ["single", 2], ["filler", 1]]) {
 		assert.equal(await page.locator(`#visualization-count-${kind}`).textContent(), `${count}か所`);
 		await page.check(`#visualize-${kind}`);
@@ -97,6 +100,27 @@ try {
 	for (const kind of ["vowel", "distance", "single", "filler"]) await page.uncheck(`#visualize-${kind}`);
 	assert.equal(await page.locator(".visualization-badge").count(), 0);
 	assert.equal(await page.locator(".visualization-hit").count(), 0);
+	await page.check("#visualize-long");
+	assert.equal(await page.locator(".visualization-long").count(), 4);
+	assert.equal(await page.locator(".visualization-vowel").count(), 0, "expansion can agree in vowels");
+	await page.check("#visualize-nasal");
+	assert.equal(await page.locator(".visualization-nasal").count(), 1);
+	assert.equal(await page.locator(".visualization-hit").count(), 4, "overlapping expansion and nasal change count once");
+	// Replace an expanded long vowel with two ordinary syllables, then undo.
+	await page.locator(".review-word").filter({ has: page.locator(".review-word-surface", { hasText: "校" }) }).click();
+	await page.locator(".panel-free-toggle").click();
+	await page.fill(".panel-free-surface", "琴");
+	await page.locator(".review-reading-input summary").click();
+	await page.fill(".panel-free-reading", "コト");
+	await page.locator(".panel-free-apply").click();
+	await page.locator(".panel-close").click();
+	assert.equal(await page.locator(".visualization-long").count(), 3);
+	await page.locator("#btn-undo").click();
+	assert.equal(await page.locator(".visualization-long").count(), 4);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	assert.equal(await page.locator(".visualization-long").count(), 4, "expansion preference survives reload");
+	assert.equal(await page.locator(".visualization-nasal").count(), 1);
 	assert.deepEqual(errors, []);
 	console.log("[ok] visualization E2E: combined highlights, threshold, persistence, mobile layout, corrections and undo");
 } finally {

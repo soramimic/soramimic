@@ -3,8 +3,8 @@ import { PronunciationSearch } from "./lib/pronunciationSearch.js";
 
 const splitter = KanaToSyllable();
 const STORAGE_KEY = "soramimic-editor-visualization";
-const kinds = ["vowel", "distance", "single", "filler"];
-const labels = { vowel: "母音不一致", distance: "類似度低", single: "1音節", filler: "未変換" };
+const kinds = ["vowel", "distance", "long", "nasal", "single", "filler"];
+const labels = { vowel: "母音不一致", distance: "類似度低", long: "長音2モーラ化", nasal: "ン・ッ変化", single: "1音節", filler: "未変換" };
 
 function syllables(kana) {
 	if (typeof kana !== "string") return [];
@@ -29,10 +29,19 @@ export function vowelSequence(kana) {
 		.filter((vowel) => /^[アイウエオ]$/.test(vowel)).join("");
 }
 
-function pronunciationSearch(target, pronunciation) {
+function pronunciationSearch(target, pronunciation, options) {
 	const extra = pronunciation.filter((unit) => longVowelExpansion(unit)).length;
 	const lengths = Array.from({ length: extra + 1 }, (_, i) => pronunciation.length + i);
-	return new PronunciationSearch(target, lengths);
+	return new PronunciationSearch(target, lengths, options);
+}
+
+function nasalCounts(pronunciation) {
+	return ["ン", "ッ"].map((char) => pronunciation.join("").split(char).length - 1);
+}
+
+function bestDistance(search, pronunciation, matrix, cost, wordCost) {
+	return Math.min(Infinity, ...search.lengths.map((length) =>
+		search.scoreExpanded(pronunciation, length, matrix, cost, wordCost)));
 }
 
 // Re-score the assigned pronunciation against the current reading/settings.
@@ -50,6 +59,9 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 	const custom = String(word.id).startsWith("custom-");
 	const pronunciation = !custom && Array.isArray(word.pronunciation) && word.pronunciation.length
 		? word.pronunciation : canonicalUnits(parts);
+	const originalNasals = nasalCounts(canonicalUnits(parts));
+	const selectedNasals = nasalCounts(pronunciation);
+	result.nasal = originalNasals.some((count, i) => count !== selectedNasals[i]);
 	if (result.vowel) {
 		const vowelPronunciation = pronunciation.map((unit) => {
 			const vowel = unitVowel(unit);
@@ -69,12 +81,31 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 	const search = pronunciationSearch(target, pronunciation);
 	const cost = Number(param.VARIATION_COST) || 0;
 	const wordCost = custom ? 0 : Number(word.vcost) || 0;
-	let distance = Infinity;
-	for (const length of search.lengths) {
-		distance = Math.min(distance, search.scoreExpanded(pronunciation, length, matrix, cost, wordCost));
-	}
+	const distance = bestDistance(search, pronunciation, matrix, cost, wordCost);
 	result.distance = distance / Math.max(1, target.length);
 	result.lengthMismatch = search.lengths.length === 0;
+	result.long = false;
+	if (Number.isFinite(distance)) {
+		// Rejoin previously expanded spellings from older saved results too.
+		const held = canonicalUnits(syllables(pronunciation.join("")));
+		const hasLongVowel = held.some((unit) => longVowelExpansion(unit))
+			|| target.some((unit) => syllableVariations(unit).some(({u}) =>
+				u.some((part) => longVowelExpansion(part))));
+		if (hasLongVowel) {
+			const unexpanded = pronunciationSearch(target, held, { expandLongVowels: false });
+			const heldDistance = unexpanded.score(held, matrix, cost, wordCost);
+			result.long = distance < heldDistance - 1e-8;
+		}
+		if (!result.nasal && [...target, ...pronunciation].some((unit) => /[ンッ]/.test(unit))) {
+			const unchanged = pronunciationSearch(target, pronunciation, { allowSoundChanges: false });
+			const nasalKind = (unit) => /^[ンッ]$/.test(unit) ? unit : null;
+			const extend = (score, left, right) => nasalKind(left) === nasalKind(right)
+				? score + (matrix[left]?.[right] ?? Infinity) : Infinity;
+			const unchangedDistance = Math.min(Infinity, ...unchanged.lengths.map((length) =>
+				unchanged.distanceExpanded(pronunciation, length, extend, cost, wordCost, null)));
+			result.nasal = distance < unchangedDistance - 1e-8;
+		}
+	}
 	return result;
 }
 
@@ -100,7 +131,7 @@ export function setupVisualization(getContext) {
 			previousApp = context.app;
 			previousParam = paramKey;
 		}
-		const needDistance = details.open || inputs.distance.checked;
+		const needDistance = details.open || inputs.distance.checked || inputs.long.checked || inputs.nasal.checked;
 		if (needDistance && context.app && !matrix) matrix = context.app.kanaSimilarity.getKanaSimilarity(context.param);
 		const limit = Math.max(0, Math.min(100, Number(threshold.value) || 0));
 		const counts = Object.fromEntries(kinds.map((kind) => [kind, 0]));
@@ -147,7 +178,7 @@ export function setupVisualization(getContext) {
 			else chip.removeAttribute("aria-label");
 		}
 		for (const kind of kinds) {
-			document.getElementById(`visualization-count-${kind}`).textContent = kind === "distance" && !context.app ? "準備中" : `${counts[kind]}か所`;
+			document.getElementById(`visualization-count-${kind}`).textContent = ["distance", "long", "nasal"].includes(kind) && !context.app ? "準備中" : `${counts[kind]}か所`;
 		}
 		const enabled = kinds.some((kind) => inputs[kind].checked);
 		document.getElementById("visualization-summary").textContent = enabled ? `・${highlighted}か所を強調` : "";

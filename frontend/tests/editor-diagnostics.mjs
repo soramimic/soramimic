@@ -36,6 +36,32 @@ assert.deepEqual(wordDiagnostics({}, ["カ"]), {});
 const { app } = await buildApp({ tokenizer: "kuromoji" });
 const param = { VOWEL_RATIO: .8, VARIATION_COST: 16, APPROX_CANDIDATES: 0 };
 const matrix = app.kanaSimilarity.getKanaSimilarity(param);
+const diagnose = (kana, pronunciation, target, extra = {}) =>
+	wordDiagnostics({ kana, pronunciation, ...extra }, target, app, param, matrix);
+for (const [kana, pronunciation, target] of [
+	["コー", ["コー"], ["コ", "オ"]],
+	["サツケバー", ["サ", "ツ", "ケ", "バー"], ["ワ", "ス", "レ", "ガ", "タ"]],
+	["コオ", ["コ", "オ"], ["コ", "オ"]],
+	["コト", ["コ", "ト"], ["コー"]],
+]) assert.equal(diagnose(kana, pronunciation, target).long, true, `${kana}: expansion must be highlighted`);
+assert.equal(diagnose("コー", ["コー"], ["コー"]).long, false, "holding a long vowel is not expansion");
+assert.equal(diagnose("カタ", ["カ", "タ"], ["サ", "ナ"]).long, false);
+assert.equal(diagnose("コー", ["コー"], ["コ", "オ", "カ"]).long, false,
+	"an unmatchable reading must not be called expansion");
+for (const [kana, pronunciation, target, extra] of [
+	["カン", ["カ"], ["カ"], { vcost: 1 }],
+	["カッ", ["カ"], ["カ"], { vcost: 1 }],
+	["カン", ["カー"], ["カー"], { vcost: 1 }],
+	["カ", ["カ"], ["カン"], {}],
+	["カッ", ["カ", "ッ"], ["カン"], {}],
+]) {
+	const result = diagnose(kana, pronunciation, target, extra);
+	assert.equal(result.nasal, true, `${kana}: nasal/geminate changes need their own criterion`);
+	assert.equal(result.vowel, false, "matching vowels do not report a nasal/geminate change");
+}
+assert.equal(diagnose("カン", ["カ", "ン"], ["カン"]).nasal, false);
+assert.equal(diagnose("カッ", ["カ", "ッ"], ["カッ"]).nasal, false);
+assert.equal(diagnose("カタ", ["カ", "タ"], ["サ", "ナ"]).nasal, false);
 for (const [kana, target] of [["カタ", ["タ", "カ"]], ["コー", ["コ", "オ"]], ["カン", ["タン"]]]) {
 	const db = await app.wordList.parsePlain(kana);
 	const word = app.soramimiMaker.getCandidates(db, target, param, 1)[0];
