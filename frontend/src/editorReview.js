@@ -186,4 +186,11 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		range.append(edit);
 	}
 	panel.append(range);
+	if ((data.results[line] || []).some((assigned) =>
+		!assigned.filler && assigned.period[0] < end && start < assigned.period[1])) {
+		const clear = element("button", "btn btn-ghost panel-clear", "割り当てを解除");
+		clear.type = "button";
+		clear.addEventListener("click", callbacks.clear);
+		range.append(clear);
+	}
 }

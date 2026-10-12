@@ -62,6 +62,11 @@
 .simple-editor .editor-panel:not(.open) { visibility: hidden; }
 
 .review-panel-header .panel-lock { min-width: 44px; min-height: 44px; }
+.review-range .panel-clear { display: block; min-height: 44px; margin: .5rem 0 0 auto; font-size: .85rem; }
+.assignment-conflict-dialog p, .assignment-conflict-dialog li { overflow-wrap: anywhere; line-height: 1.7; }
+.assignment-conflict-dialog .dialog-buttons { flex-wrap: wrap; }
+.assignment-conflict-dialog .btn { min-height: 44px; }
+.assignment-conflict-context { display: block; color: var(--muted); font-size: .85rem; margin-bottom: .5rem; }
 @media (max-width: 360px) {
 	.simple-editor #app { padding-left: .5rem; padding-right: .5rem; }
 	.simple-editor .review-tools { gap: .1rem; }
