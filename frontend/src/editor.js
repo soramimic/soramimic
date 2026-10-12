@@ -5,6 +5,7 @@
 import "./style.css";
 import "./editor.css";
 import "./appBridge.js";
+import { validateEditorData } from "./editorData.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -2508,17 +2509,7 @@ async function copyResult() {
 
 export const EXPORT_FORMAT = "soramimic-editor/1";
 
-// 読み込むデータの最低条件(生成画面からの受け渡しと同じ形)
-export function validateEditorData(obj) {
-	if (!obj || typeof obj !== "object") return "JSONオブジェクトではありません";
-	if (!Array.isArray(obj.results)) return "results(行ごとの単語列)がありません";
-	if (!Array.isArray(obj.unitsList)) return "unitsList(行ごとの発音ユニット列)がありません";
-	if (obj.results.length !== obj.unitsList.length) {
-		return "resultsとunitsListの行数が一致しません";
-	}
-	return null;
-}
-
+export { validateEditorData } from "./editorData.js";
 // ホスト固有の一時情報(host / hostRequest)は載せない。書き出しJSONは
 // 単体の編集ツールでも読み直せる自己完結した内容だけにする
 function exportPayload() {
@@ -2681,10 +2672,13 @@ async function start() {
 		data.dirtyLines = data.results.map((_, i) => i);
 	}
 
-	// 元歌詞(字幕用)は読み込み直後に行対応づけまで済ませておく。ホストはいつ
-	// ペイロードを読んでも、いまの phrases に対応した originalLines を見られる
+	// 保存済みの行対応はそのまま復元し、未保存の場合だけ対応づける。
 	if (lyricsEnabled()) {
-		syncOriginalLines();
+		if (!Array.isArray(data.originalLines)
+			|| data.originalLines.length !== data.phrases?.length
+			|| !data.originalLines.every((line) => typeof line === "string")) {
+			syncOriginalLines();
+		}
 		saveData();
 	}
 

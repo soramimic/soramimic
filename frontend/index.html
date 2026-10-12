@@ -56,57 +56,33 @@
 
       <main>
         <section class="tabpage" id="tab-home">
-          <div class="columns">
-            <div class="col conversion">
-              <div class="field input-source-row">
-                <span class="sample-label">サンプル:</span>
-                <div id="sample-buttons" class="btn-group-wrap" title="クリックすると歌詞と単語リストをセットしてすぐに変換します">
-                  <button class="btn" data-path="sample_lyric/furusato.txt" data-wordlist="BASEBALL">ふるさと × 野球選手</button>
-                  <button class="btn" data-path="sample_lyric/momotaro.txt" data-wordlist="POKEMON">ももたろう × ポケモン</button>
-                  <button class="btn" data-path="sample_lyric/akatombo.txt" data-wordlist="STATION">赤とんぼ × 駅名</button>
-                </div>
-                <button id="btn-midi-import" class="btn" title="XF形式(カラオケ歌詞入り)のMIDIから歌詞の読みを取り込みます">MIDIから取り込み</button>
-                <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
+          <section class="generation-card" aria-label="替え歌を生成">
+            <div class="field">
+              <label class="field-label" for="input-text">歌詞</label>
+              <textarea id="input-text" class="input" maxlength="10000" rows="7"
+                placeholder="替え歌にしたい歌詞を入力してください（1万文字以内）"></textarea>
+              <div class="generation-file-row">
+                <button id="btn-lyrics-file" class="btn" type="button" disabled>ファイルから読み込む</button>
+                <span class="field-note">歌詞（TXT・Markdown）／編集データ（JSON）</span>
               </div>
-              <p id="midi-status" class="midi-status" hidden></p>
-              <div class="field">
-                <textarea id="input-text" class="input" maxlength="10000" rows="6"
-                  placeholder="変換したい文章(1万文字以内)"></textarea>
-              </div>
-              <div class="field convert-row">
-                <button id="btn-convert" class="btn btn-primary" disabled>読み込み中...</button>
-                <button id="btn-cancel" class="btn" hidden>中止</button>
-                <span id="progress" class="progress" hidden>
-                  <span id="progress-text">0/0</span><span class="spinner"></span>
-                </span>
-              </div>
-              <div class="field" id="output-field" hidden>
-                <div class="output-header">
-                  <h2 id="output-heading">出力結果</h2>
-                  <div class="output-toolbar">
-                    <label class="visually-hidden" for="format-select">出力形式</label>
-                    <select id="format-select" class="input output-format-control">
-                      <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
-                      <option value="1">替え歌/元歌詞</option>
-                      <option value="2">替え歌読み/元歌詞読み</option>
-                      <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
-                    </select>
-                    <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
-                    <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
-                  </div>
-                </div>
-                <textarea id="output-text" class="input" rows="12" placeholder="出力結果"
-                  aria-labelledby="output-heading"></textarea>
-                <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
+              <input id="lyrics-file" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" hidden />
+              <p id="lyrics-file-status" class="midi-status" role="status" hidden></p>
+            </div>
+            <div class="field">
+              <label class="field-label" for="wordlist-select">単語リスト</label>
+              <div id="wordlist-buttons" class="generation-wordlist">
+                <select id="wordlist-select" class="input" aria-label="単語リスト"></select>
               </div>
             </div>
-
-            <div class="col settings">
-              <h2>設定</h2>
+            <details id="generation-advanced" class="generation-advanced">
+              <summary>詳細設定</summary>
               <div class="field">
-                <h3 class="field-label">単語リスト</h3>
-                <div id="wordlist-buttons" class="btn-group-wrap"></div>
                 <div id="wordlist-facets" class="wordlist-facets"></div>
+              </div>
+              <div class="field">
+                <h3 class="field-label">パラメータ</h3>
+                <div id="preset-buttons" class="btn-group-wrap"></div>
+                <div id="param-area" class="param-grid"></div>
               </div>
               <div class="field">
                 <h3 class="field-label">単語重複</h3>
@@ -115,16 +91,47 @@
                   <button class="btn active" data-value="false">なし</button>
                 </div>
               </div>
-              <div class="field">
-                <h3 class="field-label">パラメータ</h3>
-                <div id="preset-buttons" class="btn-group-wrap"></div>
-                <details class="param-details">
-                  <summary>詳細設定</summary>
-                  <div id="param-area" class="param-grid"></div>
-                </details>
+              <div class="field input-source-row">
+                <span class="sample-label">サンプル:</span>
+                <div id="sample-buttons" class="btn-group-wrap" title="クリックすると歌詞と単語リストをセットしてすぐに生成します">
+                  <button class="btn" data-path="sample_lyric/furusato.txt" data-wordlist="BASEBALL">ふるさと × 野球選手</button>
+                  <button class="btn" data-path="sample_lyric/momotaro.txt" data-wordlist="POKEMON">ももたろう × ポケモン</button>
+                  <button class="btn" data-path="sample_lyric/akatombo.txt" data-wordlist="STATION">赤とんぼ × 駅名</button>
+                </div>
+                <button id="btn-midi-import" class="btn" title="XF形式のMIDIから歌詞の読みを取り込みます">MIDIから取り込み</button>
+                <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
+              </div>
+              <p id="midi-status" class="midi-status" hidden></p>
+            </details>
+            <div class="convert-row generation-actions">
+              <button id="btn-convert" class="btn btn-primary" disabled>読み込み中...</button>
+              <button id="btn-cancel" class="btn" hidden>中止</button>
+              <span id="progress" class="progress" role="status" hidden>
+                <span id="progress-text">0/0</span><span class="spinner"></span>
+              </span>
+            </div>
+            <p id="generation-error" class="generation-error" role="alert" hidden></p>
+          </section>
+          <details class="generation-output" id="output-field" hidden>
+            <summary>前回の生成結果</summary>
+            <div class="output-header">
+              <h2 id="output-heading">出力結果</h2>
+              <div class="output-toolbar">
+                <label class="visually-hidden" for="format-select">出力形式</label>
+                <select id="format-select" class="input output-format-control">
+                  <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
+                  <option value="1">替え歌/元歌詞</option>
+                  <option value="2">替え歌読み/元歌詞読み</option>
+                  <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
+                </select>
+                <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
+                <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
               </div>
             </div>
-          </div>
+            <textarea id="output-text" class="input" rows="12" placeholder="出力結果"
+              aria-labelledby="output-heading"></textarea>
+            <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
+          </details>
         </section>
 
         <section class="tabpage" id="tab-about" hidden>

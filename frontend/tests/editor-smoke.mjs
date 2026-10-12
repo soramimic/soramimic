@@ -52,26 +52,16 @@ try {
 	// ---- 生成画面: 変換して編集ツールを開く ----
 	await page.goto(`http://localhost:${PORT}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		undefined, { timeout: 60000 },
 	);
 	// 「故郷」は読みがコキョーと推定される(読み修正のテスト対象)。2行目の
 	// 複数桁数字は、仮読みからジュウニへ修正する回帰テストに使う。
 	await page.fill("#input-text", "忘れがたき故郷\n深夜12時をすぎたって\n漢字");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		undefined, { timeout: 120000 },
-	);
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
 
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
 
 	// ---- 編集画面: アライン表示と初期化完了(候補DB構築)を待つ ----
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
@@ -676,14 +666,12 @@ try {
 	);
 
 	// ---- 音節単位の対応: 一音節に複数の文字がある語 ----
+	await page.goto(`http://localhost:${PORT}/`);
+	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 	await page.fill("#input-text", "赤とんぼ\n赤ちゃん\n東京");
 	await page.click("#btn-convert");
-	await page.waitForFunction(() => !document.getElementById("btn-convert").disabled,
-		undefined, { timeout: 120000 });
-	const [alignmentEditor] = await Promise.all([
-		context.waitForEvent("page"), page.click("#btn-open-editor"),
-	]);
-	alignmentEditor.on("pageerror", (e) => pageErrors.push(e));
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const alignmentEditor = page;
 	const waitForAlignmentEditor = async () => {
 		await alignmentEditor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 		await alignmentEditor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled,
