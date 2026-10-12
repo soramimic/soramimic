@@ -470,11 +470,15 @@ function scrollToReverseMatch() {
 	const row = document.querySelector(`.editor-line[data-line="${match.line}"]`);
 	const target = row?.querySelector("mark.reverse-current, .review-word.reverse-current");
 	if (!target) return;
-	target.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
-	// Keep the hit below the sticky search toolbar even in a short viewport.
-	const top = target.getBoundingClientRect().top;
-	const toolbarBottom = $id("editor-toolbar").getBoundingClientRect().bottom + 12;
-	if (top < toolbarBottom) window.scrollBy({ top: top - toolbarBottom, behavior: "instant" });
+	const main = document.querySelector("main");
+	const bounds = main.getBoundingClientRect();
+	const viewport = window.visualViewport;
+	const top = Math.max(bounds.top, viewport?.offsetTop || 0) + 12;
+	const bottom = Math.min(bounds.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight) - 12;
+	const hit = target.getBoundingClientRect();
+	// Calculate the final position before scrolling; never scroll the page or its header.
+	const destination = Math.max(top, (top + bottom - hit.height) / 2);
+	main.scrollBy({ top: hit.top - destination, behavior: "instant" });
 }
 
 function moveReverseMatch(direction) {
