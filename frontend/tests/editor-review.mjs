@@ -437,7 +437,7 @@ try {
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("JR東海 高山本線"));
 	assert.match(await details.textContent(), /岐阜県/);
 	assert.match(await details.textContent(), /1930/);
-	assert.equal(await page.locator(".review-selected .review-word-details").count(), 1, "word information belongs below the selected name");
+	assert.equal(await page.locator(".review-selected .review-word-details").count(), 1, "word information belongs with the selected name");
 	assert.equal(await details.evaluate((node) => node.open), false, "the full details start collapsed");
 	assert.match(await details.locator("summary").textContent(), /岐阜県.*下呂市.*JR東海 高山本線/);
 	assert(await details.locator("dl").isHidden(), "additional facts do not push down the candidates");
@@ -450,10 +450,17 @@ try {
 		const header = await page.locator(".review-panel-header").boundingBox();
 		assert(header.height < 150, "the collapsed header stays compact on a phone");
 		const summary = details.locator("summary");
+		const nameBox = await page.locator(".review-selected-name").boundingBox();
+		const summaryBox = await summary.boundingBox();
+		assert(summaryBox.x >= nameBox.x + nameBox.width, "the summary sits to the right of the word");
+		assert(Math.abs(summaryBox.y - nameBox.y) < 2, "the summary and word start on the same row");
 		await summary.focus();
 		await page.keyboard.press("Enter");
 		assert(await details.locator("dl").isVisible(), "the summary opens the full labeled details with the keyboard");
 		assert(await details.evaluate((node) => node.scrollWidth <= node.clientWidth), "expanded facts fit narrow headers");
+		const factsBox = await details.locator("dl").boundingBox();
+		assert(factsBox.y >= nameBox.y + nameBox.height, "expanded facts appear below the word and reading");
+		assert(Math.abs(factsBox.x - nameBox.x) < 2, "expanded facts use the full selected area");
 		await summary.click();
 		assert(await details.locator("dl").isHidden(), "the summary closes the details by touch or click");
 	}

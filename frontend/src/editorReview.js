@@ -167,8 +167,10 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	close.addEventListener("click", callbacks.close);
 	const title = element("h2", "review-selected-word", word?.surface || kana);
 	const selected = element("div", "review-selected");
-	selected.append(title);
-	if (word?.kana && word.kana !== word.surface) selected.append(element("span", "review-selected-reading", word.kana));
+	const name = element("div", "review-selected-name");
+	name.append(title);
+	if (word?.kana && word.kana !== word.surface) name.append(element("span", "review-selected-reading", word.kana));
+	selected.append(name);
 	header.append(close, selected);
 	const actions = element("div", "review-word-actions");
 	if (word && !word.filler) {
