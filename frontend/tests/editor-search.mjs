@@ -47,7 +47,7 @@ try {
 	await page.goto(`${base}/editor.html`);
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
-	const searchDone = () => page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("音が近い順"));
+	const searchDone = () => page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("ハイライト"));
 	for (const review of [false, true]) {
 		const session = structuredClone(seed);
 		if (review) {
@@ -59,23 +59,29 @@ try {
 		await ready();
 		assert.equal(await page.locator(".line-regenerate").count(), 3, "blank lines have no regenerate action");
 		await page.click("#reverse-search > summary");
+		assert.equal(await page.locator("#reverse-search input").count(), 1, "search uses a single reading field");
+		assert.equal(await page.locator("#reverse-clear").isVisible(), false, "empty input has no clear icon");
 		const initial = await state();
-		await page.fill("#reverse-word", "空");
+		await page.getByLabel("使いたい単語の読み", { exact: true }).fill("ソラ");
 		await searchDone();
 		assert.deepEqual((await state()).results, initial.results, "search must not edit lyrics");
 		assert.deepEqual((await state()).history, initial.history, "search must not add history");
-		const firstMatch = page.getByRole("button", { name: "候補1 · ソラ", exact: true });
+		const firstMatch = page.locator('[data-line="0"] .reverse-highlight[data-start="1"][data-end="3"]');
 		assert.equal(await firstMatch.getAttribute("data-start"), "1");
 		assert.equal(await firstMatch.getAttribute("data-end"), "3");
-		if (review) {
-			assert(await page.locator('[data-line="0"] .reverse-line-match').isVisible());
-		} else {
-			assert.equal(await page.locator('[data-line="0"] .review-original mark').textContent(), "空");
-		}
+		assert.equal(await firstMatch.textContent(), review ? "あ、空" : "空");
+		assert.equal(await page.locator('[data-line="0"] .review-original').textContent(), review ? "あ、空" : "あ空",
+			"highlighting preserves the displayed original lyrics");
+		assert.equal(await page.locator(".reverse-choices, .reverse-match").count(), 0, "no separate candidate cards");
 		for (const colorScheme of ["light", "dark"]) {
 			await page.emulateMedia({ colorScheme });
 			for (const width of [320, 390, 1200]) {
 				await page.setViewportSize({ width, height: 740 });
+				const inputBox = await page.locator("#reverse-word").boundingBox();
+				const clearBox = await page.getByRole("button", { name: "入力を消す", exact: true }).boundingBox();
+				assert(clearBox.width >= 44 && clearBox.height >= 44, "clear icon keeps a touch-sized target");
+				assert(clearBox.x >= inputBox.x && clearBox.x + clearBox.width <= inputBox.x + inputBox.width,
+					"clear icon is inside the input's right edge");
 				const overflow = await page.evaluate(() => [...document.querySelectorAll("body *")]
 					.filter((node) => node.getBoundingClientRect().right > innerWidth + 1 && node.getClientRects().length)
 					.map((node) => ({ tag: node.tagName, id: node.id, class: node.className, right: node.getBoundingClientRect().right })));
@@ -85,39 +91,69 @@ try {
 		}
 		await page.setViewportSize({ width: 390, height: 740 });
 		if (process.env.EDITOR_SCREENSHOTS && !review) {
+			await page.emulateMedia({ colorScheme: "light" });
 			await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
 			await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/reverse-search.png`, animations: "disabled" });
 		}
-		await firstMatch.click();
-		assert.equal(await page.inputValue(".panel-free-surface"), "空");
+		if (review) {
+			await firstMatch.focus();
+			await firstMatch.press("Enter");
+		} else {
+			await firstMatch.click();
+		}
+		assert.equal(await page.inputValue(".panel-free-surface"), "ソラ");
 		assert.equal(await page.inputValue(".panel-free-reading"), "ソラ");
 		assert.equal(await page.locator('.review-unit[aria-pressed="true"]').count(), 2);
 		await page.click(".panel-free-apply");
-		assert((await state()).results[0].some((item) => item.surface === "空" && item.locked));
+		assert((await state()).results[0].some((item) => item.surface === "ソラ" && item.locked));
 		await page.click("#btn-undo");
 		assert.deepEqual((await state()).results, initial.results);
 		await page.click("#btn-redo");
-		assert((await state()).results[0].some((item) => item.surface === "空" && item.locked));
+		assert((await state()).results[0].some((item) => item.surface === "ソラ" && item.locked));
 		await page.click("#btn-undo");
 		await page.click("#reverse-search > summary");
-		assert.equal(await page.locator(".reverse-match").count(), 0, "closing search clears highlights");
+		assert.equal(await page.locator(".reverse-highlight").count(), 0, "closing search clears highlights");
 		await page.click("#reverse-search > summary");
 		await searchDone();
-		await page.click(".reverse-reading-field summary");
-		await page.fill("#reverse-reading", "かぜ");
+		await page.fill("#reverse-word", "かぜ");
 		await searchDone();
-		assert(await page.locator('[data-line="3"]').getByRole("button", { name: "候補1 · カゼ", exact: true }).isVisible());
-		await page.fill("#reverse-reading", "ン".repeat(30));
-		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("複雑"));
-		assert.equal(await page.locator(".reverse-match").count(), 0, "invalid reading clears stale matches");
-		await page.click("#reverse-clear");
-		assert.equal(await page.inputValue("#reverse-reading"), "");
-		assert.equal(await page.locator(".review-original mark").count(), 0);
+		const windMatch = page.locator('[data-line="3"]').getByRole("button", { name: "「風」を編集（読み：カゼ）", exact: true });
+		assert(await windMatch.isVisible());
+		await page.fill("#reverse-word", "ｶｾﾞ");
+		await searchDone();
+		await windMatch.click();
+		assert.equal(await page.inputValue(".panel-free-reading"), "カゼ", "half-width kana is normalized");
+		await page.click(".panel-close");
 		await page.fill("#reverse-word", "空");
-		await page.fill("#reverse-word", "風");
-		await searchDone();
-		assert.match(await page.textContent("#reverse-status"), /読み：カゼ/);
+		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("ひらがな・カタカナで入力"));
+		assert.equal(await page.locator(".reverse-highlight").count(), 0, "non-kana input clears stale matches");
+		await page.fill("#reverse-word", "ン".repeat(30));
+		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("複雑"));
+		assert.equal(await page.locator(".reverse-highlight").count(), 0, "invalid reading clears stale matches");
 		await page.click("#reverse-clear");
+		assert.equal(await page.inputValue("#reverse-word"), "");
+		assert.equal(await page.locator("#reverse-clear").isVisible(), false);
+		assert.equal(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement), true);
+		assert.equal(await page.locator(".reverse-highlight").count(), 0);
+		await page.fill("#reverse-word", "ソラ");
+		await page.locator("#reverse-word").evaluate((node) => {
+			node.value = "かぜ";
+			node.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+		});
+		await page.waitForTimeout(350);
+		assert.equal(await page.textContent("#reverse-status"), "", "IME composition cancels the pending search");
+		assert.equal(await page.locator(".reverse-highlight").count(), 0);
+		await page.locator("#reverse-word").dispatchEvent("compositionend");
+		await searchDone();
+		assert(await windMatch.isVisible());
+		await page.fill("#reverse-word", "ソラ");
+		await page.fill("#reverse-word", "カゼ");
+		await searchDone();
+		assert(await windMatch.isVisible());
+		await page.locator("#reverse-word").press("Tab");
+		assert.equal(await page.locator("#reverse-clear").evaluate((node) => node === document.activeElement), true);
+		await page.keyboard.press("Enter");
+		assert.equal(await page.inputValue("#reverse-word"), "", "clear works with the keyboard");
 		const beforeRegen = await state();
 		await page.locator('[data-line="0"] .line-regenerate').click();
 		await ready();
@@ -140,7 +176,7 @@ try {
 		assert.deepEqual((await state()).results, afterRegen.results, "regeneration persists across reload");
 	}
 	assert.deepEqual(errors, []);
-	print("[ok] standalone/review reverse search, highlights, replacement, reading, clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
+	print("[ok] standalone/review kana search, highlights, replacement, IME, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid, "SIGTERM"); } catch {}

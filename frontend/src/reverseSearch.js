@@ -71,12 +71,25 @@ function compare(a, b) {
 }
 
 // Only mark exact surface offsets. Host-provided spellings may differ from units;
-// in that case highlight the line and show the precise reading range separately.
-export function highlightOriginal(node, units, matches) {
+// in that case highlight the line and open its closest matching range for editing.
+export function highlightOriginal(node, units, matches, onSelect) {
 	if (!matches.length) return;
+	const highlight = (text, match) => {
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "reverse-highlight";
+		button.textContent = text;
+		button.dataset.start = match.start;
+		button.dataset.end = match.end;
+		const reading = units.slice(match.start, match.end).map((unit) => unit.pronunciation).join("");
+		button.setAttribute("aria-label", `「${text}」を編集（読み：${reading}）`);
+		button.addEventListener("click", () => onSelect(match));
+		return button;
+	};
 	const source = units.map((unit) => unit.surface_form).join("");
 	if (source !== node.textContent) {
-		node.classList.add("reverse-line-match");
+		const button = highlight(node.textContent, matches[0]);
+		node.replaceChildren(button);
 		return;
 	}
 	const offsets = [0];
@@ -86,9 +99,7 @@ export function highlightOriginal(node, units, matches) {
 	for (const match of [...matches].sort((a, b) => a.start - b.start)) {
 		const start = offsets[match.start], end = offsets[match.end];
 		node.append(document.createTextNode(source.slice(cursor, start)));
-		const mark = document.createElement("mark");
-		mark.textContent = source.slice(start, end);
-		node.append(mark);
+		node.append(highlight(source.slice(start, end), match));
 		cursor = end;
 	}
 	node.append(document.createTextNode(source.slice(cursor)));

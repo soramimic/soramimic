@@ -346,28 +346,12 @@ function renderLine(line) {
 	original.replaceWith(heading);
 	heading.append(original, regenerateButton);
 	const matches = reverseMatches.filter((match) => match.line === line);
-	highlightOriginal(original, unitsOf(line), matches);
-	if (matches.length) {
-		const choices = document.createElement("div");
-		choices.className = "reverse-choices";
-		for (const match of matches) {
-			const button = document.createElement("button");
-			button.type = "button";
-			button.className = "btn reverse-match";
-			button.dataset.start = match.start;
-			button.dataset.end = match.end;
-			button.textContent = `候補${reverseMatches.indexOf(match) + 1} · ${rangeKana(line, match.start, match.end)}`;
-			button.title = "この範囲に入力した単語を当てはめる";
-			button.addEventListener("click", () => {
-				setSelection({ line, start: match.start, end: match.end });
-				freeInputOpen = true;
-				freeInputDraft = { surface: $id("reverse-word").value.trim(), reading: reverseKana };
-				renderPanel();
-			});
-			choices.append(button);
-		}
-		heading.after(choices);
-	}
+	highlightOriginal(original, unitsOf(line), matches, (match) => {
+		setSelection({ line, start: match.start, end: match.end });
+		freeInputOpen = true;
+		freeInputDraft = { surface: $id("reverse-word").value.trim(), reading: reverseKana };
+		renderPanel();
+	});
 	return row;
 }
 
@@ -389,17 +373,14 @@ function syncLineActions() {
 		button.disabled = !db || reconverting || !!regeneration;
 	}
 	$id("reverse-word").disabled = !app || reconverting || !!regeneration;
-	$id("reverse-reading").disabled = !app || reconverting || !!regeneration;
+	$id("reverse-clear").disabled = $id("reverse-word").disabled;
 }
 
 function setupReverseSearch() {
-	for (const id of ["reverse-word", "reverse-reading"]) {
-		$id(id).addEventListener("input", (event) => scheduleReverseSearch(event.isComposing));
-		$id(id).addEventListener("compositionend", () => scheduleReverseSearch());
-	}
+	$id("reverse-word").addEventListener("input", (event) => scheduleReverseSearch(event.isComposing));
+	$id("reverse-word").addEventListener("compositionend", () => scheduleReverseSearch());
 	$id("reverse-clear").addEventListener("click", () => {
 		$id("reverse-word").value = "";
-		$id("reverse-reading").value = "";
 		scheduleReverseSearch();
 		$id("reverse-word").focus();
 	});
@@ -407,6 +388,7 @@ function setupReverseSearch() {
 }
 
 function scheduleReverseSearch(composing = false) {
+	$id("reverse-clear").hidden = !$id("reverse-word").value;
 	clearTimeout(reverseTimer);
 	reverseRequest?.abort();
 	reverseRequest = null;
@@ -421,8 +403,10 @@ function scheduleReverseSearch(composing = false) {
 		const request = new AbortController();
 		reverseRequest = request;
 		try {
-			const word = $id("reverse-word").value.trim();
-			const reading = $id("reverse-reading").value.trim() || mecab.getYomi(word) || word;
+			const reading = $id("reverse-word").value.trim().normalize("NFKC");
+			if (!/^[ぁ-ゖァ-ヶー\s]+$/.test(reading)) {
+				throw new Error("ひらがな・カタカナで入力してください");
+			}
 			const kana = app.textAnalyzer.formatKana(reading);
 			const units = data.unitsList.map((row, line) => {
 				const derived = app.textAnalyzer.getYomiAndPhraseBreak(data.tokensList[line]);
@@ -437,8 +421,8 @@ function scheduleReverseSearch(composing = false) {
 			reverseMatches = matches;
 			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
 			status.textContent = matches.length
-				? `読み：${kana} · 音が近い順に候補1〜${matches.length}。候補を押すと当てはめられます。`
-				: `読み：${kana} · 当てはめられる範囲がありません`;
+				? "ハイライトを押すと編集できます。"
+				: "当てはめられる範囲がありません";
 		} catch (error) {
 			if (!request.signal.aborted) status.textContent = error.message;
 		}
