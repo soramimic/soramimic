@@ -30,8 +30,8 @@ export async function selectReading(page, line, reading) {
 
 export async function menuAction(page, id) {
 	await closeSelection(page);
-	if (!await page.locator(".review-menu").evaluate((menu) => menu.open)) {
-		await page.locator(".review-menu > summary").click();
+	if (!await page.locator(".review-menu").evaluate((menu) => !menu.querySelector(".review-menu-body").hidden)) {
+		await page.locator(".review-menu-toggle").click();
 	}
 	await page.locator(id).click();
 }

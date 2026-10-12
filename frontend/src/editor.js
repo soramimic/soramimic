@@ -895,13 +895,8 @@ function renderPanel() {
 	{
 		const panel = $id("editor-panel");
 		document.documentElement.classList.toggle("review-selecting", !!selection);
-		$id("editor-lines").inert = !!selection;
-		$id("editor-toolbar").inert = !!selection;
-		document.querySelector(".site-header").inert = !!selection;
-		panel.inert = !selection;
-		panel.setAttribute("role", "dialog");
-		panel.setAttribute("aria-modal", "true");
-		panel.setAttribute("aria-label", "替え歌を編集");
+		if (selection && !panel.open) panel.showModal();
+		else if (!selection && panel.open) panel.close();
 		if (selection) {
 			const target = focusedUnit !== undefined
 				? panel.querySelector(`.review-unit[data-index="${focusedUnit}"]`)
@@ -2450,22 +2445,20 @@ async function start() {
 	setupMode = !converted || data.setupFirst === true;
 	{
 		setupReviewToolbar(isVideoReview(data));
-		$id("editor-panel").inert = true;
-		document.addEventListener("keydown", (event) => {
-			if (event.key === "Tab" && selection && !document.querySelector("dialog[open]")) {
-				const controls = [...$id("editor-panel").querySelectorAll("button, input, summary")]
-					.filter((node) => !node.disabled && node.getClientRects().length);
-				const first = controls[0], last = controls.at(-1);
-				if (event.shiftKey && document.activeElement === first) {
-					event.preventDefault(); last?.focus();
-				} else if (!event.shiftKey && document.activeElement === last) {
-					event.preventDefault(); first?.focus();
-				}
-			}
-			if (event.key === "Escape" && selection && !event.defaultPrevented
-				&& !document.querySelector("dialog[open]")) {
-				event.preventDefault();
-				setSelection(null);
+		const panel = $id("editor-panel");
+		panel.addEventListener("cancel", (event) => {
+			event.preventDefault();
+			setSelection(null);
+		});
+		panel.addEventListener("keydown", (event) => {
+			if (event.key !== "Tab") return;
+			const controls = [...panel.querySelectorAll("button, input, summary")]
+				.filter((node) => !node.disabled && node.getClientRects().length);
+			const first = controls[0], last = controls.at(-1);
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault(); last?.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault(); first?.focus();
 			}
 		});
 	}

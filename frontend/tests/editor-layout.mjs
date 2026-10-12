@@ -62,11 +62,11 @@ try {
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.classList.contains("open")), "Escape in reading dialog must preserve selection");
 			await page.click(".panel-close");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
-			await page.locator(".review-menu > summary").click();
+			await page.locator(".review-menu-toggle").click();
 			assert(await page.locator("#copy-format").isVisible());
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "menu overflows");
 			await page.keyboard.press("Escape");
-			assert.equal(await page.locator(".review-menu").evaluate((menu) => menu.open), false);
+			assert.equal(await page.locator(".review-menu").evaluate((menu) => !menu.querySelector(".review-menu-body").hidden), false);
 		}
 	}
 	await page.setViewportSize({ width: 390, height: 740 });
@@ -89,7 +89,7 @@ try {
 	await page.evaluate(() => { navigator.clipboard.writeText = async (value) => { window.copied = value; }; });
 	await menuAction(page, "#btn-copy");
 	await page.waitForFunction(() => window.copied?.length > 0);
-	assert.equal(await page.locator(".review-menu").evaluate((menu) => menu.open), false);
+	assert.equal(await page.locator(".review-menu").evaluate((menu) => !menu.querySelector(".review-menu-body").hidden), false);
 	assert.deepEqual(errors, []);
 	console.log("[ok] editor layout: settings retained, responsive lyrics and selection, menus, keyboard, source reading, custom input");
 } finally {

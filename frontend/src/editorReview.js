@@ -54,12 +54,23 @@ export function setupReviewToolbar(review) {
 		actions.append(button);
 	}
 	if (!review) actions.append(document.getElementById("btn-settings"));
-	const menu = element("details", "review-menu");
-	const summary = element("summary", "btn btn-ghost", "•••");
+	const menu = element("div", "review-menu");
+	const summary = element("button", "btn btn-ghost review-menu-toggle", "•••");
+	summary.type = "button";
+	summary.setAttribute("aria-expanded", "false");
+	summary.setAttribute("aria-controls", "editor-actions");
 	summary.setAttribute("aria-label", "その他の操作");
 	const body = element("div", "review-menu-body");
+	body.id = "editor-actions";
+	body.hidden = true;
+	const setOpen = (open) => {
+		if (!open && body.contains(document.activeElement)) summary.focus();
+		body.hidden = !open;
+		summary.setAttribute("aria-expanded", String(open));
+	};
+	summary.addEventListener("click", () => setOpen(body.hidden));
 	const regenerate = document.getElementById("btn-regenerate");
-	regenerate.addEventListener("click", () => { menu.open = false; });
+	regenerate.addEventListener("click", () => { setOpen(false); });
 	body.append(regenerate);
 	if (!review) {
 		for (const id of ["btn-import", "btn-export"]) body.append(document.getElementById(id));
@@ -68,20 +79,17 @@ export function setupReviewToolbar(review) {
 			document.getElementById("copy-format"), document.getElementById("btn-copy"));
 		body.append(copy);
 		for (const button of body.querySelectorAll("button")) {
-			button.addEventListener("click", () => { menu.open = false; });
+			button.addEventListener("click", () => { setOpen(false); });
 		}
 	}
 	document.addEventListener("click", (event) => {
-		if (!menu.contains(event.target)) menu.open = false;
+		if (!menu.contains(event.target)) setOpen(false);
 	});
 	menu.addEventListener("keydown", (event) => {
 		if (event.key !== "Escape") return;
-		menu.open = false;
+		setOpen(false);
 		summary.focus();
 		event.stopPropagation();
-	});
-	menu.addEventListener("toggle", () => {
-		if (!menu.open && body.contains(document.activeElement)) summary.focus();
 	});
 	menu.append(summary, body);
 	actions.append(menu);
