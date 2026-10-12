@@ -42,7 +42,7 @@ try {
 		format: "soramimic-editor/1", phrases: ["シズム"],
 		unitsList: [[{ pronunciation: "シ", surface_form: "し" }, { pronunciation: "ズ", surface_form: "ず" }, { pronunciation: "ム", surface_form: "む" }]],
 		results: [[{ surface: "清水", kana: "シミズ", pronunciation: "シミズ", originalkana: "シミズ", period: [0, 3], locked: true }]],
-		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", csvText: "id,original,word,pronunciation\n0,清水,清水,シミズ\n" },
+		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
 		lyrics: "沈む", originalLines: ["沈む"], song: { title: "テスト曲" },
 		host: { review: true }, hostRequest: { secret: true }, history: ["old"],
 	};
@@ -52,6 +52,7 @@ try {
 	const target = await opened;
 	await target.waitForFunction(() => document.getElementById("bridge-status")?.textContent === "ビデオの歌詞を読み込みました。");
 	await target.locator("#btn-video").waitFor({ state: "visible" });
+	await target.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
 	const received = await target.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	assert.deepEqual(received.results, payload.results);
 	assert.deepEqual(received.unitsList, payload.unitsList);
