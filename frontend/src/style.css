@@ -105,6 +105,93 @@ main {
 	gap: 2rem;
 }
 
+.generation-card,
+.generation-output {
+	max-width: 720px;
+	margin: 0 auto 1rem;
+	padding: 1.25rem;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--panel);
+}
+
+.generation-card .field-label {
+	display: block;
+}
+
+.generation-card textarea {
+	min-height: 10rem;
+	resize: vertical;
+}
+
+.generation-card .input,
+.generation-card .btn {
+	min-height: 44px;
+}
+
+.generation-wordlist {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .6rem;
+}
+
+.generation-file-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .4rem .75rem;
+	margin-top: .5rem;
+}
+
+.generation-file-row .field-note {
+	margin: 0;
+	color: var(--muted);
+	font-size: .8rem;
+}
+
+#lyrics-file-status {
+	margin: .4rem 0 0;
+	overflow-wrap: anywhere;
+}
+
+.generation-wordlist > select {
+	flex: 1 1 12rem;
+	min-width: 0;
+	width: auto;
+}
+
+.generation-advanced > summary,
+.generation-output > summary {
+	min-height: 44px;
+	padding: .55rem 0;
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.generation-advanced[open] > summary {
+	margin-bottom: .6rem;
+}
+
+.generation-actions {
+	margin-top: .8rem;
+}
+
+.generation-actions > .btn-primary {
+	flex: 1;
+}
+
+.generation-error {
+	color: var(--danger);
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+	.generation-card,
+	.generation-output {
+		padding: 1rem;
+	}
+}
+
 @media (max-width: 768px) {
 	.columns {
 		grid-template-columns: 1fr;

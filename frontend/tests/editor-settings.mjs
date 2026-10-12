@@ -105,23 +105,14 @@ try {
 	// ---- 生成画面: 変換して編集ツールを開く(既定は野球選手リスト) ----
 	await page.goto(`${BASE}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	await page.fill("#input-text", "夢は今もめぐりて\n忘れがたきふるさと");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
+
 	const warnings = [];
 	editor.on("console", (m) => {
 		if (m.type() === "warning") warnings.push(m.text());

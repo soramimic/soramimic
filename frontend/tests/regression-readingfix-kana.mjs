@@ -63,24 +63,14 @@ try {
 	// ---- 生成画面: 「変換する」を変換して編集ツールを開く ----
 	await page.goto(`http://localhost:${PORT}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	await page.fill("#input-text", "変換する");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
 
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
 
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(

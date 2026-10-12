@@ -47,12 +47,12 @@ try {
 	await page.waitForFunction(
 		() => {
 			const t = document.getElementById("btn-convert").textContent;
-			return t === "変換" || t === "読み込みに失敗しました";
+			return t === "生成" || t === "読み込みに失敗しました";
 		},
 		{ timeout: 60000 },
 	);
 	const initState = await page.textContent("#btn-convert");
-	if (initState !== "変換") {
+	if (initState !== "生成") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
 	const defaultFormat = await page.inputValue("#format-select");
@@ -73,7 +73,7 @@ try {
 	});
 	await page.reload();
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	const migrated = await page.evaluate(() => ({
@@ -177,7 +177,7 @@ try {
 	}
 	await page.keyboard.press("Escape");
 	// 自作リストから通常のnative selectへ移ると、自作triggerのactiveを解除する。
-	await page.selectOption("#wordlist-buttons select[aria-label='生物']", "MARINE_LIFE");
+	await page.selectOption("#wordlist-select", "MARINE_LIFE");
 	if (await customTrigger.evaluate((el) => el.classList.contains("active"))) {
 		throw new Error("通常リスト選択後も自作リストがactiveのまま");
 	}
@@ -290,7 +290,7 @@ try {
 	// 選択中IDも既存sessionStorage経由で復元され、本文はlocalStorageから再構築される。
 	await page.reload();
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	const restoredCustom = await page.evaluate(() => ({
@@ -302,11 +302,12 @@ try {
 	}
 	await page.fill("#input-text", "りんご");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => !document.getElementById("output-field").hidden
-			&& document.getElementById("output-text").value.length > 0,
-		{ timeout: 120000 },
-	);
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	await page.waitForSelector(".review-word");
+	assert.equal(page.context().pages().length, 1, "生成後は同じタブで編集する");
+	await page.goBack();
+	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
+
 	const customOutput = await page.inputValue("#output-text");
 	if (!customOutput.includes("林檎") || customOutput.includes("エラーが発生しました")) {
 		throw new Error("保存済み自作リストで変換できない: " + customOutput);
@@ -341,7 +342,7 @@ try {
 	await customMenu.getByRole("menuitem", { name: "「食べ物」を削除" }).click();
 	const afterDelete = await page.evaluate(() => ({
 		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
-		active: document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+		active: document.querySelector("#wordlist-select").value,
 		triggerFocused: document.querySelector(".custom-wordlist-trigger") === document.activeElement,
 	}));
 	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL" || !afterDelete.triggerFocused) {
@@ -349,7 +350,8 @@ try {
 	}
 
 	// ---- ファセット: Excel風の「すべて選択」で全選択・全解除・中間状態を表す ----
-	await page.click("#wordlist-buttons button[data-value='POKEMON']");
+	await page.selectOption("#wordlist-select", "POKEMON");
+	await page.click("#generation-advanced > summary");
 	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>
 		groups.map((group) => ({
 			all: group.querySelectorAll("input.facet-value").length,
@@ -393,7 +395,7 @@ try {
 		throw new Error("一部選択時にすべて選択が中間状態にならない");
 	}
 	// 科学者: 実際のUIが組み立てるwhereで、著名人博士の全行を任意選択できる。
-	await page.click("#wordlist-buttons button[data-value='SCIENTIST']");
+	await page.selectOption("#wordlist-select", "SCIENTIST");
 	const scope = page.locator("#wordlist-facets .facet-group").filter({ hasText: "通常の科学者" });
 	const ordinary = scope.locator("input.facet-value[value='no']");
 	const celebrities = scope.locator("input.facet-value[value='yes']");
@@ -465,7 +467,7 @@ try {
 		.every((row) => row[flagIndex] === "no"), "旧設定の復元で著名人博士が混入した");
 
 	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
-	await page.click("#wordlist-buttons button[data-value='BASEBALL']");
+	await page.selectOption("#wordlist-select", "BASEBALL");
 	const baseballSelectAll = page.getByRole("checkbox", { name: "種類をすべて選択" });
 	if (!await baseballSelectAll.evaluate((el) => el.indeterminate)) {
 		throw new Error("既定が部分選択のファセットで中間状態にならない");
@@ -474,14 +476,11 @@ try {
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
 
-	// 変換完了(出力欄に結果が入る)を待つ。単語リストのロード・解析込み
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	await page.waitForSelector(".review-word");
+	await page.goBack();
+	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
+	await page.click("#output-field > summary");
 
 	const output = await page.inputValue("#output-text");
 	console.log("--- 変換結果 ---");
@@ -521,6 +520,7 @@ try {
 	// ---- パラメータ永続化: 設定を変えてリロードしても復元されることを確認 ----
 	// プリセット「文節重視」(phrase=8)を選び、単語重複を「あり」にしてからリロードする
 	const phraseSlider = "input[aria-label='文節の区切り(無視〜がっちり守る)']";
+	await page.locator("#generation-advanced").evaluate(el => { el.open = true; });
 	await page.click("#preset-buttons button:has-text('文節重視')");
 	await page.click("#duplicate-buttons button[data-value='true']");
 	await page.waitForFunction((sel) => document.querySelector(sel).value === "8", phraseSlider);
@@ -528,7 +528,7 @@ try {
 	await page.waitForFunction(
 		() => {
 			const t = document.getElementById("btn-convert").textContent;
-			return t === "変換" || t === "読み込みに失敗しました";
+			return t === "生成" || t === "読み込みに失敗しました";
 		},
 		{ timeout: 60000 },
 	);
@@ -576,13 +576,14 @@ try {
 
 	// ---- サンプルチップ: クリックで歌詞と単語リストが入り、自動で変換が始まる ----
 	// (完了まで待つと全曲変換で時間がかかるため、開始=ボタンdisabledまでを確認する)
+	await page.locator("#generation-advanced").evaluate(el => { el.open = true; });
 	await page.click("#sample-buttons button:has-text('ももたろう × ポケモン')");
 	await page.waitForFunction(
 		() => document.getElementById("input-text").value.includes("桃太郎さん"),
 		{ timeout: 15000 },
 	);
 	const sampleWordlist = await page.evaluate(
-		() => document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+		() => document.querySelector("#wordlist-select").value,
 	);
 	if (sampleWordlist !== "POKEMON") {
 		throw new Error("サンプルチップで単語リストが切り替わらない: " + sampleWordlist);
@@ -598,7 +599,7 @@ try {
 	await page.waitForFunction(
 		() => {
 			const b = document.getElementById("btn-convert");
-			return !b.disabled && b.textContent === "変換" &&
+			return !b.disabled && b.textContent === "生成" &&
 				document.getElementById("progress").hidden &&
 				document.getElementById("btn-cancel").hidden;
 		},

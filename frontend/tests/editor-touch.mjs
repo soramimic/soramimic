@@ -58,23 +58,14 @@ try {
 	// ---- 変換して編集ツールを開く ----
 	await page.goto(`http://localhost:${PORT}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	await page.fill("#input-text", "忘れがたき故郷");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
+
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,

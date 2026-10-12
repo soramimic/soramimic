@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/prepare-static-assets.mjs",
     "preview": "vite preview",
-    "test:smoke": "npm run build && node tests/smoke.mjs",
+    "test:smoke": "npm run build && node tests/smoke.mjs && node tests/generation-setup.mjs",
     "test:editor": "npm run build && node tests/editor-smoke.mjs && node tests/editor-layout.mjs && node tests/editor-search.mjs && node tests/editor-settings.mjs && node tests/editor-wordlist.mjs && node tests/editor-filler.mjs && node tests/editor-setup.mjs && node tests/editor-song.mjs && node tests/editor-lyrics.mjs && node tests/editor-embed.mjs",
     "test:bridge": "npm run build && node tests/app-bridge.mjs",
     "test:embed": "npm run build && node tests/editor-embed.mjs",
