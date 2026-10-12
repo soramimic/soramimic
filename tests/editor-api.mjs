@@ -7,6 +7,7 @@ import { makeResultText } from "../frontend/src/convert.js";
 import { Kanji } from "../frontend/src/lib/character.js";
 import { KanaToSyllable } from "../frontend/src/lib/kanaToSyllable.js";
 import { createYomiApi, tokenizePhrasesWithYomiApi } from "../frontend/src/yomiApi.js";
+import { alignmentFromUnits } from "../frontend/src/lib/readingAlignment.js";
 
 const print = console.log.bind(console);
 
@@ -365,6 +366,51 @@ assert.equal(
 	"読み修正で表層順を逆転させないこと",
 );
 print("[ok] 複数漢字の読み修正: 漢字(ジュウ)");
+
+// 表記の対応だけを編集しても、撥音・拗音・長音を含む音節列を変えない。
+for (const [surface, reading, automatic, manual] of [
+	["赤とんぼ", "アカトンボ", [["赤", "アカ"], ["とん", "トン"], ["ぼ", "ボ"]],
+		[["赤", "ア"], ["とん", "カトン"], ["ぼ", "ボ"]]],
+	["赤ちゃん", "アカチャン", [["赤", "アカ"], ["ちゃん", "チャン"]],
+		[["赤", "ア"], ["ちゃん", "カチャン"]]],
+	["忘れ", "ワスレ", [["忘", "ワス"], ["れ", "レ"]],
+		[["忘", "ワ"], ["れ", "スレ"]]],
+	["東京", "トーキョー", [["東", "トー"], ["京", "キョー"]],
+		[["東京", "トーキョー"]]],
+]) {
+	const token = makeApiToken(surface, reading);
+	const before = textAnalyzer.getYomiAndPhraseBreak([token]);
+	assert.deepEqual(alignmentFromUnits(before), automatic);
+	token.manualAlign = manual;
+	const after = textAnalyzer.getYomiAndPhraseBreak([token]);
+	assert.deepEqual(alignmentFromUnits(after), manual, `${surface}: 手動対応を反映すること`);
+	assert.deepEqual(after.map((u) => u.pronunciation), before.map((u) => u.pronunciation),
+		`${surface}: 対応の変更で音節を結合・分割しないこと`);
+	assert.equal(after.map((u) => u.surface_form).join(""), surface);
+	for (let i = 1; i < after.length; i++) {
+		assert.equal(after[i].char_index === after[i - 1].char_index, !after[i].surface_form,
+			`${surface}: 同じ表記の読みの途中を単語境界にしないこと`);
+	}
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak(JSON.parse(JSON.stringify([token]))), after,
+		`${surface}: 保存した対応を復元できること`);
+	delete token.manualAlign;
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak([token]), before,
+		`${surface}: 自動へ戻すと元の対応に戻ること`);
+}
+for (const invalid of [
+	[["赤", "アカ"], ["と", "ト"], ["ん", "ン"], ["ぼ", "ボ"]], // 音節内部
+	[["赤", "ア"], ["とん", "カトン"]], // 表記・読みの欠落
+	[["赤", "アカ"], ["とん", "トン"], ["ぼ", "ポ"]], // 古い読み
+	[["赤", "アカ"], ["とんぼ", ""]],
+	[null],
+]) {
+	const token = makeApiToken("赤とんぼ", "アカトンボ");
+	const before = textAnalyzer.getYomiAndPhraseBreak([token]);
+	token.manualAlign = invalid;
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak([token]), before,
+		"不整合な手動対応で表記・音節を壊さないこと");
+}
+print("[ok] 音節と表記の対応: 複数文字・手動編集・保存・リセット・不整合な対応");
 
 // ---- 固定つき再生成 ----
 const phrases = ["カナダ カナダ カナダ"];
