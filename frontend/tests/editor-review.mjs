@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { selectRange } from "./editor-ui.mjs";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 
@@ -123,6 +125,7 @@ try {
 
 	// Cover leading/middle/trailing gaps, explicit fillers, and a fully empty line.
 	const gapSeed = structuredClone(seed);
+	gapSeed.param.DUPLICATE = true; // Gap rendering also covers repeated fixed words.
 	const one = (start) => ({
 		id: "9", surface: "酢", kana: "ス", pronunciation: ["ス"],
 		period: [start, start + 1], locked: true,
@@ -215,8 +218,114 @@ try {
 	assert.equal(await fixedChip.evaluate((node) => node.classList.contains("locked")), false);
 	await page.click("#btn-undo");
 	assert(await fixedChip.evaluate((node) => node.classList.contains("locked")));
+	// Clearing and moving a fixed assignment preserve the source and undo atomically.
+	const readData = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	const loadSeed = async (value) => {
+		await page.evaluate((data) => sessionStorage.setItem("soramimic-editor", JSON.stringify(data)), value);
+		await page.reload();
+		await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	};
+	const emptySeed = structuredClone(seed);
+	emptySeed.results = [[], [], []];
+	emptySeed.history = [];
+	emptySeed.future = [];
+	emptySeed.dirtyLines = [];
+	emptySeed.param.DUPLICATE = false;
+	await loadSeed(emptySeed);
+	await selectRange(page, 2, 2);
+	assert.equal(await page.locator(".panel-clear").count(), 0, "unassigned source has nothing to clear");
+	const vinegar = page.locator(".candidate").filter({ has: page.locator(".candidate-surface", { hasText: /^酢$/ }) });
+	await vinegar.click();
+	const placed = (await readData()).results[2][0];
+	const fixedAssignment = (start, end = start + 1) => ({ ...structuredClone(placed), period: [start, end] });
+	const assignmentSeed = structuredClone(emptySeed);
+	assignmentSeed.results = [[fixedAssignment(1)], [fixedAssignment(2)], []];
+	await loadSeed(assignmentSeed);
+	await line(0).locator('.review-word[data-start="1"]').click();
+	if (process.env.EDITOR_SCREENSHOTS) {
+		await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
+		await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/clear-assignment.png` });
+	}
+	await page.click(".panel-clear");
+	assert.deepEqual((await readData()).results[0], []);
+	assert.equal(await gaps(0).count(), 1, "cleared word is shown as unassigned source");
+	await page.click("#btn-undo");
+	assert.deepEqual((await readData()).results, assignmentSeed.results);
+	await page.click("#btn-redo");
+	assert.deepEqual((await readData()).results[0], []);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	assert.deepEqual((await readData()).results[0], [], "clearing survives reopening");
+
+	await loadSeed(assignmentSeed);
+	await selectRange(page, 2, 2);
+	await vinegar.click();
+	const conflict = page.locator("#editor-assignment-dialog");
+	assert(await conflict.isVisible());
+	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 2);
+	assert.deepEqual((await readData()).results, assignmentSeed.results);
+	assert.equal((await readData()).history.length, 0);
+	assert(await page.locator("#btn-assignment-keep").evaluate((node) => node === document.activeElement));
+	if (process.env.EDITOR_SCREENSHOTS) await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/assignment-conflict.png` });
+	await page.keyboard.press("Escape");
+	assert(await conflict.isHidden());
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open));
+	assert(await vinegar.evaluate((node) => node === document.activeElement));
+	await vinegar.click();
+	await page.click("#btn-assignment-keep");
+	assert.deepEqual((await readData()).results, assignmentSeed.results);
+	assert.equal((await readData()).history.length, 0, "keeping the original is not an edit");
+	await vinegar.click();
+	await page.click("#btn-assignment-move");
+	const moved = await readData();
+	assert.deepEqual(moved.results.slice(0, 2), [[], []]);
+	assert.equal(moved.results[2][0].id, placed.id);
+	assert.equal(moved.results[2][0].locked, true);
+	assert.deepEqual(moved.dirtyLines.sort(), [0, 1, 2]);
+	assert.equal(moved.history.length, 1);
+	assert.deepEqual([moved.unitsList, moved.tokensList, moved.originalLines],
+		[assignmentSeed.unitsList, assignmentSeed.tokensList, assignmentSeed.originalLines]);
+	await page.click("#btn-undo");
+	assert.deepEqual((await readData()).results, assignmentSeed.results, "one undo restores all affected lines");
+	await page.click("#btn-redo");
+	assert.deepEqual((await readData()).results, moved.results);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	assert.deepEqual((await readData()).results, moved.results);
+
+	const sameLine = structuredClone(emptySeed);
+	sameLine.results[2] = [fixedAssignment(0), fixedAssignment(2)];
+	await loadSeed(sameLine);
+	await selectRange(page, 2, 2);
+	await vinegar.click();
+	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 1, "exclude the word already in the selected range");
+	await page.click("#btn-assignment-move");
+	assert.deepEqual((await readData()).results[2].map((word) => word.period), [[2, 3]]);
+	await line(2).locator('.review-word[data-start="2"]').click();
+	await vinegar.click();
+	assert(await conflict.isHidden(), "reselecting the same assignment needs no warning");
+
+	const partial = structuredClone(emptySeed);
+	partial.results[0] = [fixedAssignment(1, 3), { ...fixedAssignment(3), id: "another" }, { ...fixedAssignment(6), id: "unrelated" }];
+	await loadSeed(partial);
+	await selectRange(page, 0, 2, 3);
+	await page.click(".panel-clear");
+	assert.deepEqual((await readData()).results[0], [partial.results[0][2]], "clear overlapping assignments and preserve unrelated ones");
+	await page.click("#btn-undo");
+	assert.deepEqual((await readData()).results, partial.results);
+
+	for (const duplicate of [false, true]) {
+		const allowed = structuredClone(assignmentSeed);
+		allowed.param.DUPLICATE = duplicate;
+		if (!duplicate) allowed.results.flat().forEach((word) => { word.locked = false; });
+		await loadSeed(allowed);
+		await selectRange(page, 2, 2);
+		await vinegar.click();
+		assert(await conflict.isHidden(), "unlocked uses or explicitly allowed duplicates need no priority choice");
+		assert.deepEqual((await readData()).results.slice(0, 2), allowed.results.slice(0, 2));
+	}
 	assert.deepEqual(errors, []);
-	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, undo/redo, recovery");
+	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, assignment clearing, fixed-word priority, undo/redo, recovery");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid); } catch {}

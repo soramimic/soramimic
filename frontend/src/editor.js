@@ -482,9 +482,69 @@ function onDragEnd(e) {
 // 範囲に重なる既存単語は取り除き、periodと元歌詞情報を付けて挿入する。
 // 手で選んだ単語は再生成で消えないよう自動で固定する(🔓で解除可能)
 function replaceSelection(word) {
+	if (!selection) return;
+	const { line, start, end } = selection;
+	const conflicts = [];
+	data.results.forEach((words, otherLine) => {
+		for (const other of words || []) {
+			if (data.param.DUPLICATE || other.filler || !other.locked || other.id !== word.id) continue;
+			if (otherLine === line && other.period[0] < end && start < other.period[1]) continue;
+			conflicts.push({ line: otherLine, word: other });
+		}
+	});
+	if (conflicts.length) {
+		confirmAssignment(word, conflicts);
+		return;
+	}
+	applyReplacement(word);
+}
+
+function confirmAssignment(word, conflicts) {
+	const selected = selection;
+	const results = data.results;
+	const dialog = $id("editor-assignment-dialog");
+	$id("assignment-conflict-description").textContent =
+		`「${word.surface}」は次の箇所で固定されています。ここを優先すると、元の箇所の割り当てを解除します。`;
+	const locations = $id("assignment-conflict-locations");
+	locations.replaceChildren();
+	for (const conflict of conflicts) {
+		const item = document.createElement("li");
+		item.textContent = `${conflict.line + 1}行目「${rangeSurface(conflict.line, ...conflict.word.period)}」`;
+		const context = document.createElement("span");
+		context.className = "assignment-conflict-context";
+		context.textContent = data.originalLines?.[conflict.line] || data.phrases?.[conflict.line] || "";
+		item.append(context);
+		locations.append(item);
+	}
+	$id("btn-assignment-keep").onclick = () => dialog.close();
+	$id("btn-assignment-move").onclick = () => {
+		dialog.close();
+		if (selection !== selected || data.results !== results) return;
+		applyReplacement(word, conflicts);
+	};
+	dialog.showModal();
+}
+
+function clearSelectionAssignment() {
+	if (!selection) return;
+	const { line, start, end } = selection;
+	const words = data.results[line] || [];
+	if (!words.some((word) => !word.filler && word.period[0] < end && start < word.period[1])) return;
+	pushHistory();
+	markDirty(line);
+	data.results[line] = words.filter((word) => word.period[1] <= start || end <= word.period[0]);
+	saveData();
+	setSelection(null);
+}
+
+function applyReplacement(word, conflicts = []) {
 	pushHistory();
 	const { line, start, end } = selection;
 	markDirty(line);
+	for (const conflict of conflicts) {
+		data.results[conflict.line] = data.results[conflict.line].filter((other) => other !== conflict.word);
+		markDirty(conflict.line);
+	}
 	const placed = Object.assign({}, word, {
 		period: [start, end],
 		originalkana: rangeKana(line, start, end),
@@ -498,6 +558,9 @@ function replaceSelection(word) {
 	data.results[line] = words;
 	saveData();
 	setSelection(null);
+	for (const otherLine of new Set(conflicts.map((conflict) => conflict.line))) {
+		if (otherLine !== line) rerenderLine(otherLine);
+	}
 }
 
 // 自由入力の読みを、通常の単語DBと同じ経路で選択範囲へ合わせる。
@@ -1226,6 +1289,7 @@ function buildPanel() {
 
 	appendReviewHeader(panel, data, selection, {
 		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
+		clear: clearSelectionAssignment,
 		pointer: onUnitPointerDown,
 		reading: !isVideoReview(data) && span ? {
 			label: `「${span.surface}（${span.yomi}）」の読みを修正`,
