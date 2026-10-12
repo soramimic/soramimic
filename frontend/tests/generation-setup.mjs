@@ -181,6 +181,27 @@ try {
 		assert.deepEqual(pastedImport.future, []);
 		assert(await page.locator("#editor-setup").isHidden());
 
+		// Both dictionary-side expansion and the lyric-side DB length bound matter.
+		const comparisonPage = await context.newPage();
+		let comparisonWord;
+		await comparisonPage.route("**/wordlists/*.csv", route => route.fulfill({ status:200,
+			body:`id,original,surface,pronunciation,type\n1,${comparisonWord},${comparisonWord},${comparisonWord},family`,
+		}));
+		for(const [lyric,word] of [["ナガレル","ナゲール"],["ナゲール","ナガレル"]]){
+			comparisonWord = word;
+			await comparisonPage.goto(base);
+			await comparisonPage.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+			await comparisonPage.fill("#input-text",lyric);
+			await comparisonPage.click("#btn-convert");
+			await comparisonPage.waitForURL("**/editor.html");
+			await comparisonPage.waitForSelector(".review-word");
+			const result = await comparisonPage.evaluate(() => JSON.parse(sessionStorage
+				.getItem("soramimic-editor")).results[0]);
+			assert.deepEqual(result.map(w=>w.surface),[word],`${lyric} → ${word}`);
+			assert(!result[0].filler);
+		}
+		await comparisonPage.close();
+
 		await page.goto(base);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.route("**/wordlists/*.csv", route => route.fulfill({ status: 503, body: "unavailable" }));

@@ -6,9 +6,9 @@
  "results": [
   [
    {
-    "id": "146",
-    "kana": "モロッコ",
-    "original": "モロッコ",
+    "id": "62",
+    "kana": "ポーランド",
+    "original": "ポーランド",
     "original_surface": "桃太郎",
     "originalkana": "モモタロー",
     "period": [
@@ -16,78 +16,73 @@
      4
     ],
     "pronunciation": [
-     "モ",
-     "ロ",
-     "ッ",
-     "コ"
-    ],
-    "score": 120.00270710422264,
-    "sim": 120.00270710422264,
-    "surface": "モロッコ",
-    "vcost": 0
-   },
-   {
-    "id": "24",
-    "kana": "カンボジア",
-    "original": "カンボジア",
-    "original_surface": "さん 桃太",
-    "originalkana": "サンモモタ",
-    "period": [
-     4,
-     8
-    ],
-    "pronunciation": [
-     "カ",
-     "ン",
-     "ボ",
-     "ジ",
-     "ア"
-    ],
-    "score": 137.68324896405582,
-    "sim": 117.68324896405582,
-    "surface": "カンボジア",
-    "vcost": 0
-   },
-   {
-    "id": "62",
-    "kana": "ポーランド",
-    "original": "ポーランド",
-    "original_surface": "郎さん お",
-    "originalkana": "ローサンオ",
-    "period": [
-     8,
-     11
-    ],
-    "pronunciation": [
      "ポー",
      "ラ",
-     "ン",
      "ド"
     ],
-    "score": 63.139333583738626,
-    "sim": 43.139333583738626,
+    "score": 89.86827856850385,
+    "sim": 89.86827856850385,
     "surface": "ポーランド",
+    "vcost": 1
+   },
+   {
+    "id": "27",
+    "kana": "ガボン",
+    "original": "ガボン",
+    "original_surface": "さん 桃",
+    "originalkana": "サンモモ",
+    "period": [
+     4,
+     7
+    ],
+    "pronunciation": [
+     "ガ",
+     "ボー"
+    ],
+    "score": 95.28106635445964,
+    "sim": 75.28106635445964,
+    "surface": "ガボン",
+    "vcost": 1
+   },
+   {
+    "id": "67",
+    "kana": "サモア",
+    "original": "サモア",
+    "original_surface": "太郎さん ",
+    "originalkana": "タローサン",
+    "period": [
+     7,
+     10
+    ],
+    "pronunciation": [
+     "サ",
+     "モ",
+     "ア"
+    ],
+    "score": 75.09794268078325,
+    "sim": 75.09794268078325,
+    "surface": "サモア",
     "vcost": 0
    },
    {
-    "id": "121",
-    "kana": "ドミニカ",
-    "original": "ドミニカ",
-    "original_surface": "腰につ",
-    "originalkana": "コシニツ",
+    "id": "140",
+    "kana": "モーリシャス",
+    "original": "モーリシャス",
+    "original_surface": "お腰につ",
+    "originalkana": "オコシニツ",
     "period": [
-     11,
+     10,
      15
     ],
     "pronunciation": [
-     "ド",
-     "ミ",
-     "ニ",
-     "カ"
+     "モー",
+     "リ",
+     "シャ",
+     "ス"
     ],
-    "score": 123.85651970679845,
-    "sim": 103.85651970679845,
-    "surface": "ドミニカ",
+    "score": 153.73223387074393,
+    "sim": 133.73223387074393,
+    "surface": "モーリシャス",
     "vcost": 0
    },
    {
@@ -110,100 +105,65 @@
     "vcost": 1
    },
    {
-    "id": "107",
-    "kana": "チリ",
-    "original": "チリ",
-    "original_surface": "黍",
-    "originalkana": "キビ",
+    "id": "128",
+    "kana": "フィンランド",
+    "original": "フィンランド",
+    "original_surface": "黍団子 ",
+    "originalkana": "キビダンゴ",
     "period": [
      17,
-     19
-    ],
-    "pronunciation": [
-     "チ",
-     "リ"
-    ],
-    "score": 28.674675920996464,
-    "sim": 28.674675920996464,
-    "surface": "チリ",
-    "vcost": 0
-   },
-   {
-    "id": "106",
-    "kana": "チャド",
-    "original": "チャド",
-    "original_surface": "団子 ",
-    "originalkana": "ダンゴ",
-    "period": [
-     19,
      21
     ],
     "pronunciation": [
-     "チャ",
+     "フィー",
+     "ラ",
+     "ン",
      "ド"
     ],
-    "score": 44.77194516281258,
-    "sim": 44.77194516281258,
-    "surface": "チャド",
-    "vcost": 0
+    "score": 73.47899779487244,
+    "sim": 73.47899779487244,
+    "surface": "フィンランド",
+    "vcost": 1
    },
    {
-    "id": "42",
-    "kana": "インド",
-    "original": "インド",
-    "original_surface": "一",
-    "originalkana": "ヒト",
+    "id": "45",
+    "kana": "イラク",
+    "original": "イラク",
+    "original_surface": "一つ",
+    "originalkana": "ヒトツ",
     "period": [
      21,
-     23
+     24
     ],
     "pronunciation": [
      "イ",
-     "ド"
+     "ラ",
+     "ク"
     ],
-    "score": 64.45361785502394,
-    "sim": 44.45361785502394,
-    "surface": "インド",
-    "vcost": 1
+    "score": 101.5845943830865,
+    "sim": 101.5845943830865,
+    "surface": "イラク",
+    "vcost": 0
    },
    {
-    "id": "66",
-    "kana": "ルワンダ",
-    "original": "ルワンダ",
-    "original_surface": "つわた",
-    "originalkana": "ツワタ",
+    "id": "40",
+    "kana": "ハンガリー",
+    "original": "ハンガリー",
+    "original_surface": "わたしに ",
+    "originalkana": "ワタシニ",
     "period": [
-     23,
-     26
-    ],
-    "pronunciation": [
-     "ル",
-     "ワ",
-     "ダ"
-    ],
-    "score": 64.56835530997188,
-    "sim": 44.56835530997187,
-    "surface": "ルワンダ",
-    "vcost": 1
-   },
-   {
-    "id": "107",
-    "kana": "チリ",
-    "original": "チリ",
-    "original_surface": "しに ",
-    "originalkana": "シニ",
-    "period": [
-     26,
+     24,
      28
     ],
     "pronunciation": [
-     "チ",
-     "リ"
+     "ハ",
+     "ガ",
+     "リー"
     ],
-    "score": 28.192873796095224,
-    "sim": 28.192873796095224,
-    "surface": "チリ",
-    "vcost": 0
+    "score": 73.64791622787457,
+    "sim": 73.64791622787457,
+    "surface": "ハンガリー",
+    "vcost": 1
    },
    {
     "id": "187",
@@ -230,103 +190,85 @@
   ],
   [
    {
-    "id": "136",
-    "kana": "マリ",
-    "original": "マリ",
-    "original_surface": "やり",
-    "originalkana": "ヤリ",
+    "id": "28",
+    "kana": "ガンビア",
+    "original": "ガンビア",
+    "original_surface": "やりま",
+    "originalkana": "ヤリマ",
     "period": [
      0,
-     2
+     3
     ],
     "pronunciation": [
-     "マ",
-     "リ"
+     "ガ",
+     "ビ",
+     "ア"
     ],
-    "score": 34.40398580324172,
-    "sim": 14.403985803241715,
-    "surface": "マリ",
+    "score": 79.3464992071911,
+    "sim": 59.346499207191094,
+    "surface": "ガンビア",
+    "vcost": 1
+   },
+   {
+    "id": "111",
+    "kana": "コスタリカ",
+    "original": "コスタリカ",
+    "original_surface": "しょう やりま",
+    "originalkana": "ショウヤリマ",
+    "period": [
+     3,
+     8
+    ],
+    "pronunciation": [
+     "コ",
+     "ス",
+     "タ",
+     "リ",
+     "カ"
+    ],
+    "score": 77.59367565978012,
+    "sim": 57.59367565978012,
+    "surface": "コスタリカ",
     "vcost": 0
    },
    {
-    "id": "91",
-    "kana": "ラオス",
-    "original": "ラオス",
-    "original_surface": "ましょう ",
-    "originalkana": "マショウ",
+    "id": "184",
+    "kana": "トルコ",
+    "original": "トルコ",
+    "original_surface": "しょう こ",
+    "originalkana": "ショウコ",
     "period": [
-     2,
-     5
+     8,
+     11
     ],
     "pronunciation": [
-     "ラ",
-     "オ",
-     "ス"
+     "ト",
+     "ル",
+     "コ"
     ],
-    "score": 42.69490048265841,
-    "sim": 42.69490048265841,
-    "surface": "ラオス",
+    "score": 48.578016211985485,
+    "sim": 28.57801621198548,
+    "surface": "トルコ",
     "vcost": 0
    },
    {
-    "id": "136",
-    "kana": "マリ",
-    "original": "マリ",
-    "original_surface": "やり",
-    "originalkana": "ヤリ",
+    "id": "17",
+    "kana": "ベナン",
+    "original": "ベナン",
+    "original_surface": "れから",
+    "originalkana": "レカラ",
     "period": [
-     5,
-     7
-    ],
-    "pronunciation": [
-     "マ",
-     "リ"
-    ],
-    "score": 34.40398580324172,
-    "sim": 14.403985803241715,
-    "surface": "マリ",
-    "vcost": 0
-   },
-   {
-    "id": "91",
-    "kana": "ラオス",
-    "original": "ラオス",
-    "original_surface": "ましょう ",
-    "originalkana": "マショウ",
-    "period": [
-     7,
-     10
-    ],
-    "pronunciation": [
-     "ラ",
-     "オ",
-     "ス"
-    ],
-    "score": 42.69490048265841,
-    "sim": 42.69490048265841,
-    "surface": "ラオス",
-    "vcost": 0
-   },
-   {
-    "id": "33",
-    "kana": "グレナダ",
-    "original": "グレナダ",
-    "original_surface": "これから",
-    "originalkana": "コレカラ",
-    "period": [
-     10,
+     11,
      14
     ],
     "pronunciation": [
-     "グ",
-     "レ",
-     "ナ",
-     "ダ"
+     "ベ",
+     "ナー"
     ],
-    "score": 102.03130279621013,
-    "sim": 102.03130279621013,
-    "surface": "グレナダ",
-    "vcost": 0
+    "score": 59.93483389722737,
+    "sim": 59.93483389722737,
+    "surface": "ベナン",
+    "vcost": 1
    },
    {
     "id": "143",
@@ -370,44 +312,26 @@
     "vcost": 0
    },
    {
-    "id": "89",
-    "kana": "ブルネイ",
-    "original": "ブルネイ",
-    "original_surface": "ついて行",
-    "originalkana": "ツイテイ",
+    "id": "172",
+    "kana": "ウズベキスタン",
+    "original": "ウズベキスタン",
+    "original_surface": "ついて行くなら ",
+    "originalkana": "ツイテイクナラ",
     "period": [
      21,
-     25
-    ],
-    "pronunciation": [
-     "ブ",
-     "ル",
-     "ネ",
-     "イ"
-    ],
-    "score": 122.27327022385757,
-    "sim": 102.27327022385757,
-    "surface": "ブルネイ",
-    "vcost": 0
-   },
-   {
-    "id": "186",
-    "kana": "ウガンダ",
-    "original": "ウガンダ",
-    "original_surface": "くなら ",
-    "originalkana": "クナラ",
-    "period": [
-     25,
      28
     ],
     "pronunciation": [
      "ウ",
-     "ガ",
-     "ダ"
+     "ズ",
+     "ベ",
+     "キ",
+     "ス",
+     "ター"
     ],
-    "score": 58.88575656450048,
-    "sim": 58.88575656450048,
-    "surface": "ウガンダ",
+    "score": 175.3930790549437,
+    "sim": 175.3930790549437,
+    "surface": "ウズベキスタン",
     "vcost": 1
    },
    {

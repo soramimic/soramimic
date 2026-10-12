@@ -210,6 +210,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 			}
 		}
 		const exactScore = (size,word)=>{
+			if(word.pronunciation.length<Number(size))return search.scoreExpanded(
+				word.pronunciation,Number(size),kanaDist,variationCost,word.vcost||0,weights);
 			if(search.compact){
 				if(word.pronunciation.length!==Number(size))return Infinity;
 				return search.score(word.pronunciation,kanaDist,variationCost,word.vcost||0,weights);
@@ -240,7 +242,10 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				const bestById = new Map();
 				for(const i in candidates){
 					for(const word of wordlist[i]){
-						const score = search.compact
+						const score = word.pronunciation.length<Number(i)
+							? search.coarseScoreExpanded(word.pronunciation,Number(i),unitFeature,
+								approximateVowelRatio,variationCost/16,word.vcost||0,weights)
+							: search.compact
 							? search.coarseScore(word.pronunciation,unitFeature,approximateVowelRatio,
 								variationCost/16,word.vcost||0,weights,Number(i))
 							: coarseDistance(candidates[i],word,approximateVowelRatio,

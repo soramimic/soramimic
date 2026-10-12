@@ -1,4 +1,5 @@
 import { syllableVariations } from "./lib/kanaToSyllable.js";
+import { indexPronunciation } from "./lib/pronunciationSearch.js";
 
 // Use the same pronunciation variants, distances and note weights as replacement.
 // Bound the query's variant expansion before allocating its one-word dictionary.
@@ -9,13 +10,13 @@ export async function findPlacements(app, kana, unitsList, param, weightsList, s
 	const syllables = app.textAnalyzer.yomiToSyllable(kana);
 	let count = 1;
 	for (const syllable of syllables) {
-		count *= syllableVariations(syllable).length;
+		count *= syllableVariations(syllable, false).length;
 		if (count > 4096) throw new Error("読みが複雑すぎるため、短い単語で検索してください");
 	}
 	const db = {};
-	for (const pronunciation of app.textAnalyzer.yomiToVariation(kana)) {
+	for (const pronunciation of app.textAnalyzer.yomiToVariation(kana, undefined, false)) {
 		if (!pronunciation.length) continue;
-		(db[pronunciation.length] ||= []).push({
+		indexPronunciation(db, {
 			id: "search", kana, pronunciation, vcost: pronunciation.vcost || 0,
 		});
 	}
