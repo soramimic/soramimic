@@ -151,10 +151,11 @@ try {
 		await page.goto(base);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.route("**/wordlists/*.csv", route => route.fulfill({ status: 503, body: "unavailable" }));
-		await page.fill("#input-text", "青い空");
+		await page.fill("#input-text", "[サビ]\n青い空");
+		assert.equal(await page.locator("#btn-convert").textContent(), "生成", "lyric section markers are not JSON");
 		await page.click("#btn-convert");
 		await page.locator("#generation-error").waitFor({ state: "visible" });
-		assert.equal(await page.inputValue("#input-text"), "青い空");
+		assert.equal(await page.inputValue("#input-text"), "[サビ]\n青い空");
 		assert(await page.locator("#btn-convert").isEnabled());
 		assert(await page.locator("#lyrics-file").isEnabled());
 		assert(!page.url().endsWith("editor.html"), "generation errors must stay in the form");

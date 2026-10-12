@@ -67,7 +67,7 @@ export async function startApp() {
 
 	const lyricsFile = $id("lyrics-file");
 	function isJsonInput() {
-		return /^[\[{]/.test(inputText.value.trimStart());
+		return inputText.value.trimStart().startsWith("{");
 	}
 	function updateConvertLabel() {
 		btnConvert.textContent = isJsonInput() ? "編集画面へ" : "生成";
