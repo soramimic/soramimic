@@ -327,10 +327,27 @@ try {
 	await editor.locator(".review-word.locked").first().tap();
 	const selectedCandidate = editor.locator('.candidate[aria-pressed="true"]');
 	assert(await selectedCandidate.count() === 1, "選択済み候補の表示が1つではない");
+	const selectedRange = await editor.locator('.review-unit[aria-pressed="true"]').evaluateAll(
+		(nodes) => nodes.map((node) => node.dataset.index));
 	await selectedCandidate.tap();
-	await editor.waitForSelector("#editor-panel.open", { state: "hidden" });
+	assert(await editor.locator("#editor-panel").evaluate((panel) => panel.open),
+		"選択済み候補の解除で候補選択画面が閉じた");
+	assert(JSON.stringify(await editor.locator('.review-unit[aria-pressed="true"]').evaluateAll(
+		(nodes) => nodes.map((node) => node.dataset.index))) === JSON.stringify(selectedRange),
+		"選択済み候補の解除で元歌詞の選択範囲が変わった");
+	assert(await selectedCandidate.count() === 0, "解除した候補が選択中のまま表示されている");
 	assert(await editor.locator(".review-word.locked").count() === 0,
 		"選択済み候補を再タップしても解除されない");
+	const afterDeselect = await editor.evaluate(() =>
+		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
+	await single.tap();
+	await editor.waitForSelector("#editor-panel.open", { state: "hidden" });
+	assert(await editor.locator(".review-word.locked").count() === 1,
+		"解除した範囲へ続けて候補を割り当てられない");
+	await editor.locator("#btn-undo").tap();
+	assert(await editor.evaluate(() => JSON.stringify(
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === afterDeselect,
+		"選び直しを取り消しても解除後の状態に戻らない");
 	await editor.locator("#btn-undo").tap();
 	assert(await editor.evaluate(() => JSON.stringify(
 		JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === JSON.stringify(beforeDeselect),

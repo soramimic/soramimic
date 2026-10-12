@@ -291,13 +291,6 @@ html.editor-free-input-open .editor-toolbar {
 	font-size: .8rem;
 }
 
-.panel-candidate-hint {
-	flex-basis: 100%;
-	margin: 0 0 .3rem;
-	color: var(--muted);
-	font-size: .75rem;
-}
-
 .panel-free-toggle {
 	justify-content: center;
 	color: var(--accent);
