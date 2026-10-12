@@ -109,16 +109,13 @@
           <details id="reverse-search" class="reverse-search">
             <summary>単語から当てはめ先を探す</summary>
             <div class="reverse-inputs">
-              <label for="reverse-word">使いたい単語</label>
+              <label for="reverse-word">使いたい単語の読み</label>
               <div class="reverse-word-field">
-                <input id="reverse-word" class="input" type="search" maxlength="100" placeholder="単語を入力" disabled />
-                <button id="reverse-clear" class="btn btn-ghost" type="button">クリア</button>
+                <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-describedby="reverse-status" spellcheck="false" disabled />
+                <button id="reverse-clear" class="reverse-clear" type="button" aria-label="入力を消す" title="入力を消す" hidden>
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
+                </button>
               </div>
-              <details class="reverse-reading-field">
-                <summary>読みを指定</summary>
-                <label for="reverse-reading">単語の読み（空欄なら自動）</label>
-                <input id="reverse-reading" class="input" maxlength="100" placeholder="ひらがな・カタカナ" disabled />
-              </details>
               <p id="reverse-status" role="status" aria-live="polite"></p>
             </div>
           </details>
