@@ -118,6 +118,17 @@
             </button>
             <button id="btn-video" class="btn" type="button" hidden>ビデオで作る ↗</button>
           </div>
+          <details id="editor-visualization" class="editor-visualization">
+            <summary>可視化 <span id="visualization-summary" role="status" aria-live="polite"></span></summary>
+            <div class="visualization-options" role="group" aria-label="強調する箇所">
+              <label><input id="visualize-vowel" type="checkbox" />母音が合わない <span id="visualization-count-vowel" class="visualization-count"></span></label>
+              <label><input id="visualize-distance" type="checkbox" />類似度が低い <span id="visualization-count-distance" class="visualization-count"></span></label>
+              <label><input id="visualize-single" type="checkbox" />1音節の単語 <span id="visualization-count-single" class="visualization-count"></span></label>
+              <label><input id="visualize-filler" type="checkbox" />未変換 <span id="visualization-count-filler" class="visualization-count"></span></label>
+            </div>
+            <label class="visualization-distance-setting" for="visualization-threshold">距離のしきい値：<input id="visualization-threshold" class="input" type="number" min="0" max="100" step="5" value="30" /> / 音</label>
+            <p class="visualization-note">距離がしきい値を超える単語を強調します。大きいほど音が似ていません。現在の「音の合わせ方」で比較し、母音は長音の表記ゆれをそろえます。強調は修正候補の目安です。</p>
+          </details>
           <details id="reverse-search" class="reverse-search">
             <summary>単語から当てはめ先を探す</summary>
             <div class="reverse-inputs">

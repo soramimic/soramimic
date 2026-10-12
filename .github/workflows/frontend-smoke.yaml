@@ -41,6 +41,8 @@ jobs:
         run: node tests/editor-smoke.mjs
       - name: 編集画面のレイアウト・キーボード操作
         run: node tests/editor-layout.mjs
+      - name: 編集画面の可視化・判定・修正後の更新
+        run: node tests/editor-diagnostics.mjs && node tests/editor-visualization.mjs
       - name: 選択した単語の詳細情報
         run: node tests/editor-word-details.mjs
       - name: 編集画面の逆引き検索・行単位の再生成
