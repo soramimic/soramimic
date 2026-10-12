@@ -102,7 +102,7 @@ print("[ok] 編集APIの要求件数下限・位置別重み・length=0");
 
 // 問題になった「ピョン」反復。kana2phononを使わず文字から母音を推測すると、
 // 拗音ピョやンを誤分類して「子どもの森」を粗候補から落としていた。実学校リストの
-// 先頭1.2万行で、正確・近似とも「子どもの森」が先頭になることを固定する。
+// 先頭1.2万行で、長音の母音展開を含む正確・近似の候補順を固定する。
 const schoolLines=fs.readFileSync("wordlists/school.csv","utf8").split(/\r?\n/);
 const schoolSample=[schoolLines[0],...schoolLines.slice(1,12001)].join("\n");
 const schoolDb=await wordList.parseTidy(schoolSample,"",10);
@@ -113,7 +113,7 @@ const pyonApprox=soramimiMaker.getCandidates(schoolDb,pyon,approxParam(pyonParam
 assert.deepEqual(pyonApprox,pyonExact,"ピョン反復の近似上位30件");
 assert.deepEqual(soramimiMaker.getCandidates(schoolDb,pyon,approxParam(pyonParam),30),pyonApprox,
 	"同点を含む近似候補順が決定的");
-assert.equal(pyonApprox[0].surface,"子どもの森","母音o主体の子どもの森が先頭候補");
-print("[ok] ピョン×6でも拗音・ンを正しく署名化し「子どもの森」を保持");
+assert.equal(pyonApprox[0].surface,"東京大谷","長音の展開を含めた母音o主体の先頭候補");
+print("[ok] ピョン×6でも拗音・ン・長音展開を正しく比較する");
 
 print("近似候補検索: 全テスト通過");

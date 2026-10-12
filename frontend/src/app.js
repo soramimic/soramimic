@@ -14,6 +14,7 @@ import {
 } from "./customWordlists.js";
 import { readCustomWordlistFile } from "./customWordlistFile.js";
 import { createLruCache } from "./lib/lruCache.js";
+import { maximumVariationLength } from "./lib/kanaToSyllable.js";
 import {
 	createParamControls,
 	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
@@ -989,11 +990,10 @@ export async function startApp() {
 				}
 				const where = compileWhere(entry);
 				const tokensList = await tokenizePhrases(phrases);
-				// 単語DBのキー長は getYomiAndPhraseBreak が返す発音ユニット数と
-				// 同じ。歌詞側の最大値を先に求め、不要に長いバリエーションを
-				// DBへ展開しない。
+				// 長音を母音へ展開した長さも含めて、歌詞側の上限を求める。
 				const maxUnits = tokensList.reduce((max, tokens) =>
-					Math.max(max, app.textAnalyzer.getYomiAndPhraseBreak(tokens).length), 0);
+					Math.max(max, maximumVariationLength(app.textAnalyzer
+						.getYomiAndPhraseBreak(tokens).map(u=>u.pronunciation))), 0);
 				progressText.textContent = "単語リストを準備中...";
 				const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された

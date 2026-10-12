@@ -1,4 +1,5 @@
 // js/WordList.js から移植(ロジック無改変、ESモジュール化のみ)
+import { indexPronunciation } from "./pronunciationSearch.js";
 function Parser(){
 	function tokenize(query_str){
 		//query_str = query_str.replace(/(?<!!)=|!=|\(|\)/g," $& ");//後よみは使わない
@@ -231,18 +232,17 @@ function WordList(textAnalyzer){
 			if(!obj.pronunciation) continue;
 			
 			// maxUnits を変種生成まで渡し、長い読みの直積を作る途中で枝刈りする。
-			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits);
+			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits, false);
 			for(let p of pvariations){
 				if(maxUnits !== undefined && p.length > maxUnits) continue;
-				if(p.length in resultdb === false)resultdb[p.length]=[];
-				resultdb[p.length].push({
+				indexPronunciation(resultdb, {
 					"surface":obj.surface,
 					"pronunciation":p,
 					"kana":obj.pronunciation,
 					"id":obj.id,
 					"original":obj.original,
 					"vcost":p.vcost||0 //単語側の変種コスト(#105)
-				});
+				}, maxUnits);
 			}
 			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
 		}

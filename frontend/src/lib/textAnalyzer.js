@@ -324,10 +324,10 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 			return sep;
 		},
 		syllableToVariation: k2s.getVariation,
-		yomiToVariation: function(yomi, maxUnits){
+		yomiToVariation: function(yomi, maxUnits, expandLongVowels=true){
 			//const yomi = getYomi(text);
 			const sep = k2s.split(yomi);
-			const ptn = k2s.getVariation(sep, maxUnits);
+			const ptn = k2s.getVariation(sep, maxUnits, expandLongVowels);
 			return ptn;
 		},
 		formatKana: formatKana,
