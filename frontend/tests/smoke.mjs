@@ -125,7 +125,7 @@ try {
 	}
 	// 基本キー操作と、閉じた後のtrigger focusを確認する。
 	await page.keyboard.press("End");
-	if ((await page.locator(":focus").textContent()).trim() !== "＋ 新しいリスト") {
+	if (await page.locator(":focus").getAttribute("aria-label") !== "「自作リスト」を削除") {
 		throw new Error("Endで末尾項目へ移動しない");
 	}
 	await page.keyboard.press("Home");

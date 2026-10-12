@@ -77,6 +77,32 @@ main {
 	padding: 1.2rem;
 }
 
+body:has(#tab-home) .site-header {
+	max-width: 720px;
+	margin: 0 auto;
+	padding: .7rem 1rem .5rem;
+	border: 0;
+	background: transparent;
+}
+
+body:has(#tab-home) {
+	color-scheme: light dark;
+}
+
+body:has(#tab-home) .site-header .brand {
+	width: 18rem;
+	max-width: 100%;
+}
+
+body:has(#tab-home) .site-header .brand-logo {
+	width: 100%;
+}
+
+main:has(#tab-home) {
+	max-width: 720px;
+	padding: 0 .8rem 3rem;
+}
+
 .columns {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -95,10 +121,16 @@ main {
 
 .generation-card label.field-label {
 	display: block;
+	font-size: .85rem;
+}
+
+.generation-card {
+	padding: .8rem;
 }
 
 .generation-card textarea {
-	min-height: 10rem;
+	height: 7rem;
+	min-height: 7rem;
 	resize: vertical;
 }
 
@@ -107,11 +139,16 @@ main {
 	min-height: 44px;
 }
 
+.generation-card :is(input, textarea, select, button, summary):focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
 .generation-wordlist-row {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
+	grid-template-columns: 4.25rem minmax(0, 1fr);
 	align-items: center;
-	gap: .75rem;
+	gap: .5rem;
 }
 
 .generation-wordlist-row > .field-label {
@@ -143,14 +180,23 @@ main {
 }
 
 #wordlist-trigger::after {
+	content: "⌄";
 	grid-row: 1;
+	font-size: 1rem;
+	line-height: 1;
+	opacity: 1;
+	transition: transform .15s ease;
+}
+
+#wordlist-trigger[aria-expanded="true"]::after {
+	transform: rotate(180deg);
 }
 
 .generation-input-actions {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: flex-start;
 	gap: 0 .5rem;
 	margin-top: .25rem;
 }
@@ -181,10 +227,12 @@ main {
 	padding: .35rem 0;
 	border: 0;
 	background: none;
-	color: var(--accent);
+	color: var(--muted);
 	font: inherit;
 	font-size: .85rem;
 	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: .2em;
 }
 
 .generation-source-link:disabled {
@@ -193,7 +241,7 @@ main {
 }
 
 .generation-source-link:hover:not(:disabled) {
-	text-decoration: underline;
+	color: var(--accent);
 }
 
 .site-footer {
@@ -250,7 +298,6 @@ main {
 }
 
 @media (max-width: 480px) {
-	.generation-card,
 	.generation-output {
 		padding: 1rem;
 	}
@@ -748,6 +795,7 @@ dialog h2 {
 }
 
 .custom-wordlist-menu button {
+	font: inherit;
 	min-height: 44px;
 	border: 0;
 	border-radius: 7px;
@@ -769,9 +817,17 @@ dialog h2 {
 .custom-wordlist-menu-heading {
 	margin: .4rem 0 .1rem;
 	padding: .5rem .7rem;
-	font-size: .8rem;
-	font-weight: 600;
-	color: var(--muted);
+	border-top: 1px solid var(--border);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--text) 6%, var(--panel));
+	color: var(--text);
+	font-size: .82rem;
+	font-weight: 700;
+}
+
+.custom-wordlist-menu-heading:first-child {
+	margin-top: 0;
+	border-top: 0;
 }
 
 .custom-wordlist-menu > .custom-wordlist-menu-select {
@@ -786,6 +842,18 @@ dialog h2 {
 	text-align: left;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.custom-wordlist-menu-subitem {
+	margin-left: .7rem;
+	width: calc(100% - .7rem) !important;
+	padding-left: 1rem;
+	border-left: 2px solid var(--border) !important;
+	border-radius: 0 7px 7px 0 !important;
+}
+
+.custom-wordlist-menu-row.custom-wordlist-menu-subitem > .custom-wordlist-menu-select {
+	padding-left: 1rem;
 }
 
 .custom-wordlist-menu-select[aria-checked="true"] {
@@ -818,7 +886,6 @@ dialog h2 {
 .custom-wordlist-menu-new {
 	width: 100%;
 	padding: 0.55rem 0.7rem;
-	border-top: 1px solid var(--border) !important;
 	text-align: left;
 }
 

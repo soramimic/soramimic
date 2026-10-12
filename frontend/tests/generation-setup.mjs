@@ -59,11 +59,44 @@ try {
 					const bounds = await page.locator(id).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
 				}
+				await page.click("#wordlist-trigger");
+				const menu = page.locator("#custom-wordlist-menu");
+				assert.deepEqual(await menu.locator(".custom-wordlist-menu-heading").allTextContents(), ["生物", "架空", "自作リスト"]);
+				const geometry = await menu.evaluate(el => {
+					const rect = el.getBoundingClientRect();
+					const top = el.querySelector('[data-value="BASEBALL"]').getBoundingClientRect();
+					const child = el.querySelector('[data-value="SEKITSUI"]');
+					const heading = el.querySelector(".custom-wordlist-menu-heading");
+					return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+						indent: child.getBoundingClientRect().left - top.left,
+						border: parseFloat(getComputedStyle(child).borderLeftWidth),
+						headingBackground: getComputedStyle(heading).backgroundColor,
+						menuBackground: getComputedStyle(el).backgroundColor };
+				});
+				assert(geometry.left >= 0 && geometry.right <= width && geometry.top >= 0 && geometry.bottom <= 844);
+				assert(geometry.indent > 0 && geometry.border >= 2 && geometry.headingBackground !== geometry.menuBackground, "category headers and indented children must have distinct visual levels");
+				assert.equal(await menu.locator(".custom-wordlist-menu-heading").last().evaluate(el => el.nextElementSibling.textContent), "＋ 新しいリスト");
+				if (engine === chromium && width === 390 && process.env.GENERATION_SCREENSHOTS) {
+					await menu.evaluate(el => { const heading = el.querySelector(".custom-wordlist-menu-heading"); el.scrollTop = heading.offsetTop - 6; });
+					await page.mouse.move(0, 0);
+					await menu.screenshot({ path: `${process.env.GENERATION_SCREENSHOTS}/wordlist-${colorScheme}.png` });
+				}
+				await page.keyboard.press("Escape");
 				if (engine === chromium && width === 390 && process.env.GENERATION_SCREENSHOTS) {
 					await mkdir(process.env.GENERATION_SCREENSHOTS, { recursive: true });
-					await page.screenshot({ path: `${process.env.GENERATION_SCREENSHOTS}/generation-${colorScheme}.png` });
+					await page.locator("#wordlist-trigger").blur();
+					await page.screenshot({ path: `${process.env.GENERATION_SCREENSHOTS}/generation-${colorScheme}.png`, animations: "disabled" });
 				}
 			}
+		}
+		for (const [value, name] of [["SEKITSUI", "脊椎動物"], ["FICTIONAL_SCIENTIST", "科学者"], ["BASEBALL", "野球選手"]]) {
+			await page.click("#wordlist-trigger");
+			await page.locator(`#custom-wordlist-menu [data-value="${value}"]`).click();
+			assert.equal(await page.locator("#wordlist-trigger").getAttribute("data-value"), value);
+			assert.equal(await page.locator("#wordlist-trigger > span").textContent(), name);
+			await page.reload();
+			await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+			assert.equal(await page.locator("#wordlist-trigger").getAttribute("data-value"), value, "grouped selection survives reload");
 		}
 		assert.equal(await page.locator(".site-header nav").count(), 0);
 		assert.equal(await page.locator('label[for="input-text"]').count(), 0);
