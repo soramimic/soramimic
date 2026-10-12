@@ -264,6 +264,7 @@ try {
 	// パネル端から背面ページへスクロールを連鎖させない。
 	await editor.locator("#editor-panel").evaluate((panel) => {
 		panel.style.maxHeight = "180px"; // 境界スクロールを確実に再現する
+		panel.scrollTop = panel.scrollHeight;
 	});
 	await editor.locator(".panel-free-back").scrollIntoViewIfNeeded();
 	assert(await editor.locator("#editor-panel").evaluate((panel) =>
@@ -278,7 +279,7 @@ try {
 		type: "touchStart", touchPoints: [{ x: freeBackX, y: freeBackY }],
 	});
 	await cdp.send("Input.dispatchTouchEvent", {
-		type: "touchMove", touchPoints: [{ x: freeBackX, y: freeBackY - 60 }],
+		type: "touchMove", touchPoints: [{ x: freeBackX, y: freeBackY + 60 }],
 	});
 	await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 	await editor.waitForTimeout(300);

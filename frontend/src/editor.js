@@ -666,7 +666,7 @@ function applyReplacement(word, conflicts = []) {
 	words.sort((a, b) => a.period[0] - b.period[0]);
 	data.results[line] = words;
 	saveData();
-	setSelection(null);
+	setSelection(freeInputOpen ? selection : null);
 	for (const otherLine of new Set(conflicts.map((conflict) => conflict.line))) {
 		if (otherLine !== line) rerenderLine(otherLine);
 	}
@@ -707,6 +707,10 @@ function wordWithReading(word, rawReading, target, weights) {
 		}));
 	}
 	return app.soramimiMaker.getCandidates(oneWordDb, target, data.param, 1, weights)[0] || null;
+}
+
+function isCustomWord(word) {
+	return String(word?.id).startsWith("custom-");
 }
 
 // 自由入力から候補相当のオブジェクトを作る。読み欄が空なら従来どおり推定する。
@@ -806,7 +810,7 @@ function wordDetail(word) {
 	if (typeof sim === "number" && Number.isFinite(sim)) {
 		lines.push("スコア: " + sim.toFixed(3) + "(小さいほど近い)");
 	}
-	lines.push(String(word.id).startsWith("custom-") ? "自由入力" : "ID: " + word.id);
+	lines.push(isCustomWord(word) ? "自由入力" : "ID: " + word.id);
 	return lines.join("\n");
 }
 
@@ -1254,6 +1258,13 @@ function setupReplacementPanel() {
 	}, true);
 }
 
+function closeFreeInput() {
+	if (!freeInputOpen) return;
+	freeInputOpen = false;
+	freeInputDraft = { surface: "", reading: "" };
+	renderPanel();
+}
+
 function appendReplacementControls(panel, target, rangeWeights) {
 	if (freeInputOpen) {
 		const free = document.createElement("div");
@@ -1294,15 +1305,12 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		const actions = document.createElement("div");
 		actions.className = "panel-free-actions";
 		const back = document.createElement("button");
-		back.className = "btn panel-free-back";
+		back.className = "btn btn-ghost panel-close panel-free-back";
 		back.type = "button";
-		back.textContent = "← 候補選択に戻る";
-		const closeFreeInput = () => {
-			if (!freeInputOpen) return;
-			freeInputOpen = false;
-			freeInputDraft = { surface: "", reading: "" };
-			renderPanel();
-		};
+		back.textContent = "×";
+		back.setAttribute("aria-label", "候補選択に戻る");
+		back.title = "候補選択に戻る";
+		panel.querySelector(".panel-close").replaceWith(back);
 		// ソフトウェアキーボード表示中は通常の click がパネル移動で消えることがあるため、
 		// touch は pointerup で確定する。スクロール開始点がボタン上でも誤って閉じないよう、
 		// 指が動いた場合はタップとして扱わない。
@@ -1333,7 +1341,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		});
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
-		apply.textContent = "変更する";
+		apply.textContent = "確定";
 		const applyFree = () => {
 			const text = surfaceInput.value.trim();
 			if (text === "") {
@@ -1361,7 +1369,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 				if (e.key === "Enter") applyFree();
 			});
 		}
-		actions.append(back, apply);
+		actions.append(apply);
 		free.append(heading, fields, note, actions);
 		panel.appendChild(free);
 		queueMicrotask(() => focusReadingInput(surfaceInput));
@@ -1459,11 +1467,12 @@ function buildPanel() {
 	const freeToggle = document.createElement("button");
 	freeToggle.className = "btn panel-free-toggle";
 	freeToggle.type = "button";
-	freeToggle.textContent = "＋ 自分で入力";
+	const customWord = isCustomWord(selectedWord) ? selectedWord : null;
+	freeToggle.textContent = customWord ? "✎ 手入力を編集" : "＋ 自分で入力";
 	freeToggle.setAttribute("aria-expanded", "false");
 	freeToggle.addEventListener("click", () => {
 		freeInputOpen = true;
-		freeInputDraft = { surface: "", reading: "" };
+		freeInputDraft = { surface: customWord?.surface || "", reading: customWord?.kana || "" };
 		renderPanel();
 	});
 	list.appendChild(freeToggle);
@@ -1509,6 +1518,12 @@ function buildPanel() {
 		kana.className = "candidate-kana";
 		kana.textContent = cand.kana + (allUsed ? "・使用中" : "");
 		btn.append(surface, kana);
+		if (isCustomWord(cand)) {
+			const source = document.createElement("span");
+			source.className = "candidate-source";
+			source.textContent = "手入力";
+			btn.appendChild(source);
+		}
 		if (g.cands.length === 1) {
 			btn.title = candidateDetail(cand, used.has(cand.id));
 			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
@@ -2685,7 +2700,8 @@ async function start() {
 		const panel = $id("editor-panel");
 		panel.addEventListener("cancel", (event) => {
 			event.preventDefault();
-			setSelection(null);
+			if (freeInputOpen) closeFreeInput();
+			else setSelection(null);
 		});
 		panel.addEventListener("keydown", (event) => {
 			if (event.key !== "Tab") return;

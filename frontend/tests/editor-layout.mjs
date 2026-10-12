@@ -105,6 +105,8 @@ try {
 	await page.click(".review-reading-input summary");
 	assert(await page.locator(".panel-free-reading").isVisible());
 	await page.keyboard.press("Escape");
+	assert(await page.locator("#editor-panel").evaluate((panel) => panel.open) &&
+		await page.locator(".panel-candidates").isVisible(), "Escape from custom input returns to candidates");
 	await page.evaluate(() => { navigator.clipboard.writeText = async (value) => { window.copied = value; }; });
 	await menuAction(page, "#btn-copy");
 	await page.waitForFunction(() => window.copied?.length > 0);

@@ -119,25 +119,10 @@ try {
 	await editor.click(".panel-free-toggle");
 	assert(await editor.locator(".panel-candidates").count() === 0,
 		"自由入力中にも候補一覧が表示されている");
-	const freeBackStyle = await editor.locator(".panel-free-back").evaluate((button) => {
-		const style = getComputedStyle(button);
-		const muted = document.createElement("span");
-		muted.style.color = "var(--muted)";
-		document.body.appendChild(muted);
-		const mutedColor = getComputedStyle(muted).color;
-		muted.remove();
-		return {
-			disabled: button.disabled,
-			borderColor: style.borderColor,
-			color: style.color,
-			cursor: style.cursor,
-			mutedColor,
-		};
-	});
-	assert(!freeBackStyle.disabled && freeBackStyle.cursor === "pointer" &&
-		freeBackStyle.borderColor !== "rgba(0, 0, 0, 0)" &&
-		freeBackStyle.color !== freeBackStyle.mutedColor,
-		"候補選択へ戻るボタンが押せる見た目ではない: " + JSON.stringify(freeBackStyle));
+	assert(await editor.locator(".panel-free-back").evaluate((button) => {
+		const box = button.getBoundingClientRect();
+		return button.closest(".review-panel-header") && box.width >= 44 && box.height >= 44;
+	}), "入力を閉じるボタンがヘッダーにないか、押せる大きさではない");
 	await editor.click(".panel-free-back");
 	assert(await editor.locator(".panel-free").count() === 0 &&
 		await editor.locator(".panel-candidates").count() === 1,
@@ -170,6 +155,10 @@ try {
 	assert(custom && String(custom.id).startsWith("custom-") && custom.kana === "ア" &&
 		Array.isArray(custom.pronunciation),
 		"自由入力の歌詞と読みがcustom語として保存されない: " + JSON.stringify(custom));
+	assert(await editor.locator("#editor-panel").evaluate((panel) => panel.open) &&
+		await editor.locator(".panel-free").count() === 0,
+		"手入力の確定後に候補選択へ戻らない");
+	await editor.click(".panel-close");
 	await editor.click("#btn-undo");
 	await editor.waitForTimeout(300);
 
