@@ -128,18 +128,26 @@ export function originalHighlightRanges(source, units, matches, tokens = []) {
 	return merged;
 }
 
-export function highlightOriginal(node, units, matches, tokens) {
+export function highlightOriginal(node, units, matches, tokens, current = null) {
 	const source = node.textContent;
 	const ranges = originalHighlightRanges(source, units, matches, tokens);
 	if (!ranges.length) return;
+	const active = current ? originalHighlightRanges(source, units, [current], tokens) : [];
 	let cursor = 0;
 	node.textContent = "";
 	for (const [start, end] of ranges) {
 		node.append(document.createTextNode(source.slice(cursor, start)));
-		const mark = document.createElement("mark");
-		mark.className = "reverse-highlight";
-		mark.textContent = source.slice(start, end);
-		node.append(mark);
+		// Adjacent hits may share a merged highlight; distinguish the active span.
+		const boundaries = [...new Set([start, end, ...active.flat()
+			.filter((offset) => start < offset && offset < end)])].sort((a, b) => a - b);
+		for (let i = 0; i < boundaries.length - 1; i++) {
+			const from = boundaries[i], to = boundaries[i + 1];
+			const mark = document.createElement("mark");
+			mark.className = "reverse-highlight";
+			mark.classList.toggle("reverse-current", active.some(([a, b]) => a < to && from < b));
+			mark.textContent = source.slice(from, to);
+			node.append(mark);
+		}
 		cursor = end;
 	}
 	node.append(document.createTextNode(source.slice(cursor)));

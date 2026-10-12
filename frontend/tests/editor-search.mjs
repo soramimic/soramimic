@@ -69,6 +69,10 @@ try {
 		assert.deepEqual((await state()).history, initial.history, "search must not add history");
 		const firstMatch = page.locator('[data-line="0"] .reverse-word-match[data-start="1"][data-end="3"]');
 		assert(await firstMatch.isVisible(), "the matching parody word is highlighted");
+		assert.equal(await firstMatch.getAttribute("aria-current"), "true");
+		await page.click("#reverse-next");
+		await page.click("#reverse-previous");
+		assert.equal(await firstMatch.getAttribute("aria-current"), "true", "navigation also works without mapped source spelling");
 		if (review) {
 			assert.equal(await page.locator('[data-line="0"] .reverse-highlight').count(), 0,
 				"different host spelling must not highlight the entire line");
@@ -119,6 +123,7 @@ try {
 		await page.click("#btn-undo");
 		await page.click("#reverse-search > summary");
 		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0, "closing search clears highlights");
+		assert.equal(await page.locator("#reverse-next").isEnabled(), false, "closing search disables navigation");
 		await page.click("#reverse-search > summary");
 		await searchDone();
 		await page.fill("#reverse-word", "かぜ");
@@ -133,6 +138,8 @@ try {
 		await page.fill("#reverse-word", "空");
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("ひらがな・カタカナで入力"));
 		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0, "non-kana input clears stale matches");
+		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
+		assert.equal(await page.locator("#reverse-previous").isEnabled(), false);
 		await page.fill("#reverse-word", "ン".repeat(30));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("複雑"));
 		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0, "invalid reading clears stale matches");
@@ -141,6 +148,8 @@ try {
 		assert.equal(await page.locator("#reverse-clear").isVisible(), false);
 		assert.equal(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement), true);
 		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0);
+		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
+		assert.equal(await page.locator("#reverse-next").isEnabled(), false);
 		await page.fill("#reverse-word", "ソラ");
 		await page.locator("#reverse-word").evaluate((node) => {
 			node.value = "かぜ";
@@ -149,6 +158,7 @@ try {
 		await page.waitForTimeout(350);
 		assert.equal(await page.textContent("#reverse-status"), "", "IME composition cancels the pending search");
 		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0);
+		assert.equal(await page.locator("#reverse-next").isEnabled(), false, "IME composition cannot visit stale hits");
 		await page.locator("#reverse-word").dispatchEvent("compositionend");
 		await searchDone();
 		assert(await windMatch.isVisible());
@@ -180,6 +190,77 @@ try {
 		await page.reload();
 		await ready();
 		assert.deepEqual((await state()).results, afterRegen.results, "regeneration persists across reload");
+	}
+	// Visit adjacent hits independently, then cross a long gap without losing the controls.
+	const navigationPhrases = ["空空", ...Array(24).fill(""), "空"];
+	const navigationTokens = app.textAnalyzer.tokenizeTogether(navigationPhrases);
+	navigationTokens[0] = [...structuredClone(tokensList[1]), ...structuredClone(tokensList[1])];
+	for (const review of [false, true]) {
+		const session = { ...structuredClone(seed), phrases: navigationPhrases, tokensList: navigationTokens,
+			unitsList: navigationTokens.map((row) => app.textAnalyzer.getYomiAndPhraseBreak(row)),
+			results: navigationPhrases.map(() => []), history: [], future: [], dirtyLines: [], weightsList: null };
+		if (review) {
+			session.host = { review: true };
+			session.originalLines = navigationPhrases;
+		}
+		await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), session);
+		await page.reload();
+		await ready();
+		await page.setViewportSize({ width: 320, height: 640 });
+		await page.click("#reverse-search > summary");
+		const beforeNavigation = await state();
+		await page.fill("#reverse-word", "ソラ");
+		await searchDone();
+		const assertCurrent = async (index, line, character) => {
+			assert.equal(await page.textContent("#reverse-count"), `${index} / 3`);
+			const current = page.locator("mark.reverse-current");
+			assert.equal(await current.count(), 1, "only the active source hit is emphasized");
+			assert.equal(await current.textContent(), "空");
+			assert.equal(await current.evaluate((node) => Number(node.closest(".editor-line").dataset.line)), line);
+			assert.equal(await current.evaluate((node) => {
+				let length = 0;
+				for (let sibling = node.previousSibling; sibling; sibling = sibling.previousSibling) length += sibling.textContent.length;
+				return length;
+			}), character, "adjacent hits have separate current highlights");
+			assert.equal(await page.locator("#editor-panel").evaluate((node) => node.open), false, "navigation does not open the editor");
+			const hitBox = await current.boundingBox();
+			const toolbarBox = await page.locator("#editor-toolbar").boundingBox();
+			assert(hitBox.y >= toolbarBox.y + toolbarBox.height && hitBox.y + hitBox.height <= 640,
+				"the active hit is visible below the search controls");
+			const nextBox = await page.locator("#reverse-next").boundingBox();
+			assert(nextBox.y >= 0 && nextBox.y + nextBox.height <= 640, "controls stay on screen after moving");
+		};
+		await assertCurrent(1, 0, 0);
+		await page.click("#reverse-next");
+		await assertCurrent(2, 0, 1);
+		await page.click("#reverse-next");
+		await assertCurrent(3, 25, 0);
+		await page.click("#reverse-next");
+		await assertCurrent(1, 0, 0);
+		await page.click("#reverse-previous");
+		await assertCurrent(3, 25, 0);
+		await page.locator("#reverse-word").press("Shift+Enter");
+		await assertCurrent(2, 0, 1);
+		await page.locator("#reverse-word").press("Enter");
+		await assertCurrent(3, 25, 0);
+		assert(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement), "keyboard navigation preserves input focus");
+		await page.locator("#reverse-word").dispatchEvent("keydown", { key: "Enter", isComposing: true });
+		await assertCurrent(3, 25, 0);
+		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
+		await page.fill("#reverse-word", "カ".repeat(40));
+		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
+		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
+		assert.equal(await page.locator("#reverse-next").isEnabled(), false);
+		assert.equal(await page.locator(".reverse-current").count(), 0);
+		await page.fill("#reverse-word", "ソラソラ");
+		await searchDone();
+		assert.equal(await page.textContent("#reverse-count"), "1 / 1");
+		await page.click("#reverse-next");
+		await page.click("#reverse-previous");
+		assert.equal(await page.textContent("#reverse-count"), "1 / 1", "a single hit wraps to itself");
+		await page.click("#reverse-clear");
+		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
+		assert.equal(await page.locator(".reverse-current").count(), 0);
 	}
 	// A query may end or start inside a kanji's reading; its surface still highlights.
 	const partialPhrases = ["夕焼小焼の、赤とんぼ", "畑"];
@@ -222,6 +303,10 @@ try {
 	await searchDone();
 	assert.equal(await page.locator('[data-line="10"] mark.reverse-highlight').textContent(), "キ",
 		"longer ranges with more deletion penalties must not displace the closer short match");
+	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "0",
+		"navigation starts in document order, independently of similarity ranking");
+	await page.click("#reverse-previous");
+	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10");
 	// Edit a source reading while reverse highlights are visible. The automatic
 	// character allocation loses part of this token's spelling, but not the line.
 	const source = "負われて見たのは、いつの日か";
@@ -256,7 +341,7 @@ try {
 	await searchDone();
 	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);
-	print("[ok] standalone/review kana search, highlights, replacement, IME, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
+	print("[ok] standalone/review kana search, hit navigation and wrapping, keyboard/IME, sticky controls, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid, "SIGTERM"); } catch {}
