@@ -55,7 +55,7 @@ try {
 				const label = await page.locator('label[for="wordlist-trigger"]').boundingBox();
 				const picker = await page.locator("#wordlist-trigger").boundingBox();
 				assert(label.x + label.width <= picker.x && Math.abs(label.y + label.height / 2 - picker.y - picker.height / 2) < 2, "wordlist label and dropdown must share a row");
-				for (const id of ["#input-text", "#wordlist-trigger", "#btn-lyrics-file", "#btn-convert"]) {
+				for (const id of ["#input-text", "#wordlist-trigger", "#lyrics-file", "#btn-convert"]) {
 					const bounds = await page.locator(id).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
 				}
@@ -80,10 +80,14 @@ try {
 		const load = async (name, text) => {
 			await page.setInputFiles("#lyrics-file", { name, mimeType: name.endsWith("json") ? "application/json" : "text/plain", buffer: Buffer.from(text) });
 		};
+		const inputBounds = await page.locator("#input-text").boundingBox();
+		const fileBounds = await page.locator("#lyrics-file").boundingBox();
+		assert(fileBounds.y >= inputBounds.y + inputBounds.height, "visible file picker follows the textarea");
 		for (const name of ["歌詞.txt", "歌詞.md", "歌詞.md"]) {
 			await load(name, "\uFEFF青い空\n白い雲");
 			await page.waitForFunction(() => document.getElementById("lyrics-file-status").textContent.includes("を読み込みました"));
 			assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲");
+			assert.equal(await page.locator("#lyrics-file").evaluate(input => input.files[0].name), name);
 			assert(!page.url().endsWith("editor.html"));
 		}
 		await page.reload();
@@ -118,16 +122,44 @@ try {
 
 		await page.goto(base);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		for (const text of ["{", "{}", '{"results":[],"unitsList":[]}', "あ".repeat(10001)]) {
+			await page.fill("#input-text", text);
+			await page.click("#btn-convert");
+			await page.locator("#generation-error").waitFor({ state: "visible" });
+			assert.equal(await page.inputValue("#input-text"), text);
+			assert(!page.url().endsWith("editor.html"), "invalid pasted input must stay editable");
+		}
+		const pasted = { ...payload, lyrics: "あ".repeat(10001), host: { origin: "https://example.com" }, history: [payload.results], future: [payload.results] };
+		const pastedText = "\uFEFF" + JSON.stringify(pasted);
+		await page.fill("#input-text", "");
+		await page.locator("#input-text").focus();
+		await page.keyboard.insertText(pastedText);
+		assert.equal(await page.inputValue("#input-text"), pastedText, "JSON longer than the lyric limit must not be truncated");
+		assert.equal(await page.locator("#btn-convert").textContent(), "編集画面へ");
+		await page.click("#btn-convert");
+		await page.waitForURL("**/editor.html");
+		await page.waitForSelector(".review-word");
+		const pastedImport = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+		assert.deepEqual(pastedImport.results, payload.results, "pasted JSON preserves results and locks without generation");
+		assert.deepEqual(pastedImport.unitsList, payload.unitsList);
+		assert.equal(pastedImport.lyrics, pasted.lyrics);
+		assert.equal(pastedImport.host, undefined);
+		assert.deepEqual(pastedImport.history, []);
+		assert.deepEqual(pastedImport.future, []);
+		assert(await page.locator("#editor-setup").isHidden());
+
+		await page.goto(base);
+		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.route("**/wordlists/*.csv", route => route.fulfill({ status: 503, body: "unavailable" }));
 		await page.fill("#input-text", "青い空");
 		await page.click("#btn-convert");
 		await page.locator("#generation-error").waitFor({ state: "visible" });
 		assert.equal(await page.inputValue("#input-text"), "青い空");
 		assert(await page.locator("#btn-convert").isEnabled());
-		assert(await page.locator("#btn-lyrics-file").isEnabled());
+		assert(await page.locator("#lyrics-file").isEnabled());
 		assert(!page.url().endsWith("editor.html"), "generation errors must stay in the form");
 		assert.deepEqual(errors, []);
-		console.log(`[ok] ${engine.name()}: generation form, responsive layout, lyrics files, JSON direct editing`);
+		console.log(`[ok] ${engine.name()}: generation form, responsive file picker, lyrics files, JSON file and paste direct editing`);
 		await browser.close();
 		browser = null;
 	}

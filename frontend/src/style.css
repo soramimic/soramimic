@@ -150,9 +150,30 @@ main {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: 0 .5rem;
 	margin-top: .25rem;
+}
+
+.generation-file-input {
+	display: block;
+	width: 100%;
+	min-width: 0;
+	min-height: 44px;
+	margin-top: .6rem;
+	padding: .55rem;
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: .85rem;
+}
+
+.generation-file-input::file-selector-button {
+	margin-right: .5rem;
+	font: inherit;
+	cursor: pointer;
 }
 
 .generation-source-link {

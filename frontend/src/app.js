@@ -66,11 +66,31 @@ export async function startApp() {
 	}
 
 	const lyricsFile = $id("lyrics-file");
-	const lyricsFileButton = $id("btn-lyrics-file");
-	lyricsFileButton.addEventListener("click", () => lyricsFile.click());
+	function isJsonInput() {
+		return /^[\[{]/.test(inputText.value.trimStart());
+	}
+	function updateConvertLabel() {
+		btnConvert.textContent = isJsonInput() ? "編集画面へ" : "生成";
+	}
+	function openEditorJson(text) {
+		if (new Blob([text]).size > 10 * 1024 * 1024) throw new Error("JSONは10MB以内にしてください");
+		const payload = JSON.parse(text.trim());
+		const problem = validateEditorData(payload);
+		if (problem) throw new Error(problem);
+		if (!payload.results.length) throw new Error("編集する生成結果がありません");
+		delete payload.format;
+		delete payload.setupFirst;
+		delete payload.host;
+		delete payload.hostRequest;
+		payload.history = [];
+		payload.future = [];
+		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
+		window.location.assign("editor.html");
+	}
+	// 同じファイルを選び直した場合も再読み込みする。
+	lyricsFile.addEventListener("click", () => { lyricsFile.value = ""; });
 	lyricsFile.addEventListener("change", async () => {
 		const file = lyricsFile.files?.[0];
-		lyricsFile.value = "";
 		if (!file) return;
 		const status = $id("lyrics-file-status");
 		status.hidden = false;
@@ -80,26 +100,17 @@ export async function startApp() {
 			if (file.size > 10 * 1024 * 1024) throw new Error("10MB以内のファイルを選んでください");
 			const text = (await file.text()).replace(/^\uFEFF/, "");
 			if (/\.json$/i.test(file.name) || file.type === "application/json") {
-				const payload = JSON.parse(text);
-				const problem = validateEditorData(payload);
-				if (problem) throw new Error(problem);
-				if (!payload.results.length) throw new Error("編集する生成結果がありません");
-				delete payload.format;
-				delete payload.setupFirst;
-				delete payload.host;
-				delete payload.hostRequest;
-				payload.history = [];
-				payload.future = [];
-				sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
-				window.location.assign("editor.html");
+				openEditorJson(text);
 				return;
 			}
 			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
-			if (text.length > inputText.maxLength) throw new Error("歌詞は1万文字以内にしてください");
+			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
-			inputText.dispatchEvent(new Event("input", { bubbles: true }));
+			sampleSelect.value = "";
+			saveMainState();
 			status.textContent = `${file.name} を読み込みました`;
 		} catch (error) {
+			lyricsFile.value = "";
 			status.textContent = "読み込めませんでした: " + error.message;
 		} finally {
 			setGenerationBusy(false);
@@ -689,6 +700,7 @@ export async function startApp() {
 		setGenerationBusy(true);
 		try {
 			inputText.value = await fetchText(path);
+			lyricsFile.value = "";
 			status.textContent = "";
 			status.hidden = true;
 			saveMainState();
@@ -740,6 +752,9 @@ export async function startApp() {
 	}
 	inputText.addEventListener("input", () => {
 		sampleSelect.value = "";
+		lyricsFile.value = "";
+		$id("lyrics-file-status").hidden = true;
+		updateConvertLabel();
 		saveMainState();
 	});
 
@@ -782,13 +797,14 @@ export async function startApp() {
 		progress.hidden = true;
 		btnCancel.hidden = true;
 		btnConvert.disabled = false;
-		btnConvert.textContent = "生成";
+		updateConvertLabel();
 	}
 
 	function setGenerationBusy(busy) {
 		for (const control of document.querySelectorAll(".generation-card button, .generation-card input, .generation-card textarea, .generation-card select")) {
 			if (control !== btnCancel) control.disabled = busy;
 		}
+		if (!busy) updateConvertLabel();
 	}
 
 	btnCancel.addEventListener("click", () => {
@@ -908,6 +924,19 @@ export async function startApp() {
 	btnConvert.addEventListener("click", () => {
 		const text = inputText.value;
 		if (text.trim() === "") return;
+		$id("generation-error").hidden = true;
+		if (isJsonInput()) {
+			try {
+				openEditorJson(text);
+			} catch (error) {
+				showGenerationError(error);
+			}
+			return;
+		}
+		if (text.length > 10000) {
+			showGenerationError(new Error("歌詞は1万文字以内にしてください"));
+			return;
+		}
 		const phrases = textToPhrases(text);
 		const param = getParam();
 		convertMeta = {
@@ -978,8 +1007,8 @@ export async function startApp() {
 	});
 
 	// 初期化完了
-	lyricsFileButton.disabled = false;
+	lyricsFile.disabled = false;
 	sampleButton.disabled = false;
 	btnConvert.disabled = false;
-	btnConvert.textContent = "生成";
+	updateConvertLabel();
 }
