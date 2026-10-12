@@ -68,8 +68,22 @@ try {
 			await page.click(".panel-close");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
-			assert(await page.getByRole("button", { name: "変換のしかた", exact: true }).isVisible());
+			assert(await page.getByRole("button", { name: "設定", exact: true }).isVisible());
 			assert(await page.locator("#copy-format").isVisible());
+			const fileButtons = await Promise.all(["#btn-import", "#btn-export"].map((id) => page.locator(id).boundingBox()));
+			assert.equal(fileButtons[0].y, fileButtons[1].y, "file actions should share a row");
+			for (const id of ["#btn-settings", "#btn-import", "#btn-export", "#btn-copy", "#copy-format"]) {
+				assert((await page.locator(id).boundingBox()).height >= 44, `${id} must be touch accessible`);
+			}
+			assert(await page.locator(".editor-copy-format-label").evaluate((label) => label.scrollWidth <= label.clientWidth),
+				"copy format text should wrap without clipping");
+			const formatBounds = await page.locator(".editor-copy-format").boundingBox();
+			assert((await page.locator("#copy-format").boundingBox()).width >= formatBounds.width - 2,
+				"the whole format field must open the native selector");
+			await page.selectOption("#copy-format", "3");
+			assert.equal(await page.locator(".editor-copy-format-label").textContent(),
+				await page.locator("#copy-format option:checked").textContent(), "selected format label must update");
+			await page.selectOption("#copy-format", "4");
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "menu overflows");
 			if (width === 390 && colorScheme === "dark") await screenshot("menu");
 			await page.keyboard.press("Escape");
@@ -79,6 +93,7 @@ try {
 	await page.setViewportSize({ width: 390, height: 740 });
 	await page.emulateMedia({ colorScheme: "dark" });
 	await menuAction(page, "#btn-settings");
+	assert(await page.getByRole("heading", { name: "設定", exact: true }).isVisible());
 	assert(await page.locator(".review-menu-body").isHidden(), "opening settings must dismiss the menu");
 	for (const selector of ["#editor-wordlist", "#editor-preset-buttons"]) {
 		assert(await page.locator(selector).isVisible(), `${selector} settings retained`);
@@ -110,7 +125,69 @@ try {
 	await page.evaluate(() => { navigator.clipboard.writeText = async (value) => { window.copied = value; }; });
 	await menuAction(page, "#btn-copy");
 	await page.waitForFunction(() => window.copied?.length > 0);
+	assert.equal(await page.locator("#btn-copy svg").count(), 1, "copy feedback must preserve its icon");
 	assert.equal(await page.locator(".review-menu").evaluate((menu) => !menu.querySelector(".review-menu-body").hidden), false);
+
+	// 全体再生成だけ確認し、取り消しでは歌詞・履歴・確認の設定を変えない。
+	const readHistory = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length);
+	const initialHistory = await readHistory();
+	const initialResults = await page.evaluate(() => JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
+	const confirmation = page.getByRole("dialog", { name: "全体を再生成しますか？" });
+	await page.click("#btn-regenerate");
+	assert(await confirmation.isVisible());
+	await screenshot("regenerate-confirmation");
+	await page.check("#regenerate-skip-confirmation");
+	await page.click("#btn-regenerate-cancel");
+	assert.equal(await readHistory(), initialHistory);
+	assert.equal(await page.evaluate(() => JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)), initialResults);
+	assert.equal(await page.evaluate(() => localStorage.getItem("soramimic-skip-regenerate-confirmation")), null);
+	await page.click("#btn-regenerate");
+	assert.equal(await page.isChecked("#regenerate-skip-confirmation"), false);
+	await page.keyboard.press("Escape");
+	assert.equal(await confirmation.isVisible(), false);
+	assert.equal(await readHistory(), initialHistory);
+
+	// 実際の進捗表示中もツールバーと歌詞の先頭が移動しない。
+	const positions = await page.evaluate(() => {
+		const readPositions = () => ["#editor-toolbar", ".review-line"].map((selector) =>
+			document.querySelector(selector).getBoundingClientRect().top);
+		window.regenerationPositions = [];
+		const progress = document.getElementById("regen-progress");
+		new MutationObserver(() => {
+			if (!progress.hidden) window.regenerationPositions.push(readPositions());
+		}).observe(progress, { attributes: true, childList: true });
+		return readPositions();
+	});
+	await page.click("#btn-regenerate");
+	await page.click("#btn-regenerate-confirm");
+	const waitRegenerated = (history) => page.waitForFunction((before) =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length > before
+		&& document.getElementById("regen-progress").hidden, history);
+	await waitRegenerated(initialHistory);
+	const samples = await page.evaluate(() => window.regenerationPositions);
+	assert(samples.length > 0, "must observe progress during regeneration");
+	for (const sample of samples) assert.deepEqual(sample, positions, "progress must not shift toolbar or lyrics");
+	await page.click("#btn-regenerate");
+	assert(await confirmation.isVisible(), "confirmation repeats unless opted out");
+	await page.click("#btn-regenerate-cancel");
+
+	const beforeLine = await readHistory();
+	await page.locator(".line-regenerate").first().click();
+	await waitRegenerated(beforeLine);
+	assert.equal(await confirmation.isVisible(), false, "line regeneration must not require full regeneration confirmation");
+
+	// 確認を省略する設定は再読み込み後も保持する。
+	const beforeOptOut = await readHistory();
+	await page.click("#btn-regenerate");
+	await page.check("#regenerate-skip-confirmation");
+	await page.click("#btn-regenerate-confirm");
+	await waitRegenerated(beforeOptOut);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	const beforeSkipped = await readHistory();
+	await page.click("#btn-regenerate");
+	await waitRegenerated(beforeSkipped);
+	assert.equal(await confirmation.isVisible(), false, "opt-out must survive reload");
 	assert.deepEqual(errors, []);
 	console.log("[ok] editor layout: settings retained, responsive lyrics and selection, menus, keyboard, source reading, custom input");
 } finally {

@@ -1,4 +1,4 @@
-import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
+import { regenerateAll, selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
 // 編集ツールの「変換のしかた」モーダル(三点メニューから開く)のE2E: 生成画面へ戻らずに
 // 設定の自動保存で今の歌詞を保持し、明示的な再生成だけで結果が変わること、
 // 設定変更と再生成を別々に取り消せること、位置別重み(weightsList)が
@@ -184,7 +184,7 @@ try {
 	await waitIdle(editor);
 	assert((await readData(editor)).param.WORD_NUMBER_PENALTY === 60, "再読み込みで設定が消えた");
 	assert(await wordsOf(editor) === wordsBefore, "再読み込みで歌詞が変わった");
-	await editor.click("#btn-regenerate");
+	await regenerateAll(editor);
 	await waitIdle(editor);
 	assert(await wordsOf(editor) !== wordsBefore, "明示的な再生成に設定が反映されない");
 
@@ -288,7 +288,7 @@ try {
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
 	warnings.length = 0;
-	await editor.click("#btn-regenerate");
+	await regenerateAll(editor);
 	await waitIdle(editor);
 	const weighted = await editor.evaluate((k) =>
 		JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);

@@ -1,4 +1,4 @@
-import { openLine, selectRange, selectReading, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, openLine, selectRange, selectReading, menuAction } from "./editor-ui.mjs";
 // 編集ツール(#17)のE2Eスモークテスト: ビルド済みアプリを実ブラウザで駆動し、
 // 「変換 → 編集ツールを開く → 読み修正 → 候補差し替え → 再生成 → 戻る → コピー」
 // の編集フロー一式が生きていることを確認する。
@@ -560,7 +560,7 @@ try {
 		"やり直しで候補の差し替えが復元されない");
 
 	// ---- 固定中以外を再生成: 固定した単語が保持される ----
-	await editor.click("#btn-regenerate");
+	await regenerateAll(editor);
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled,
 		undefined, { timeout: 120000 },

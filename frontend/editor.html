@@ -79,11 +79,14 @@
         <div id="editor-toolbar" class="editor-toolbar" hidden>
           <div class="toolbar-group">
             <button id="btn-regenerate" class="btn btn-primary">固定中以外を再生成</button>
-            <span id="regen-progress" class="editor-status" hidden></span>
+            <span id="regen-progress" class="editor-status" role="status" hidden></span>
           </div>
           <div class="toolbar-group">
-            <button id="btn-settings" class="btn btn-ghost" type="button"
-              aria-haspopup="dialog">変換のしかた</button>
+            <button id="btn-settings" class="btn btn-ghost editor-menu-action" type="button" aria-haspopup="dialog">
+              <svg class="editor-action-icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="18.93,9.13 19.39,10.70 21.85,10.26 21.85,13.74 19.39,13.30 18.93,14.87 18.14,16.30 20.19,17.74 17.74,20.19 16.30,18.14 14.87,18.93 13.30,19.39 13.74,21.85 10.26,21.85 10.70,19.39 9.13,18.93 7.70,18.14 6.26,20.19 3.81,17.74 5.86,16.30 5.07,14.87 4.61,13.30 2.15,13.74 2.15,10.26 4.61,10.70 5.07,9.13 5.86,7.70 3.81,6.26 6.26,3.81 7.70,5.86 9.13,5.07 10.70,4.61 10.26,2.15 13.74,2.15 13.30,4.61 14.87,5.07 16.30,5.86 17.74,3.81 20.19,6.26 18.14,7.70"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>設定</span>
+              <span class="editor-menu-chevron" aria-hidden="true">›</span>
+            </button>
             <span id="settings-progress" class="editor-status" role="status" hidden></span>
           </div>
           <div class="toolbar-group">
@@ -99,11 +102,20 @@
               <option value="2">替え歌読み/元歌詞読み</option>
               <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
             </select>
-            <button id="btn-copy" class="btn">コピー</button>
+            <button id="btn-copy" class="btn btn-primary editor-menu-action">
+              <svg class="editor-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></svg>
+              <span id="copy-button-label">コピー</span>
+            </button>
           </div>
           <div class="toolbar-group">
-            <button id="btn-import" class="btn btn-ghost">読み込み</button>
-            <button id="btn-export" class="btn btn-ghost">書き出し</button>
+            <button id="btn-import" class="btn btn-ghost editor-menu-action">
+              <svg class="editor-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>
+              <span>読み込み</span>
+            </button>
+            <button id="btn-export" class="btn btn-ghost editor-menu-action">
+              <svg class="editor-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>
+              <span>書き出し</span>
+            </button>
             <button id="btn-video" class="btn" type="button" hidden>ビデオで作る ↗</button>
           </div>
           <details id="reverse-search" class="reverse-search">
@@ -123,6 +135,16 @@
         <section id="editor-lines" class="editor-lines"></section>
         <dialog id="editor-panel" class="editor-panel" aria-label="替え歌を編集"></dialog>
       </main>
+
+      <dialog id="editor-regenerate-dialog" class="editor-regenerate-dialog" aria-labelledby="regenerate-title" aria-describedby="regenerate-description">
+        <h2 id="regenerate-title">全体を再生成しますか？</h2>
+        <p id="regenerate-description">固定した単語はそのまま残ります。</p>
+        <label class="regenerate-preference"><input id="regenerate-skip-confirmation" type="checkbox" />次回から表示しない</label>
+        <div class="dialog-buttons">
+          <button id="btn-regenerate-cancel" class="btn" type="button" autofocus>キャンセル</button>
+          <button id="btn-regenerate-confirm" class="btn btn-primary" type="button">再生成</button>
+        </div>
+      </dialog>
 
       <dialog id="editor-assignment-dialog" class="assignment-conflict-dialog" aria-labelledby="assignment-conflict-title" aria-describedby="assignment-conflict-description">
         <h2 id="assignment-conflict-title">どちらの箇所を優先しますか？</h2>
@@ -159,12 +181,12 @@
         </div>
       </dialog>
 
-      <!-- 変換のしかた(三点メニューから開く)。生成画面のダイアログと同じ流儀で、
+      <!-- 設定(三点メニューから開く)。生成画面のダイアログと同じ流儀で、
            Esc・×・外側クリックのどれでも閉じられる。中身は .field 単位の
            セクションを並べるだけの構造 -->
-      <dialog id="editor-settings" class="editor-settings">
+      <dialog id="editor-settings" class="editor-settings" aria-labelledby="editor-settings-title">
         <div class="dialog-header">
-          <h2>変換のしかた</h2>
+          <h2 id="editor-settings-title">設定</h2>
           <button id="btn-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
         <div id="editor-settings-body" class="editor-settings-body">
