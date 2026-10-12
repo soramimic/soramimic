@@ -74,6 +74,9 @@ try {
 	const candidate = page.locator(".candidate").filter({ hasNotText: before }).first();
 	const chosen = await candidate.locator(".candidate-surface").textContent();
 	await candidate.click();
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "selection stays open for confirmation");
+	assert.equal(await page.locator(".review-selected-word").textContent(), chosen);
+	await page.click(".panel-close");
 	await page.waitForFunction(() => !document.getElementById("editor-panel").classList.contains("open"));
 	assert.equal(await firstWord.textContent(), chosen);
 	assert(await firstWord.evaluate((node) => node.classList.contains("locked")));
@@ -120,7 +123,8 @@ try {
 	}));
 	await page.click(".panel-free-apply");
 	assert.equal(await firstWord.textContent(), "手入力の語");
-	assert(await page.locator("#editor-panel").evaluate((panel) => panel.open));
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "custom input returns to candidates for confirmation");
+	assert.equal(await page.locator(".panel-free").count(), 0);
 	const selectedCandidate = page.locator('.candidate[aria-pressed="true"]');
 	const assertUnassignedSelection = async (indices) => {
 		assert(await page.locator("#editor-panel").evaluate((node) => node.open),
@@ -130,6 +134,7 @@ try {
 			"clearing preserves the selected source range");
 		assert.equal(await page.locator('.candidate[aria-pressed="true"], .group-entry[aria-pressed="true"]').count(), 0,
 			"clearing removes the selected candidate state");
+		assert.equal(await page.locator(".review-word-details").count(), 0, "clearing removes the previous word's details");
 	};
 	assert.equal(await selectedCandidate.count(), 1, "custom input appears as the only selected candidate");
 	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "手入力の語");
@@ -214,6 +219,7 @@ try {
 	assert.equal(await page.locator(".review-panel-header .panel-lock").count(), 0);
 	await page.locator(".candidate").first().click();
 	assert.deepEqual(await periods(gaps(0)), [[2, 4], [5, gapSeed.unitsList[0].length]]);
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual(await periods(gaps(0)), [[0, 1], [2, 4], [5, gapSeed.unitsList[0].length]]);
 	await page.click("#btn-redo");
@@ -226,6 +232,7 @@ try {
 	await page.click('.review-unit[data-index="2"]');
 	await page.locator(".candidate").first().click();
 	assert.deepEqual(await periods(gaps(1)), [[0, 2], [3, gapSeed.unitsList[1].length]]);
+	await page.click(".panel-close");
 	await gaps(2).click();
 	await page.click('.review-unit[data-index="2"]');
 	await page.locator(".candidate").first().click();
@@ -340,6 +347,8 @@ try {
 	assert.equal(moved.history.length, 1);
 	assert.deepEqual([moved.unitsList, moved.tokensList, moved.originalLines],
 		[assignmentSeed.unitsList, assignmentSeed.tokensList, assignmentSeed.originalLines]);
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "moving a fixed word also keeps the selection open");
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results, assignmentSeed.results, "one undo restores all affected lines");
 	await page.click("#btn-redo");
@@ -395,7 +404,7 @@ try {
 	await assertUnassignedSelection([1]);
 
 	const grouped = structuredClone(emptySeed);
-	grouped.wordlist = { value: "ORIGINAL", text: "同名", csvText: "id,original,surface,pronunciation\n1,酢A,酢,ス\n2,酢B,酢,ス" };
+	grouped.wordlist = { value: "ORIGINAL", text: "同名", csvText: "id,original,surface,pronunciation,description\n1,酢A,酢,ス,Aの説明\n2,酢B,酢,ス,Bの説明" };
 	await loadSeed(grouped);
 	await selectRange(page, 0, 1);
 	await page.locator('.candidate:has(.candidate-count)').click();
@@ -403,7 +412,10 @@ try {
 	await page.locator(".group-entry").last().click();
 	const groupChosen = (await readData()).results[0][0];
 	assert.equal(groupChosen.id, "2");
-	await line(0).locator('.review-word[data-start="1"]').click();
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open));
+	assert.equal(await page.locator(".panel-group-list").count(), 0, "choosing a namesake returns to the candidate grid");
+	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("Bの説明"));
+	assert.match(await page.locator(".review-word-details").textContent(), /酢B/);
 	assert.equal(await selectedCandidate.count(), 1);
 	await selectedCandidate.click();
 	assert.deepEqual((await readData()).results[0], [], "the selected group can be deselected with one tap");
@@ -411,6 +423,41 @@ try {
 	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results[0], [groupChosen]);
+
+	const station = structuredClone(emptySeed);
+	station.wordlist = { value: "ORIGINAL", text: "駅名", csvText:
+		"id,original,surface,pronunciation,prefecture,city,lines,operator,opened_year,station_code\n" +
+		"3137,下呂,下呂,ゲロ,岐阜県,下呂市,JR東海 高山本線,JR東海,1930,CG16／ケロ\n" +
+		"10,出戸,出戸,デト,大阪府,大阪市,Osaka Metro 谷町線,Osaka Metro,1980,T35" };
+	station.results[0] = [{ id: "3137", original: "下呂", surface: "下呂", kana: "ゲロ", period: [0, 2], locked: true }];
+	await loadSeed(station);
+	await line(0).locator('.review-word[data-start="0"]').click();
+	const details = page.locator(".review-word-details");
+	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("JR東海 高山本線"));
+	assert.match(await details.textContent(), /岐阜県/);
+	assert.match(await details.textContent(), /1930/);
+	assert.equal(await selectedCandidate.textContent(), "下呂ゲロ", "the selected candidate uses its border without a checkmark");
+	const selectedPadding = await selectedCandidate.evaluate((node) => getComputedStyle(node).paddingLeft);
+	assert.equal(await page.locator('.candidate[aria-pressed="false"]').first().evaluate((node) => getComputedStyle(node).paddingLeft), selectedPadding);
+	for (const width of [320, 390]) {
+		await page.setViewportSize({ width, height: 740 });
+		assert(await details.evaluate((node) => node.scrollWidth <= node.clientWidth), "word details wrap on a phone");
+	}
+	if (process.env.EDITOR_SCREENSHOTS) {
+		await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
+		await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/selected-word-details.png` });
+	}
+	const deto = page.locator('.candidate[data-candidate-id="10"]');
+	await deto.click();
+	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "choosing another candidate keeps the dialog open");
+	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("大阪府"));
+	assert(!await details.textContent().then((text) => text.includes("岐阜県")), "new selection replaces old details");
+	assert.equal(await page.locator(".review-selected-word").textContent(), "出戸");
+	await page.locator('.candidate[data-candidate-id="3137"]').click();
+	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("岐阜県"));
+	await page.getByRole("button", { name: "確定して歌詞一覧に戻る", exact: true }).click();
+	assert(await page.locator("#editor-panel").evaluate((node) => !node.open));
+	assert.equal((await readData()).results[0][0].surface, "下呂", "return confirms the last chosen candidate");
 	assert.deepEqual(errors, []);
 	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, assignment clearing, fixed-word priority, undo/redo, recovery");
 } finally {
