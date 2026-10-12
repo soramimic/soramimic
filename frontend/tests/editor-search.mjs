@@ -111,6 +111,7 @@ try {
 		await page.fill(".panel-free-surface", "ソラ");
 		await page.click(".panel-free-apply");
 		assert((await state()).results[0].some((item) => item.surface === "ソラ" && item.locked));
+		await page.click(".panel-close");
 		await page.click("#btn-undo");
 		assert.deepEqual((await state()).results, initial.results);
 		await page.click("#btn-redo");

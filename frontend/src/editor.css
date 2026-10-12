@@ -161,20 +161,9 @@ html.editor-free-input-open .editor-toolbar {
 .panel-free-actions {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: 0.5rem;
 	margin-top: 0.5rem;
-}
-
-.panel-free-back {
-	border-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
-	color: var(--text);
-	font-weight: 600;
-}
-
-.panel-free-back:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--accent) 16%, var(--panel));
 }
 
 .panel-note {
@@ -224,6 +213,16 @@ html.editor-free-input-open .editor-toolbar {
 .candidate-kana {
 	color: var(--muted);
 	font-size: 0.72rem;
+}
+
+.candidate-source {
+	color: var(--muted);
+	font-size: .65rem;
+	line-height: 1.3;
+	padding: .1rem .3rem;
+	margin-top: .2rem;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--muted) 12%, transparent);
 }
 
 /* ---- 以降: 候補グループ・使用中表示・詳細ポップオーバー・戻る/進む ---- */

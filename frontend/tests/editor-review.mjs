@@ -120,7 +120,7 @@ try {
 	}));
 	await page.click(".panel-free-apply");
 	assert.equal(await firstWord.textContent(), "手入力の語");
-	await firstWord.click();
+	assert(await page.locator("#editor-panel").evaluate((panel) => panel.open));
 	const selectedCandidate = page.locator('.candidate[aria-pressed="true"]');
 	const assertUnassignedSelection = async (indices) => {
 		assert(await page.locator("#editor-panel").evaluate((node) => node.open),
@@ -133,7 +133,28 @@ try {
 	};
 	assert.equal(await selectedCandidate.count(), 1, "custom input appears as the only selected candidate");
 	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "手入力の語");
+	assert(await selectedCandidate.locator(".candidate-source").isVisible(), "custom input is identified in candidates");
 	assert(await page.locator(".panel-candidates > .panel-free-toggle").isVisible(), "custom input belongs to the candidate grid");
+	const customBeforeEdit = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	await page.click(".panel-free-toggle");
+	assert.equal(await page.inputValue(".panel-free-surface"), "手入力の語", "editing starts with the custom word");
+	assert.equal(await page.inputValue(".panel-free-reading"), customBeforeEdit.results[0].find((word) => word.surface === "手入力の語").kana,
+		"editing retains the custom reading");
+	await page.fill(".panel-free-surface", "入力途中");
+	await page.click(".panel-free-back");
+	assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor"))), customBeforeEdit,
+		"closing custom input discards the draft without changing the assignment or history");
+	await page.click(".panel-free-toggle");
+	assert.equal(await page.inputValue(".panel-free-surface"), "手入力の語");
+	await page.fill(".panel-free-surface", "編集した語");
+	await page.click(".panel-free-apply");
+	assert(await page.locator("#editor-panel").evaluate((panel) => panel.open));
+	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "編集した語");
+	assert(await selectedCandidate.locator(".candidate-source").isVisible());
+	await page.click(".panel-close");
+	await page.click("#btn-undo");
+	assert.equal(await firstWord.textContent(), "手入力の語", "undo restores the previous custom word");
+	await firstWord.click();
 	assert.equal(await page.locator(".panel-clear").count(), 0, "the eraser action is removed");
 	const unselected = page.locator('.candidate[aria-pressed="false"]').first();
 	await unselected.hover();
