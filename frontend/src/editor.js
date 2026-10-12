@@ -641,7 +641,8 @@ function clearSelectionAssignment() {
 	markDirty(line);
 	data.results[line] = words.filter((word) => word.period[1] <= start || end <= word.period[0]);
 	saveData();
-	setSelection(null);
+	rerenderLine(line);
+	renderPanel();
 }
 
 function applyReplacement(word, conflicts = []) {
@@ -1455,10 +1456,6 @@ function buildPanel() {
 	listTitle.className = "panel-candidates-title";
 	listTitle.textContent = "候補から選ぶ";
 	list.appendChild(listTitle);
-	const hint = document.createElement("p");
-	hint.className = "panel-candidate-hint";
-	hint.textContent = "選択中の候補をもう一度タップすると解除";
-	list.appendChild(hint);
 	const freeToggle = document.createElement("button");
 	freeToggle.className = "btn panel-free-toggle";
 	freeToggle.type = "button";

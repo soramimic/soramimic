@@ -122,6 +122,15 @@ try {
 	assert.equal(await firstWord.textContent(), "手入力の語");
 	await firstWord.click();
 	const selectedCandidate = page.locator('.candidate[aria-pressed="true"]');
+	const assertUnassignedSelection = async (indices) => {
+		assert(await page.locator("#editor-panel").evaluate((node) => node.open),
+			"clearing an assignment keeps the candidate dialog open");
+		assert.deepEqual(await page.locator('.review-unit[aria-pressed="true"]').evaluateAll(
+			(nodes) => nodes.map((node) => Number(node.dataset.index))), indices,
+			"clearing preserves the selected source range");
+		assert.equal(await page.locator('.candidate[aria-pressed="true"], .group-entry[aria-pressed="true"]').count(), 0,
+			"clearing removes the selected candidate state");
+	};
 	assert.equal(await selectedCandidate.count(), 1, "custom input appears as the only selected candidate");
 	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "手入力の語");
 	assert(await page.locator(".panel-candidates > .panel-free-toggle").isVisible(), "custom input belongs to the candidate grid");
@@ -137,6 +146,8 @@ try {
 		"keyboard focus remains visible");
 	await selectedCandidate.click();
 	assert.equal(await page.locator(".review-word-surface").filter({ hasText: "手入力の語" }).count(), 0);
+	await assertUnassignedSelection(Array.from({ length: end - start }, (_, index) => start + index));
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.equal(await firstWord.textContent(), "手入力の語", "undo restores custom input after deselection");
 	await page.click("#btn-undo");
@@ -263,13 +274,15 @@ try {
 	await line(0).locator('.review-word[data-start="1"]').click();
 	assert.equal(await selectedCandidate.count(), 1);
 
+	await selectedCandidate.click();
+	assert.deepEqual((await readData()).results[0], []);
+	assert.equal(await gaps(0).count(), 1, "cleared word is shown as unassigned source");
+	await assertUnassignedSelection([1]);
 	if (process.env.EDITOR_SCREENSHOTS) {
 		await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
 		await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/clear-assignment.png` });
 	}
-	await selectedCandidate.click();
-	assert.deepEqual((await readData()).results[0], []);
-	assert.equal(await gaps(0).count(), 1, "cleared word is shown as unassigned source");
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results, assignmentSeed.results);
 	await page.click("#btn-redo");
@@ -322,7 +335,7 @@ try {
 	assert(await conflict.isHidden(), "deselecting the current word needs no duplicate warning");
 	assert.deepEqual((await readData()).results[2].map((word) => word.period), [[0, 1]],
 		"deselecting affects only the current assignment");
-	await selectRange(page, 2, 2);
+	await assertUnassignedSelection([2]);
 	await vinegar.click();
 	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 1);
 	await page.click("#btn-assignment-move");
@@ -334,6 +347,8 @@ try {
 	await selectRange(page, 0, 2, 3);
 	await page.click(".panel-clear-range");
 	assert.deepEqual((await readData()).results[0], [partial.results[0][2]], "clear overlapping assignments and preserve unrelated ones");
+	await assertUnassignedSelection([2, 3]);
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results, partial.results);
 
@@ -356,6 +371,7 @@ try {
 	assert.equal(await vinegar.getAttribute("aria-pressed"), "false", "a reused ID in the new list is not selected");
 	await selectedCandidate.click();
 	assert.deepEqual((await readData()).results[0], []);
+	await assertUnassignedSelection([1]);
 
 	const grouped = structuredClone(emptySeed);
 	grouped.wordlist = { value: "ORIGINAL", text: "同名", csvText: "id,original,surface,pronunciation\n1,酢A,酢,ス\n2,酢B,酢,ス" };
@@ -370,6 +386,8 @@ try {
 	assert.equal(await selectedCandidate.count(), 1);
 	await selectedCandidate.click();
 	assert.deepEqual((await readData()).results[0], [], "the selected group can be deselected with one tap");
+	await assertUnassignedSelection([1]);
+	await page.click(".panel-close");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results[0], [groupChosen]);
 	assert.deepEqual(errors, []);
