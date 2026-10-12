@@ -121,11 +121,18 @@
           <details id="reverse-search" class="reverse-search">
             <summary>単語から当てはめ先を探す</summary>
             <div class="reverse-inputs">
-              <div class="reverse-word-field">
-                <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-label="使いたい単語の読み" aria-describedby="reverse-status" spellcheck="false" disabled />
-                <button id="reverse-clear" class="reverse-clear" type="button" aria-label="入力を消す" title="入力を消す" hidden>
-                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
-                </button>
+              <div class="reverse-controls">
+                <div class="reverse-word-field">
+                  <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-label="使いたい単語の読み" aria-describedby="reverse-status" spellcheck="false" disabled />
+                  <button id="reverse-clear" class="reverse-clear" type="button" aria-label="入力を消す" title="入力を消す" hidden>
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
+                  </button>
+                </div>
+                <div class="reverse-navigation" role="group" aria-label="ヒット箇所の移動">
+                  <span id="reverse-count" role="status" aria-live="polite" aria-atomic="true">0 / 0</span>
+                  <button id="reverse-previous" class="btn btn-ghost" type="button" aria-label="前のヒット箇所" title="前のヒット箇所（Shift+Enter）" disabled>↑</button>
+                  <button id="reverse-next" class="btn btn-ghost" type="button" aria-label="次のヒット箇所" title="次のヒット箇所（Enter）" disabled>↓</button>
+                </div>
               </div>
               <p id="reverse-status" role="status" aria-live="polite"></p>
             </div>

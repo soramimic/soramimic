@@ -115,7 +115,12 @@
 .reverse-search { width: 100%; min-width: 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
 .reverse-search summary { cursor: pointer; padding: .7rem 0; min-height: 44px; }
 .reverse-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; padding-bottom: .5rem; }
-.reverse-word-field { position: relative; }
+.simple-editor .editor-toolbar:has(.reverse-search[open]) { position: sticky; top: 0; z-index: 3; background: var(--bg); }
+.reverse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.reverse-word-field { position: relative; flex: 1 1 140px; min-width: 0; }
+.reverse-navigation { display: flex; align-items: center; gap: .25rem; margin-left: auto; }
+.reverse-navigation .btn { min-width: 44px; min-height: 44px; padding: .4rem; font-size: 1.1rem; }
+#reverse-count { min-width: 3.5em; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reverse-word-field .input { width: 100%; min-width: 0; min-height: 44px; padding-right: 44px; }
 .reverse-clear { position: absolute; right: 0; top: 0; width: 44px; height: 100%; min-height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
 .reverse-clear[hidden] { display: none; }
@@ -126,6 +131,7 @@
 #reverse-status { color: var(--muted); font-size: .8rem; margin: 0; overflow-wrap: anywhere; }
 .reverse-highlight { color: var(--text); background: color-mix(in srgb, #edb932 32%, var(--bg)); border-radius: 3px; }
 .review-word.reverse-word-match { background: color-mix(in srgb, #edb932 25%, var(--panel)); border-color: #ac8318; color: var(--text); }
+.reverse-highlight.reverse-current, .review-word.reverse-current { background: color-mix(in srgb, #edb932 65%, var(--bg)); outline: 2px solid var(--text); outline-offset: 1px; }
 .review-word-actions { display: flex; gap: .25rem; flex: none; }
 .review-word-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; min-width: 44px; min-height: 44px; padding: .5rem; font-size: .8rem; white-space: nowrap; }
 .review-word-actions svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }

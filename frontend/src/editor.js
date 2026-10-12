@@ -64,6 +64,7 @@ let settingsReady = false;
 let settingsDirty = false;
 let regeneration = null;
 let reverseMatches = [];
+let reverseIndex = -1;
 let reverseTimer = null;
 let reverseRequest = null;
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
@@ -354,11 +355,16 @@ function makeLockIcon(locked = false) {
 
 function renderLine(line) {
 	const matches = reverseMatches.filter((match) => match.line === line);
+	const current = reverseMatches[reverseIndex]?.line === line ? reverseMatches[reverseIndex] : null;
 	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
 		chip.classList.toggle("reverse-word-match", matches.some((match) =>
 			word.period[0] < match.end && match.start < word.period[1]));
+		if (current && word.period[0] < current.end && current.start < word.period[1]) {
+			chip.classList.add("reverse-current");
+			chip.setAttribute("aria-current", "true");
+		}
 	});
 	if (!unitsOf(line).length) return row;
 	const original = row.querySelector(".review-original");
@@ -374,7 +380,7 @@ function renderLine(line) {
 	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
 	original.replaceWith(heading);
 	heading.append(original, regenerateButton);
-	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line]);
+	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
 	return row;
 }
 
@@ -397,17 +403,57 @@ function syncLineActions() {
 	}
 	$id("reverse-word").disabled = !app || settingsUpdating || !!regeneration;
 	$id("reverse-clear").disabled = $id("reverse-word").disabled;
+	syncReverseNavigation();
 }
 
 function setupReverseSearch() {
 	$id("reverse-word").addEventListener("input", (event) => scheduleReverseSearch(event.isComposing));
 	$id("reverse-word").addEventListener("compositionend", () => scheduleReverseSearch());
+	$id("reverse-word").addEventListener("keydown", (event) => {
+		if (event.key !== "Enter" || event.isComposing || event.keyCode === 229
+			|| event.ctrlKey || event.altKey || event.metaKey) return;
+		event.preventDefault();
+		moveReverseMatch(event.shiftKey ? -1 : 1);
+	});
+	$id("reverse-previous").addEventListener("click", () => moveReverseMatch(-1));
+	$id("reverse-next").addEventListener("click", () => moveReverseMatch(1));
 	$id("reverse-clear").addEventListener("click", () => {
 		$id("reverse-word").value = "";
 		scheduleReverseSearch();
 		$id("reverse-word").focus();
 	});
 	$id("reverse-search").addEventListener("toggle", () => scheduleReverseSearch());
+}
+
+function syncReverseNavigation() {
+	const disabled = !reverseMatches.length || $id("reverse-word").disabled;
+	$id("reverse-previous").disabled = disabled;
+	$id("reverse-next").disabled = disabled;
+	$id("reverse-count").textContent = `${reverseIndex + 1} / ${reverseMatches.length}`;
+	$id("reverse-count").setAttribute("aria-label", reverseMatches.length
+		? `${reverseMatches.length}件中${reverseIndex + 1}件目` : "0件");
+}
+
+function scrollToReverseMatch() {
+	const match = reverseMatches[reverseIndex];
+	if (!match || $id("editor-panel").open) return;
+	const row = document.querySelector(`.editor-line[data-line="${match.line}"]`);
+	const target = row?.querySelector("mark.reverse-current, .review-word.reverse-current");
+	if (!target) return;
+	target.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+	// Keep the hit below the sticky search toolbar even in a short viewport.
+	const top = target.getBoundingClientRect().top;
+	const toolbarBottom = $id("editor-toolbar").getBoundingClientRect().bottom + 12;
+	if (top < toolbarBottom) window.scrollBy({ top: top - toolbarBottom, behavior: "instant" });
+}
+
+function moveReverseMatch(direction) {
+	if ($id("reverse-next").disabled) return;
+	const previous = reverseMatches[reverseIndex];
+	reverseIndex = (reverseIndex + direction + reverseMatches.length) % reverseMatches.length;
+	for (const line of new Set([previous.line, reverseMatches[reverseIndex].line])) rerenderLine(line);
+	syncReverseNavigation();
+	scrollToReverseMatch();
 }
 
 function searchUnits(line) {
@@ -428,6 +474,8 @@ function scheduleReverseSearch(composing = false) {
 	reverseRequest = null;
 	const previous = new Set(reverseMatches.map((match) => match.line));
 	reverseMatches = [];
+	reverseIndex = -1;
+	syncReverseNavigation();
 	for (const line of previous) rerenderLine(line);
 	const status = $id("reverse-status");
 	status.textContent = "";
@@ -446,9 +494,13 @@ function scheduleReverseSearch(composing = false) {
 			const matches = await findPlacements(app, kana, units, data.param,
 				noteLengthWeights(), request.signal);
 			if (request.signal.aborted) return;
-			reverseMatches = matches;
+			// Retain the ranked shortlist, then visit its hits in document order.
+			reverseMatches = matches.sort((a, b) => a.line - b.line || a.start - b.start || a.end - b.end);
+			reverseIndex = matches.length ? 0 : -1;
 			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
+			syncReverseNavigation();
 			status.textContent = matches.length ? "" : "当てはめられる範囲がありません";
+			scrollToReverseMatch();
 		} catch (error) {
 			if (!request.signal.aborted) status.textContent = error.message;
 		}
