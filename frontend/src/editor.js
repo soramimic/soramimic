@@ -675,58 +675,25 @@ function applyReplacement(word, conflicts = []) {
 	}
 }
 
-// 自由入力の読みを、通常の単語DBと同じ経路で選択範囲へ合わせる。
-// id/surface/original は維持し、video が使う kana と pronunciation を必ず同期する。
-function wordWithReading(word, rawReading, target, weights) {
-	const kana = app.textAnalyzer.formatKana(rawReading.trim());
-	if (kana === "" || kana.length > 100 || !/^[ァ-ヴー]+$/.test(kana)) return null;
-	if (kana === word.kana && Array.isArray(word.pronunciation)) {
-		return Object.assign({}, word);
-	}
-	// 選択元の発音変種が取りうる最大ユニット数より長い読みは一致しない。
-	// 上限なしの直積は「ン」「ッ」の連続で指数的に増えるため、生成前に枝数も抑える。
-	const maxTargetUnits = target.reduce((sum, syllable) => {
-		const variants = app.textAnalyzer.syllableToVariation([syllable]);
-		return sum + Math.max(0, ...variants.map((v) => v.length));
-	}, 0);
-	const syllables = app.textAnalyzer.yomiToSyllable(kana);
-	if (!Array.isArray(syllables) || maxTargetUnits === 0) return null;
-	let variationCount = 1;
-	for (const syllable of syllables) {
-		// 単独の削除変種は空配列として除外されるので、固定音節を番兵にして枝数を数える。
-		variationCount *= app.textAnalyzer.syllableToVariation(
-			[syllable, "ア"], maxTargetUnits + 1).length;
-		if (variationCount > 16384) return null;
-	}
-	const variants = app.textAnalyzer.yomiToVariation(kana, maxTargetUnits);
-	const oneWordDb = {};
-	for (const pronunciation of variants) {
-		if (!Array.isArray(pronunciation) || pronunciation.length === 0) continue;
-		if (!(pronunciation.length in oneWordDb)) oneWordDb[pronunciation.length] = [];
-		oneWordDb[pronunciation.length].push(Object.assign({}, word, {
-			kana,
-			pronunciation,
-			vcost: pronunciation.vcost || 0,
-		}));
-	}
-	return app.soramimiMaker.getCandidates(oneWordDb, target, data.param, 1, weights)[0] || null;
-}
-
 function isCustomWord(word) {
 	return String(word?.id).startsWith("custom-");
 }
 
-// 自由入力から候補相当のオブジェクトを作る。読み欄が空なら従来どおり推定する。
-function makeCustomWord(text, rawReading, target, weights) {
+// 手入力は選択範囲と音数が違っても保存する。発音変種は展開せず、
+// 読みをそのまま音節へ分けて kana と pronunciation を同期する。
+function makeCustomWord(text, rawReading) {
 	const reading = rawReading.trim() || mecab.getYomi(text) || text;
-	const base = {
+	const kana = app.textAnalyzer.formatKana(reading);
+	if (kana === "" || kana.length > 100 || !/^[ァ-ヴー]+$/.test(kana)) return null;
+	const pronunciation = app.textAnalyzer.yomiToSyllable(kana);
+	if (!pronunciation?.length) return null;
+	return {
 		id: "custom-" + Date.now(),
 		surface: text,
-		kana: "",
+		kana,
+		pronunciation,
 		original: text,
-		sim: 0,
 	};
-	return wordWithReading(base, reading, target, weights);
 }
 
 // ---- 候補の詳細(長押しポップオーバー / PCはホバーのツールチップ) ----
@@ -1268,7 +1235,7 @@ function closeFreeInput() {
 	renderPanel();
 }
 
-function appendReplacementControls(panel, target, rangeWeights) {
+function appendReplacementControls(panel) {
 	if (freeInputOpen) {
 		const free = document.createElement("div");
 		free.className = "panel-free";
@@ -1351,9 +1318,9 @@ function appendReplacementControls(panel, target, rangeWeights) {
 				note.textContent = "替え歌歌詞を入力してください";
 				return;
 			}
-			const custom = makeCustomWord(text, readingInput.value, target, rangeWeights);
+			const custom = makeCustomWord(text, readingInput.value);
 			if (!custom) {
-				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
+				note.textContent = "読みをひらがな・カタカナで入力してください（100文字以内）";
 				readingDisclosure.open = true;
 				focusReadingInput(readingInput);
 				return;
@@ -1452,7 +1419,7 @@ function buildPanel() {
 		return;
 	}
 	if (freeInputOpen) {
-		appendReplacementControls(panel, target, rangeWeights);
+		appendReplacementControls(panel);
 		return;
 	}
 

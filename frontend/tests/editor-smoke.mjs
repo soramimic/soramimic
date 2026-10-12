@@ -132,14 +132,16 @@ try {
 	const historyBeforeInvalid = await editor.evaluate(() =>
 		JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length);
 	await editor.click(".review-reading-input summary");
-	await editor.fill(".panel-free-reading", "ン".repeat(20));
-	await editor.click(".panel-free-apply");
-	assert((await editor.textContent(".panel-replacement-note")).includes("合わせられる読み"),
-		"発音候補が過大な読みを安全に拒否しない");
-	assert(await editor.evaluate(() =>
-		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === beforeFree &&
-		await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length) === historyBeforeInvalid,
-		"無効な自由入力の読みで編集結果または履歴が変更された");
+	for (const reading of ["漢字", "ア".repeat(101)]) {
+		await editor.fill(".panel-free-reading", reading);
+		await editor.click(".panel-free-apply");
+		assert((await editor.textContent(".panel-replacement-note")).includes("ひらがな・カタカナ"),
+			"無効な読みで入力方法が案内されない");
+		assert(await editor.evaluate(() =>
+			JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === beforeFree &&
+			await editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).history.length) === historyBeforeInvalid,
+			"無効な自由入力の読みで編集結果または履歴が変更された");
+	}
 	await editor.fill(".panel-free-reading", "あ");
 	assert(await editor.evaluate(() => document.activeElement?.matches(".panel-free-reading")),
 		"自由入力の読み欄を編集できない");
@@ -161,6 +163,61 @@ try {
 	await editor.click(".panel-close");
 	await editor.click("#btn-undo");
 	await editor.waitForTimeout(300);
+
+	// ---- 手入力は音・音数が違っても、元の選択範囲にそのまま保存する ----
+	const snapshot = () => editor.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	const customCases = [
+		{ surface: "かしおと", reading: "", kana: "カシオト", end: 0 },
+		{ surface: "あ", reading: "", kana: "ア", end: 3 },
+		{ surface: "自由な歌詞", reading: "うみねこ", kana: "ウミネコ", end: 3 },
+		{ surface: "長い読み", reading: "ン".repeat(20), kana: "ン".repeat(20), end: 0 },
+	];
+	for (const [index, input] of customCases.entries()) {
+		const before = await snapshot();
+		await selectRange(editor, 0, 0, input.end);
+		await editor.click(".panel-free-toggle");
+		await editor.fill(".panel-free-surface", input.surface);
+		if (input.reading) {
+			await editor.click(".review-reading-input summary");
+			await editor.fill(".panel-free-reading", input.reading);
+		}
+		await editor.click(".panel-free-apply");
+		await editor.locator(".panel-free").waitFor({ state: "detached" });
+		const after = await snapshot();
+		const saved = after.results[0].find((word) => word.surface === input.surface && word.locked);
+		assert(saved?.kana === input.kana && saved.pronunciation.join("") === input.kana,
+			"音数が違う手入力の読みが保存されない: " + JSON.stringify(saved));
+		assert(!("sim" in saved) && !("score" in saved),
+			"手入力に計算していない類似度が保存された");
+		assert(JSON.stringify(saved.period) === JSON.stringify([0, input.end + 1]),
+			"手入力の音数に合わせて選択範囲が変わった");
+		assert(JSON.stringify(after.unitsList) === JSON.stringify(before.unitsList) &&
+			JSON.stringify(after.tokensList) === JSON.stringify(before.tokensList),
+			"手入力で元歌詞の読みが変わった");
+		assert(JSON.stringify(after.results.slice(1)) === JSON.stringify(before.results.slice(1)) &&
+			JSON.stringify(after.results[0].filter((word) => word.period[0] > input.end)) ===
+			JSON.stringify(before.results[0].filter((word) => word.period[0] > input.end)),
+			"手入力で選択範囲外の単語が変わった");
+		await editor.click(".panel-close");
+		if (index === 0) {
+			await editor.reload();
+			await editor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+			assert(JSON.stringify((await snapshot()).results) === JSON.stringify(after.results),
+				"音数が違う手入力を再読込で復元できない");
+			await regenerateAll(editor);
+			await editor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+			assert(JSON.stringify((await snapshot()).results[0].find((word) => word.id === saved.id)) === JSON.stringify(saved),
+				"再生成で音数が違う手入力が失われた");
+			await editor.click("#btn-undo");
+		}
+		await editor.click("#btn-undo");
+		assert(JSON.stringify((await snapshot()).results) === JSON.stringify(before.results),
+			"音数が違う手入力を取り消せない");
+		await editor.click("#btn-redo");
+		assert(JSON.stringify((await snapshot()).results) === JSON.stringify(after.results),
+			"音数が違う手入力をやり直せない");
+		await editor.click("#btn-undo");
+	}
 
 	// ---- 回帰ガード: 複数桁数字の読み修正で拗音を分割しない ----
 	// 12は1トークンだが、表示上は複数ユニット。どれをタップしても対象全体が
