@@ -179,6 +179,10 @@
             <select id="editor-wordlist" class="input" aria-label="単語リスト"></select>
             <button id="btn-original-edit" class="btn editor-original-edit" type="button" hidden>自作リストの内容を編集</button>
           </div>
+          <div class="field" id="editor-facet-field" hidden>
+            <h3 class="field-label">単語リストの絞り込み</h3>
+            <div id="editor-facets" class="wordlist-facets"></div>
+          </div>
           <div class="field">
             <h3 class="field-label">パラメータ</h3>
             <div id="editor-preset-buttons" class="btn-group-wrap"></div>
@@ -197,10 +201,6 @@
           <div class="field">
             <h3 class="field-label">単語重複</h3>
             <div id="editor-duplicate-buttons" class="btn-group"></div>
-          </div>
-          <div class="field" id="editor-facet-field" hidden>
-            <h3 class="field-label">単語リストの絞り込み</h3>
-            <div id="editor-facets" class="wordlist-facets"></div>
           </div>
         </div>
         <div class="dialog-buttons editor-settings-actions">
