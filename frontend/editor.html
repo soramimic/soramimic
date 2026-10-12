@@ -84,7 +84,7 @@
           <div class="toolbar-group">
             <button id="btn-settings" class="btn btn-ghost btn-icon" type="button"
               aria-label="変換のしかた" title="変換のしかた" aria-haspopup="dialog">⚙</button>
-            <span id="reconvert-progress" class="editor-status" hidden></span>
+            <span id="settings-progress" class="editor-status" role="status" hidden></span>
           </div>
           <div class="toolbar-group">
             <button id="btn-undo" class="btn btn-ghost" disabled title="直前の編集を取り消す">↩ 戻る</button>
@@ -203,9 +203,7 @@
             </div>
           </details>
         </div>
-        <div class="dialog-buttons editor-settings-actions">
-          <button id="btn-reconvert" class="btn btn-primary" disabled>この設定で再変換</button>
-        </div>
+        <p id="editor-settings-status" class="editor-status" role="status" hidden></p>
       </dialog>
 
       <!-- 「自作リスト」を選んだときだけ開く登録画面。通常のリストを選んでいる間は

@@ -1,7 +1,7 @@
 import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
 // 編集ツールの⚙モーダルにある「単語リスト」選択のE2E。
-// 生成画面に戻らずカタログのリストを切り替えられること、切替時は固定(🔒)が
-// 解除されて全行が新リストで作り直され、戻る1回で完全に元へ戻ること、
+// リストを切り替えても今の歌詞と固定を保持し、新しい候補を使えること、
+// 設定変更を戻る1回で取り消せること、
 // 自作リストをその場で書いて使えること、書き出しJSONが自作リストごと
 // 自己完結する(csvText契約)ことを確認する。
 // 実行: npm run build && node tests/editor-wordlist.mjs
@@ -72,8 +72,8 @@ const candidateSurfaces = (page) =>
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
@@ -181,7 +181,7 @@ try {
 	editor.on("pageerror", (e) => pageErrors.push(e));
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
+		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 
 	// ---- 単語リストのセクションが conf から組まれ、現在のリストが選ばれている ----
 	await openSettings(editor);
@@ -212,22 +212,11 @@ try {
 		return n === 3;
 	}, undefined, { timeout: 10000 });
 	assert(await editor.isVisible("#editor-facet-field"), "切替後にファセットが消えた");
-	assert((await readData(editor)).wordlist.value === "BASEBALL",
-		"リストを選んだだけで適用されてしまった");
-	assert(await wordsOf(editor) === wordsBefore, "リストを選んだだけで結果が変わった");
-
-	// ---- 「この設定で再変換」で切替が適用される ----
-	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 	const afterSwitch = await readData(editor);
-	assert(afterSwitch.wordlist.value === "POKEMON",
-		"再変換で単語リストが切り替わっていない: " + JSON.stringify(afterSwitch.wordlist));
-	// 固定は全解除(別リストの単語を持ち越すとidが衝突するため)
-	assert((await lockedOf(editor)).length === 0, "リスト切替なのに固定が残っている");
-	const wordsPokemon = (await wordsOf(editor)).split("|").filter(Boolean);
-	assert(wordsPokemon.length > 0, "切替後の結果が空");
-	const leaked = wordsPokemon.filter((s) => !pokemonSurfaces.has(s));
-	assert(leaked.length === 0, "切替後も旧リストの単語が残っている: " + leaked.join(","));
+	assert(afterSwitch.wordlist.value === "POKEMON", "リストの変更が自動保存されない");
+	assert(await wordsOf(editor) === wordsBefore, "リストを選んだだけで結果が変わった");
+	assert((await lockedOf(editor)).join("|") === lockedBefore.join("|"), "リスト変更で固定が失われた");
 
 	// 候補も新しいリストのものになる
 	await closeSettings(editor);
@@ -256,6 +245,12 @@ try {
 	const candBaseball = await waitCandidatesChanged(editor, candPokemon);
 	assert(candBaseball.join("|") !== candPokemon.join("|"),
 		"戻るのあとも候補がポケモンのまま: " + candBaseball.slice(0, 5).join(","));
+
+	// 以降の自作リスト生成では、このテストで固定した語を明示的に解除する。
+	await closeSelection(editor);
+	await editor.locator(".review-word.locked").first().click();
+	await editor.click(".panel-lock");
+	await closeSelection(editor);
 
 	// ---- 自作リスト: モーダル内で書いてそのまま使える ----
 	await openSettings(editor);
@@ -296,7 +291,9 @@ try {
 	// 登録したときだけ生成画面と共有する localStorage に保存される
 	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
 		"登録した自作リストが localStorage に保存されていない");
-	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	await closeSettings(editor);
+	await menuAction(editor, "#btn-regenerate");
 	await waitIdle(editor);
 	const afterOriginal = await readData(editor);
 	assert(afterOriginal.wordlist.value === "ORIGINAL",
@@ -334,7 +331,9 @@ try {
 	await editor.click("#btn-original-register");
 	assert(await editor.evaluate((k) => localStorage.getItem(k), ORIGINAL_KEY) === ORIGINAL_PLAIN,
 		"ファイルから登録した内容がlocalStorageに保存されていない");
-	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	await closeSettings(editor);
+	await menuAction(editor, "#btn-regenerate");
 	await waitIdle(editor);
 	const wordsFromFile = (await wordsOf(editor)).split("|").filter(Boolean);
 	assert(wordsFromFile.length > 0, "ファイルから読み込んだ自作リストでの結果が空");
@@ -415,7 +414,7 @@ try {
 	assert((await wordsOf(editor)).split("|").filter(Boolean).join("|") === wordsOriginal.join("|"),
 		"読み込みで自作リストの結果が変わった");
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
+		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 	await openCandidatesForWord(editor);
 	const importedCands = await candidateSurfaces(editor);
 	assert(importedCands.length > 0, "csvTextから候補DBが組めていない(候補0件)");
@@ -431,7 +430,9 @@ try {
 	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN + "\n林檎");
 	await editor.click("#btn-original-register");
-	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	await closeSettings(editor);
+	await menuAction(editor, "#btn-regenerate");
 	await waitIdle(editor);
 	const guessedCsv = (await readData(editor)).wordlist.csvText;
 	const kanjiRow = guessedCsv.split("\n").find((r) => r.split(",")[2] === "林檎");

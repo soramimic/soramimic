@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { buildApp } from "./golden/harness-lib.mjs";
-import { findPlacements } from "../frontend/src/reverseSearch.js";
+import { findPlacements, originalHighlightRanges } from "../frontend/src/reverseSearch.js";
 import { lineRegenerationInput } from "../frontend/src/editorRegeneration.js";
+import { generatedWords } from "../frontend/src/editorWordIdentity.js";
 
 const print = console.log.bind(console);
 const { app } = await buildApp();
@@ -21,6 +22,18 @@ assert.deepEqual(await findPlacements(app, "ソラ", [[], units[1].slice(0, 1)],
 await assert.rejects(findPlacements(app, "123", units, param), /かな/);
 await assert.rejects(findPlacements(app, "ン".repeat(30), units, param), /複雑/);
 assert.deepEqual(await findPlacements(app, "ソラ", units, param, null, { aborted: true }), []);
+
+const original = "負われて見たのは、いつの日か";
+const corrected = app.textAnalyzer.tokenizeTogether([original])[0];
+corrected[0].pronunciation = "コトーゲ";
+const correctedUnits = app.textAnalyzer.getYomiAndPhraseBreak(corrected);
+const correctedMatches = await findPlacements(app, "コトーゲ", [correctedUnits], param);
+assert.equal(correctedMatches[0].score, 0);
+assert.deepEqual(originalHighlightRanges(original, correctedUnits, [correctedMatches[0]], corrected), [[0, 2]],
+	"a changed reading may highlight its token, never the entire line as a fallback");
+assert.deepEqual(originalHighlightRanges("別表記の元歌詞", correctedUnits, correctedMatches, corrected), [],
+	"unmapped host spellings must not be highlighted as a whole line");
+assert.deepEqual(originalHighlightRanges("あ空", units[0], [matches[0]], tokens[0]), [[1, 2]]);
 
 const db = await app.wordList.parsePlain("空,ソラ\n風,カゼ\n花,ハナ\n宇宙,ソラ");
 const search = app.soramimiMaker.createCandidateSearch(db, param);
@@ -52,4 +65,15 @@ assert.equal(JSON.stringify(data), before, "generation must not mutate existing 
 assert.equal(JSON.stringify(db), beforeDb);
 assert.equal(JSON.stringify(lineRegenerationInput(JSON.parse(before), db, 0, weights).tokens), JSON.stringify([tokens[0]]));
 assert.equal(lineRegenerationInput({ ...data, param: { ...param, DUPLICATE: true } }, db, 0).db, db);
+const foreign = { ...locked, id: sourceWord.id, original_surface: "あ", wordlistSource: "previous-list" };
+const switched = { ...data, wordlistSource: "current-list", results: [[foreign],
+	[{ ...sourceWord, wordlistSource: "previous-list", period: [0, 2] }], [], [], [], []] };
+const switchedInput = lineRegenerationInput(switched, db, 0, weights);
+assert(Object.values(switchedInput.db).flat().some((word) => word.id === sourceWord.id),
+	"old list IDs must not exclude unrelated words from the selected list");
+const switchedResults = await new Promise((resolve) => app.soramimiMaker.generateFromTokens(
+	switchedInput.tokens, switchedInput.db, param, null, resolve, switchedInput.locks, switchedInput.weights));
+const restored = generatedWords(switchedResults[0], switched.wordlistSource);
+assert.deepEqual(restored[0], foreign, "retained locks preserve their identity after generation");
+assert(restored.slice(1).some((word) => word.id === sourceWord.id), "same IDs in different lists can coexist");
 print("[ok] reverse ranking, character boundaries, variants, validation, cancellation, reusable scoring, isolated line regeneration");

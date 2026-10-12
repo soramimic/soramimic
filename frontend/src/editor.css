@@ -613,12 +613,6 @@ html.editor-free-input-open .editor-toolbar {
 	margin: 0;
 }
 
-/* 「この設定で再変換」は右寄せ(生成画面のダイアログと同じ位置) */
-.editor-settings-actions {
-	border-top: 1px solid var(--border);
-	padding-top: 0.8rem;
-}
-
 /* 狭い画面ではほぼ全画面にし、スライダーの2カラムもやめる
    (タッチで掴める幅を確保する) */
 @media (max-width: 640px) {
