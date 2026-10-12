@@ -322,6 +322,19 @@ try {
 	const lockedSurface = await editor.textContent(".review-word.locked .review-word-surface");
 	assert(candSurface.startsWith(lockedSurface),
 		`タップ差し替えが反映されない: 候補=${candSurface} チップ=${lockedSurface}`);
+	const beforeDeselect = await editor.evaluate(() =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).results);
+	await editor.locator(".review-word.locked").first().tap();
+	const selectedCandidate = editor.locator('.candidate[aria-pressed="true"]');
+	assert(await selectedCandidate.count() === 1, "選択済み候補の表示が1つではない");
+	await selectedCandidate.tap();
+	await editor.waitForSelector("#editor-panel.open", { state: "hidden" });
+	assert(await editor.locator(".review-word.locked").count() === 0,
+		"選択済み候補を再タップしても解除されない");
+	await editor.locator("#btn-undo").tap();
+	assert(await editor.evaluate(() => JSON.stringify(
+		JSON.parse(sessionStorage.getItem("soramimic-editor")).results)) === JSON.stringify(beforeDeselect),
+		"選択解除を取り消しても元の割り当てに戻らない");
 
 	// ---- 「変換のしかた」モーダルがタッチで開けて操作できること ----
 	// ツールバーの⚙・中のプリセット・×は、指でも押せる大きさで並んでいる必要がある

@@ -1364,20 +1364,17 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		free.append(heading, fields, note, actions);
 		panel.appendChild(free);
 		queueMicrotask(() => focusReadingInput(surfaceInput));
-		return;
 	}
+}
 
-	const freeToggle = document.createElement("button");
-	freeToggle.className = "panel-free-toggle";
-	freeToggle.type = "button";
-	freeToggle.textContent = "自分で入力";
-	freeToggle.setAttribute("aria-expanded", "false");
-	freeToggle.addEventListener("click", () => {
-		freeInputOpen = true;
-		freeInputDraft = { surface: "", reading: "" };
-		renderPanel();
-	});
-	panel.appendChild(freeToggle);
+function setCandidateSelected(button, selected) {
+	button.setAttribute("aria-pressed", String(selected));
+	if (!selected) return;
+	const check = document.createElement("span");
+	check.className = "candidate-check";
+	check.textContent = "✓";
+	check.setAttribute("aria-hidden", "true");
+	button.appendChild(check);
 }
 
 function buildPanel() {
@@ -1399,7 +1396,6 @@ function buildPanel() {
 	appendReviewHeader(panel, data, selection, {
 		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
 		lockIcon: makeLockIcon,
-		clear: clearSelectionAssignment,
 		pointer: onUnitPointerDown,
 		reading: !isVideoReview(data) && span ? {
 			label: `「${span.surface}（${span.yomi}）」の読みを修正`,
@@ -1428,8 +1424,9 @@ function buildPanel() {
 	const used = usedIdSet(line, start, end);
 	const selectedWord = (data.results[line] || []).find((word) => !word.filler
 		&& word.period[0] === start && word.period[1] === end);
-	const isSelected = (cand) => !!selectedWord && isCurrentWord(selectedWord, data.wordlistSource)
-		&& cand.id === selectedWord.id && cand.surface === selectedWord.surface && cand.kana === selectedWord.kana;
+	const isSelected = (cand) => !!selectedWord && cand.id === selectedWord.id
+		&& cand.surface === selectedWord.surface && cand.kana === selectedWord.kana
+		&& (cand.wordlistSource || data.wordlistSource) === (selectedWord.wordlistSource || data.wordlistSource);
 	const groups = [];
 	const byKey = new Map();
 	for (const cand of fetched) {
@@ -1451,7 +1448,6 @@ function buildPanel() {
 		appendReplacementControls(panel, target, rangeWeights);
 		return;
 	}
-	appendReplacementControls(panel, target, rangeWeights);
 
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
@@ -1459,7 +1455,35 @@ function buildPanel() {
 	listTitle.className = "panel-candidates-title";
 	listTitle.textContent = "候補から選ぶ";
 	list.appendChild(listTitle);
+	const hint = document.createElement("p");
+	hint.className = "panel-candidate-hint";
+	hint.textContent = "選択中の候補をもう一度タップすると解除";
+	list.appendChild(hint);
+	const freeToggle = document.createElement("button");
+	freeToggle.className = "btn panel-free-toggle";
+	freeToggle.type = "button";
+	freeToggle.textContent = "＋ 自分で入力";
+	freeToggle.setAttribute("aria-expanded", "false");
+	freeToggle.addEventListener("click", () => {
+		freeInputOpen = true;
+		freeInputDraft = { surface: "", reading: "" };
+		renderPanel();
+	});
+	list.appendChild(freeToggle);
 	const shown = groups.slice(0, Math.min(panelShown, GROUP_MAX));
+	const shownCount = shown.length;
+	// 手入力・別リストの語・表示件数外の語も、現在の選択として解除できるようにする。
+	if (selectedWord && !shown.some((group) => group.cands.some(isSelected))) {
+		shown.unshift({ cands: [selectedWord] });
+	}
+	if (!selectedWord && (data.results[line] || []).some((word) =>
+		!word.filler && word.period[0] < end && start < word.period[1])) {
+		const clear = document.createElement("button");
+		clear.className = "btn panel-clear-range";
+		clear.textContent = "この範囲の選択を解除";
+		clear.addEventListener("click", clearSelectionAssignment);
+		list.appendChild(clear);
+	}
 	if (shown.length === 0) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
@@ -1472,7 +1496,8 @@ function buildPanel() {
 		const btn = document.createElement("button");
 		btn.className = "btn candidate";
 		btn.dataset.candidateId = String(cand.id);
-		if (g.cands.some(isSelected)) btn.setAttribute("aria-current", "true");
+		const selected = g.cands.some(isSelected);
+		setCandidateSelected(btn, selected);
 		if (allUsed) btn.classList.add("used");
 		const surface = document.createElement("span");
 		surface.className = "candidate-surface";
@@ -1490,7 +1515,7 @@ function buildPanel() {
 		if (g.cands.length === 1) {
 			btn.title = candidateDetail(cand, used.has(cand.id));
 			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
-			btn.addEventListener("click", () => replaceSelection(cand));
+			btn.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
 		} else {
 			btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
 			attachLongPress(btn, () =>
@@ -1498,17 +1523,19 @@ function buildPanel() {
 				g.cands.slice(0, 8).map((c) => c.original || c.surface).join("\n") +
 				(g.cands.length > 8 ? "\n…" : ""));
 			btn.addEventListener("click", () => {
+				if (selected) return clearSelectionAssignment();
 				openGroupKey = g.key;
 				renderPanel();
 			});
 		}
+		if (selected) btn.title = "選択中（もう一度タップすると解除）";
 		list.appendChild(btn);
 	}
-	if (groups.length > shown.length && shown.length < GROUP_MAX) {
+	if (groups.length > shownCount && shownCount < GROUP_MAX) {
 		const more = document.createElement("button");
 		more.className = "btn panel-more";
 		more.textContent =
-			`もっと見る(${shown.length}/${Math.min(groups.length, GROUP_MAX)}件表示中)`;
+			`もっと見る(${shownCount}/${Math.min(groups.length, GROUP_MAX)}件表示中)`;
 		more.addEventListener("click", () => {
 			panelShown += GROUP_PAGE;
 			renderPanel();
@@ -1543,7 +1570,8 @@ function renderGroupPicker(panel, group, used, isSelected) {
 		const row = document.createElement("button");
 		row.className = "btn group-entry";
 		row.dataset.candidateId = String(cand.id);
-		if (isSelected(cand)) row.setAttribute("aria-current", "true");
+		const selected = isSelected(cand);
+		setCandidateSelected(row, selected);
 		if (isUsed) row.classList.add("used");
 		const main = document.createElement("span");
 		main.textContent = cand.original || cand.surface;
@@ -1553,7 +1581,8 @@ function renderGroupPicker(panel, group, used, isSelected) {
 		row.append(main, sub);
 		row.title = candidateDetail(cand, isUsed);
 		attachLongPress(row, () => candidateDetail(cand, isUsed));
-		row.addEventListener("click", () => replaceSelection(cand));
+		if (selected) row.title = "選択中（もう一度タップすると解除）";
+		row.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
 		list.appendChild(row);
 	}
 	panel.appendChild(list);
