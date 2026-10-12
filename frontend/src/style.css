@@ -266,6 +266,51 @@ main:has(#tab-home) {
 	cursor: pointer;
 }
 
+#generation-sound .param-item:first-child > .field-label {
+	display: none;
+}
+
+.sample-dialog {
+	width: min(90vw, 400px);
+}
+
+.sample-dialog-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem;
+	margin-bottom: .75rem;
+}
+
+.sample-dialog-header h2 {
+	margin: 0;
+}
+
+.sample-dialog-header .btn {
+	min-width: 44px;
+	min-height: 44px;
+	font-size: 1.2rem;
+}
+
+.sample-choices {
+	display: grid;
+	gap: .5rem;
+}
+
+.sample-choices .btn {
+	min-height: 44px;
+	text-align: left;
+}
+
+#sample-status {
+	margin: .75rem 0 0;
+	overflow-wrap: anywhere;
+}
+
+body:has(#sample-picker[open]) {
+	overflow: hidden;
+}
+
 #lyrics-file-status {
 	margin: .4rem 0 0;
 	overflow-wrap: anywhere;
