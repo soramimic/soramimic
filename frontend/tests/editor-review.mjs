@@ -292,7 +292,7 @@ try {
 	emptySeed.param.DUPLICATE = false;
 	await loadSeed(emptySeed);
 	await selectRange(page, 2, 2);
-	assert.equal(await page.locator('.candidate[aria-pressed="true"], .panel-clear-range').count(), 0, "unassigned source has nothing to clear");
+	assert.equal(await page.locator('.candidate[aria-pressed="true"]').count(), 0, "unassigned source has nothing to clear");
 	const vinegar = page.locator(".candidate").filter({ has: page.locator(".candidate-surface", { hasText: /^酢$/ }) });
 	await vinegar.click();
 	const placed = (await readData()).results[2][0];
@@ -371,17 +371,6 @@ try {
 	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 1);
 	await page.click("#btn-assignment-move");
 	assert.deepEqual((await readData()).results[2].map((word) => word.period), [[2, 3]]);
-
-	const partial = structuredClone(emptySeed);
-	partial.results[0] = [fixedAssignment(1, 3), { ...fixedAssignment(3), id: "another" }, { ...fixedAssignment(6), id: "unrelated" }];
-	await loadSeed(partial);
-	await selectRange(page, 0, 2, 3);
-	await page.click(".panel-clear-range");
-	assert.deepEqual((await readData()).results[0], [partial.results[0][2]], "clear overlapping assignments and preserve unrelated ones");
-	await assertUnassignedSelection([2, 3]);
-	await page.click(".panel-close");
-	await page.click("#btn-undo");
-	assert.deepEqual((await readData()).results, partial.results);
 
 	for (const duplicate of [false, true]) {
 		const allowed = structuredClone(assignmentSeed);

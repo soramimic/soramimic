@@ -1408,14 +1408,6 @@ function buildPanel() {
 	if (selectedWord && !shown.some((group) => group.cands.some(isSelected))) {
 		shown.unshift({ cands: [selectedWord] });
 	}
-	if (!selectedWord && (data.results[line] || []).some((word) =>
-		!word.filler && word.period[0] < end && start < word.period[1])) {
-		const clear = document.createElement("button");
-		clear.className = "btn panel-clear-range";
-		clear.textContent = "この範囲の選択を解除";
-		clear.addEventListener("click", clearSelectionAssignment);
-		list.appendChild(clear);
-	}
 	if (shown.length === 0) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
