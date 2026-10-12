@@ -62,6 +62,23 @@
 .simple-editor .editor-panel:not(.open) { visibility: hidden; }
 
 .review-panel-header .panel-lock { min-width: 44px; min-height: 44px; }
+.review-line-heading { display: flex; gap: .5rem; align-items: flex-start; }
+.review-line-heading .review-original { flex: 1; min-width: 0; }
+.line-regenerate { flex: none; min-width: 44px; min-height: 44px; margin-top: -.5rem; font-size: 1.15rem; }
+.reverse-search { width: 100%; min-width: 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
+.reverse-search summary { cursor: pointer; padding: .7rem 0; min-height: 44px; }
+.reverse-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; padding-bottom: .5rem; }
+.reverse-word-field { display: flex; gap: .35rem; }
+.reverse-word-field .input { min-width: 0; flex: 1; }
+.reverse-word-field .btn { flex: none; }
+.reverse-reading-field { color: var(--muted); font-size: .85rem; }
+.reverse-reading-field label { display: block; margin-bottom: .35rem; }
+.simple-editor .reverse-search .input { min-width: 0; max-width: 100%; }
+.simple-editor .reverse-reading-field .input { width: 100%; }
+#reverse-status { color: var(--muted); font-size: .8rem; margin: 0; overflow-wrap: anywhere; }
+.review-original mark, .review-original.reverse-line-match { color: var(--text); background: color-mix(in srgb, #edb932 32%, var(--bg)); border-radius: 3px; }
+.reverse-choices { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .65rem; }
+.reverse-match { min-height: 44px; font-size: .8rem; border-color: #ac8318; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .review-range .panel-clear { display: block; min-height: 44px; margin: .5rem 0 0 auto; font-size: .85rem; }
 .assignment-conflict-dialog p, .assignment-conflict-dialog li { overflow-wrap: anywhere; line-height: 1.7; }
 .assignment-conflict-dialog .dialog-buttons { flex-wrap: wrap; }

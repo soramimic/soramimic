@@ -348,8 +348,10 @@ try {
 	await openSettings(editor);
 	await editor.click("#btn-original-edit");
 	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
+	// Keep the fixture within the supported 10,000 rows. A large original field
+	// exercises the byte limit without rendering 180,000 textarea lines.
 	const largeCsv = Buffer.from("id,original,surface,pronunciation\n"
-		+ "1,駅,駅,エキ\n".repeat(180000), "utf8");
+		+ `1,${"x".repeat(220)},駅,エキ\n`.repeat(10000), "utf8");
 	assert(largeCsv.byteLength > 2 * 1024 * 1024,
 		"合成CSVが旧上限を超えていないため回帰テストにならない");
 	const [largeChooser] = await Promise.all([
