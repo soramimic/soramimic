@@ -9,6 +9,24 @@ for (const [left, right] of [["ケイ", "ケー"], ["コウ", "コー"], ["キ�
 }
 assert.notEqual(vowelSequence("カカ"), vowelSequence("カ"), "separate syllables must retain their vowels");
 assert.notEqual(vowelSequence("コイ"), vowelSequence("コウ"));
+assert.equal(vowelSequence("ジョイ"), "オイ", "small ョ must retain its vowel");
+assert.equal(vowelSequence("キョー"), "オ");
+for (const [kana, pronunciation, target] of [
+	["ジョイ", ["ジョ", "イ"], ["オ", "イ"]],
+	["チカノーバー", ["チ", "カ", "ノー", "バー"], ["シ", "カ", "ノ", "ヤ", "マ"]],
+	["ドブジャンスキー", ["ド", "ブ", "ジャ", "ス", "キー"], ["コ", "ブ", "ナ", "ツ", "リ", "シ"]],
+	["サツケバー", ["サ", "ツ", "ケ", "バー"], ["ワ", "ス", "レ", "ガ", "タ"]],
+	["オジー", ["オ", "ジー"], ["オ", "イ", "シ"]],
+	["コー", ["コー"], ["コ", "オ"]],
+	["キョー", ["キョー"], ["コ", "ト"]],
+	["コト", ["コ", "ト"], ["キョー"]],
+]) {
+	assert.equal(wordDiagnostics({ kana, pronunciation }, target).vowel, false,
+		`${kana}: matching vowels must not be flagged across long-vowel expansion`);
+}
+assert.equal(wordDiagnostics({ kana: "チカノーバー", pronunciation: ["チ", "カ", "ノー", "バー"] },
+	["シ", "カ", "ネ", "ヤ", "マ"]).vowel, true, "a real vowel mismatch must remain visible");
+assert.equal(wordDiagnostics({ kana: "キョー", pronunciation: ["キョー"] }, ["カ", "ア"]).vowel, true);
 assert.equal(wordDiagnostics({ kana: "カン" }, ["タン"]).single, true);
 assert.equal(wordDiagnostics({ kana: "キャク" }, ["キャ", "ク"]).single, false);
 assert.equal(wordDiagnostics({ kana: "タカ" }, ["タ", "コ"]).vowel, true);

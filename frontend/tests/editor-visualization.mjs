@@ -19,6 +19,20 @@ const seed = {
 	wordlist: { value: "ORIGINAL", csvText: "id,original,surface,pronunciation\n1,型,型,カタ\n2,校,校,コー\n3,缶,缶,カン\n4,色,色,ホコル\n5,光,光,ヒカリ\n" },
 	param: { VOWEL_RATIO: .8, DUPLICATE: true }, history: [], future: [],
 };
+// Reproduce the reported false positives with the selected pronunciation
+// variants, including long vowels expanded across multiple source units.
+for (const [surface, kana, pronunciation, original] of [
+	["ジョイ", "ジョイ", ["ジョ", "イ"], "オイ"],
+	["チカノーバー", "チカノーバー", ["チ", "カ", "ノー", "バー"], "シカノヤマ"],
+	["ドブジャンスキー", "ドブジャンスキー", ["ド", "ブ", "ジャ", "ス", "キー"], "コブナツリシ"],
+	["サツケバー", "サツケバー", ["サ", "ツ", "ケ", "バー"], "ワスレガタ"],
+]) {
+	seed.phrases.push(original);
+	seed.tokensList.push([{ surface_form: original, pronunciation: original, reading: original, pos: "名詞" }]);
+	seed.unitsList.push([...original].map((pronunciation) => ({ pronunciation, surface_form: pronunciation, phrase: 0 })));
+	seed.results.push([{ id: surface, surface, kana, pronunciation, period: [0, original.length],
+		original_surface: original, originalkana: original }]);
+}
 const preview = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], { stdio: "ignore", detached: true });
 let browser;
 try {
@@ -46,6 +60,10 @@ try {
 	}
 	assert.equal(await page.locator(".visualization-hit").count(), 4, "overlapping criteria count each word once");
 	assert.equal(await page.locator(".visualization-badge").count(), 5);
+	for (const surface of ["ジョイ", "チカノーバー", "ドブジャンスキー", "サツケバー"]) {
+		assert.equal(await page.locator(".review-word").filter({ hasText: surface }).locator(".visualization-vowel").count(), 0,
+			`${surface} must not be marked when its aligned vowels agree`);
+	}
 	assert.equal(await page.locator("#visualization-summary").textContent(), "・4か所を強調");
 	assert.match(await page.locator(".review-word").filter({ hasText: "色" }).getAttribute("aria-label"), /母音: イアイ → オオウ/);
 	await page.fill("#visualization-threshold", "100");
