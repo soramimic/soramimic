@@ -67,22 +67,24 @@ export async function wordDetails(word, entry, source) {
 	return rows;
 }
 
-export function appendWordDetails(panel, word, entry, source) {
+export function appendWordDetails(selected, word, entry, source) {
 	if (!word || word.filler) return;
-	const section = document.createElement("section");
+	const section = document.createElement("details");
 	section.className = "review-word-details";
-	section.setAttribute("aria-label", `${word.surface}の詳細`);
-	section.setAttribute("aria-busy", "true");
-	const content = document.createElement("p");
-	content.textContent = "単語の詳細を読み込み中…";
-	section.append(content);
-	panel.append(section);
+	section.hidden = true;
+	selected.append(section);
 	wordDetails(word, entry, source).then((rows) => {
 		if (!section.isConnected) return;
 		if (!rows.length) {
-			content.textContent = "この単語の追加情報はありません";
+			section.remove();
 			return;
 		}
+		const summary = document.createElement("summary");
+		const preview = document.createElement("span");
+		preview.className = "review-word-summary";
+		preview.textContent = rows.slice(0, 3).map(([, value]) => value).join(" · ");
+		summary.setAttribute("aria-label", `${word.surface}の詳細：${preview.textContent}`);
+		summary.append(preview);
 		const list = document.createElement("dl");
 		for (const [label, value] of rows) {
 			const term = document.createElement("dt");
@@ -91,8 +93,7 @@ export function appendWordDetails(panel, word, entry, source) {
 			detail.textContent = value;
 			list.append(term, detail);
 		}
-		section.replaceChildren(list);
-	}).catch(() => {
-		content.textContent = "単語の詳細を読み込めませんでした";
-	}).finally(() => section.removeAttribute("aria-busy"));
+		section.append(summary, list);
+		section.hidden = false;
+	}).catch(() => section.remove());
 }

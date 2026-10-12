@@ -437,15 +437,29 @@ try {
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("JR東海 高山本線"));
 	assert.match(await details.textContent(), /岐阜県/);
 	assert.match(await details.textContent(), /1930/);
+	assert.equal(await page.locator(".review-selected .review-word-details").count(), 1, "word information belongs below the selected name");
+	assert.equal(await details.evaluate((node) => node.open), false, "the full details start collapsed");
+	assert.match(await details.locator("summary").textContent(), /岐阜県.*下呂市.*JR東海 高山本線/);
+	assert(await details.locator("dl").isHidden(), "additional facts do not push down the candidates");
 	assert.equal(await selectedCandidate.textContent(), "下呂ゲロ", "the selected candidate uses its border without a checkmark");
 	const selectedPadding = await selectedCandidate.evaluate((node) => getComputedStyle(node).paddingLeft);
 	assert.equal(await page.locator('.candidate[aria-pressed="false"]').first().evaluate((node) => getComputedStyle(node).paddingLeft), selectedPadding);
 	for (const width of [320, 390]) {
 		await page.setViewportSize({ width, height: 740 });
 		assert(await details.evaluate((node) => node.scrollWidth <= node.clientWidth), "word details wrap on a phone");
+		const header = await page.locator(".review-panel-header").boundingBox();
+		assert(header.height < 150, "the collapsed header stays compact on a phone");
+		const summary = details.locator("summary");
+		await summary.focus();
+		await page.keyboard.press("Enter");
+		assert(await details.locator("dl").isVisible(), "the summary opens the full labeled details with the keyboard");
+		assert(await details.evaluate((node) => node.scrollWidth <= node.clientWidth), "expanded facts fit narrow headers");
+		await summary.click();
+		assert(await details.locator("dl").isHidden(), "the summary closes the details by touch or click");
 	}
 	if (process.env.EDITOR_SCREENSHOTS) {
 		await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
+		await details.locator("summary").evaluate((node) => node.blur());
 		await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/selected-word-details.png` });
 	}
 	const deto = page.locator('.candidate[data-candidate-id="10"]');
@@ -453,6 +467,7 @@ try {
 	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "choosing another candidate keeps the dialog open");
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("大阪府"));
 	assert(!await details.textContent().then((text) => text.includes("岐阜県")), "new selection replaces old details");
+	assert.equal(await details.evaluate((node) => node.open), false, "new selections begin with a compact summary");
 	assert.equal(await page.locator(".review-selected-word").textContent(), "出戸");
 	await page.locator('.candidate[data-candidate-id="3137"]').click();
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("岐阜県"));

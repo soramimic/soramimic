@@ -1390,7 +1390,7 @@ function buildPanel() {
 	});
 	const selectedWord = (data.results[line] || []).find((word) => !word.filler
 		&& word.period[0] === start && word.period[1] === end);
-	appendWordDetails(panel, selectedWord, data.wordlist, data.wordlistSource);
+	appendWordDetails(panel.querySelector(".review-selected"), selectedWord, data.wordlist, data.wordlistSource);
 
 	if (!db || settingsUpdating) {
 		const note = document.createElement("p");
