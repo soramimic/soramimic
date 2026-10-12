@@ -106,7 +106,6 @@ export async function startApp() {
 			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
 			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
-			sampleSelect.value = "";
 			saveMainState();
 			status.textContent = `${file.name} を読み込みました`;
 		} catch (error) {
@@ -196,7 +195,6 @@ export async function startApp() {
 	const paramControls = createParamControls({
 		paramArea: $id("param-area"),
 		presetArea: $id("preset-buttons"),
-		collapseSound: true,
 		duplicateArea: duplicateButtons,
 		onChange: (kind, preset) => {
 			if (kind === "preset") track("param_preset", { preset: preset.name });
@@ -685,32 +683,46 @@ export async function startApp() {
 	});
 
 	const sampleButton = $id("btn-sample-lyrics");
-	const sampleSelect = $id("sample-lyrics");
+	const samplePicker = $id("sample-picker");
+	const sampleStatus = $id("sample-status");
+	let sampleRequest = null;
 	sampleButton.addEventListener("click", () => {
-		const picker = $id("sample-picker");
-		picker.hidden = !picker.hidden;
-		sampleButton.setAttribute("aria-expanded", String(!picker.hidden));
-		if (!picker.hidden) sampleSelect.focus();
+		sampleStatus.hidden = true;
+		samplePicker.showModal();
+		sampleButton.setAttribute("aria-expanded", "true");
 	});
-	sampleSelect.addEventListener("change", async () => {
-		const path = sampleSelect.value;
-		if (!path) return;
-		const status = $id("lyrics-file-status");
-		status.hidden = false;
-		status.textContent = "歌詞を読み込み中...";
+	$id("sample-close").addEventListener("click", () => samplePicker.close());
+	samplePicker.addEventListener("close", () => {
+		sampleButton.setAttribute("aria-expanded", "false");
+		sampleRequest?.abort();
+		if (!sampleRequest) sampleButton.focus();
+	});
+	samplePicker.addEventListener("click", async (event) => {
+		const choice = event.target.closest("button[data-path]");
+		if (!choice || sampleRequest) return;
+		const path = choice.dataset.path;
+		const request = new AbortController();
+		sampleRequest = request;
+		sampleStatus.hidden = false;
+		sampleStatus.textContent = "歌詞を読み込み中...";
+		for (const button of samplePicker.querySelectorAll("[data-path]")) button.disabled = true;
 		setGenerationBusy(true);
 		try {
-			inputText.value = await fetchText(path);
+			const text = await fetchText(path, { signal: request.signal });
+			if (request.signal.aborted || !samplePicker.open) return;
+			inputText.value = text;
 			lyricsFile.value = "";
-			status.textContent = "";
-			status.hidden = true;
+			$id("lyrics-file-status").hidden = true;
 			saveMainState();
 			track("sample_select", { song: path });
+			samplePicker.close();
 		} catch (error) {
-			sampleSelect.value = "";
-			status.textContent = "歌詞を読み込めませんでした: " + error.message;
+			if (!request.signal.aborted) sampleStatus.textContent = "歌詞を読み込めませんでした: " + error.message;
 		} finally {
+			sampleRequest = null;
+			for (const button of samplePicker.querySelectorAll("[data-path]")) button.disabled = false;
 			setGenerationBusy(false);
+			if (!samplePicker.open) sampleButton.focus();
 		}
 	});
 
@@ -752,7 +764,6 @@ export async function startApp() {
 		}
 	}
 	inputText.addEventListener("input", () => {
-		sampleSelect.value = "";
 		lyricsFile.value = "";
 		$id("lyrics-file-status").hidden = true;
 		updateConvertLabel();

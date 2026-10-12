@@ -61,17 +61,9 @@
                 aria-label="歌詞またはJSONファイル" aria-describedby="lyrics-file-hint" disabled />
               <div class="generation-input-actions">
                 <button id="btn-sample-lyrics" class="generation-source-link" type="button"
-                  aria-controls="sample-picker" aria-expanded="false" disabled>サンプル歌詞で試す</button>
+                  aria-controls="sample-picker" aria-haspopup="dialog" aria-expanded="false" disabled>サンプル歌詞で試す</button>
               </div>
               <span id="lyrics-file-hint" class="visually-hidden">歌詞（TXT・Markdown）／編集データ（JSON）</span>
-              <div id="sample-picker" hidden>
-                <select id="sample-lyrics" class="input" aria-label="サンプル曲">
-                  <option value="" disabled selected>曲を選ぶ</option>
-                  <option value="sample_lyric/furusato.txt">ふるさと</option>
-                  <option value="sample_lyric/momotaro.txt">ももたろう</option>
-                  <option value="sample_lyric/akatombo.txt">赤とんぼ</option>
-                </select>
-              </div>
               <p id="lyrics-file-status" class="midi-status" role="status" hidden></p>
             </div>
             <div class="field generation-wordlist-row">
@@ -85,7 +77,10 @@
               </div>
               <div class="field">
                 <div id="preset-buttons" class="btn-group-wrap" role="group" aria-label="変換のプリセット"></div>
-                <div id="param-area" class="param-grid"></div>
+                <details id="generation-sound" class="param-disclosure">
+                  <summary>音の合わせ方</summary>
+                  <div id="param-area" class="param-grid"></div>
+                </details>
               </div>
               <div class="field">
                 <h3 class="field-label">単語重複</h3>
@@ -134,6 +129,19 @@
 
       </main>
       <footer class="site-footer"><a href="about.html">サイトについて</a></footer>
+
+      <dialog id="sample-picker" class="sample-dialog" aria-labelledby="sample-dialog-title">
+        <div class="sample-dialog-header">
+          <h2 id="sample-dialog-title">サンプル歌詞を選ぶ</h2>
+          <button id="sample-close" class="btn" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="sample-choices">
+          <button class="btn" type="button" data-path="sample_lyric/furusato.txt" autofocus>ふるさと</button>
+          <button class="btn" type="button" data-path="sample_lyric/momotaro.txt">ももたろう</button>
+          <button class="btn" type="button" data-path="sample_lyric/akatombo.txt">赤とんぼ</button>
+        </div>
+        <p id="sample-status" class="midi-status" role="alert" hidden></p>
+      </dialog>
 
       <dialog id="midi-lyrics-dialog">
         <h2>入力欄のテキストを元歌詞として使いますか?</h2>

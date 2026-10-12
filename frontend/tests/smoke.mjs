@@ -583,7 +583,7 @@ try {
 	// サンプルは歌詞だけを読み込み、選択中のリストで生成できる。
 	const selectedBeforeSample = await customTrigger.getAttribute("data-value");
 	await page.click("#btn-sample-lyrics");
-	await page.selectOption("#sample-lyrics", "sample_lyric/momotaro.txt");
+	await page.getByRole("dialog", { name: "サンプル歌詞を選ぶ" }).getByRole("button", { name: "ももたろう", exact: true }).click();
 	await page.waitForFunction(() => document.getElementById("input-text").value.includes("桃太郎さん"));
 	assert.equal(await customTrigger.getAttribute("data-value"), selectedBeforeSample);
 	assert(!page.url().endsWith("editor.html"));

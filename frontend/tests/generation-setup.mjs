@@ -31,18 +31,26 @@ try {
 		await page.locator("#generation-advanced > summary").focus();
 		await page.keyboard.press("Enter");
 		assert(await page.locator("#wordlist-facets").isVisible());
-		assert(await page.locator("#param-area").isVisible());
+		assert(await page.locator("#param-area").isHidden());
 		const sound = page.getByRole("slider", { name: "音の合わせ方(子音重視〜母音重視)", includeHidden: true });
-		assert(await sound.isHidden());
+		const phrase = page.getByRole("slider", { name: "文節の区切り(無視〜がっちり守る)", includeHidden: true });
+		const word = page.getByRole("slider", { name: "単語の長さ(細かめ〜長め)", includeHidden: true });
+		for (const slider of [sound, phrase, word]) assert(await slider.isHidden());
 		await page.locator(".param-disclosure > summary").focus();
 		await page.keyboard.press("Enter");
-		assert(await sound.isVisible());
+		for (const slider of [sound, phrase, word]) assert(await slider.isVisible());
 		await sound.focus();
 		await page.keyboard.press("ArrowLeft");
 		await page.keyboard.press("ArrowLeft");
+		await phrase.focus();
+		await page.keyboard.press("ArrowRight");
+		await word.focus();
+		await page.keyboard.press("ArrowRight");
 		await page.locator(".param-disclosure > summary").click();
-		assert(await sound.isHidden());
+		for (const slider of [sound, phrase, word]) assert(await slider.isHidden());
 		assert.equal(await sound.inputValue(), "0.6");
+		assert.equal(await phrase.inputValue(), "2");
+		assert.equal(await word.inputValue(), "3");
 		await page.locator("#generation-advanced > summary").focus();
 		await page.keyboard.press("Enter");
 		await page.locator("#generation-advanced > summary").blur();
@@ -82,6 +90,19 @@ try {
 					await menu.screenshot({ path: `${process.env.GENERATION_SCREENSHOTS}/wordlist-${colorScheme}.png` });
 				}
 				await page.keyboard.press("Escape");
+				await page.click("#btn-sample-lyrics");
+				const dialog = page.getByRole("dialog", { name: "サンプル歌詞を選ぶ" });
+				assert(await dialog.isVisible());
+				assert(await dialog.evaluate(el => el.matches(":modal")));
+				const dialogBounds = await dialog.boundingBox();
+				assert(dialogBounds.x >= 0 && dialogBounds.x + dialogBounds.width <= width);
+				for (const button of await dialog.getByRole("button").all()) assert((await button.boundingBox()).height >= 44);
+				if (engine === chromium && width === 390 && process.env.GENERATION_SCREENSHOTS) {
+					await page.screenshot({ path: `${process.env.GENERATION_SCREENSHOTS}/sample-dialog-${colorScheme}.png`, animations: "disabled" });
+				}
+				await page.keyboard.press("Escape");
+				assert(await dialog.isHidden());
+				assert.equal(await page.locator(":focus").getAttribute("id"), "btn-sample-lyrics");
 				if (engine === chromium && width === 390 && process.env.GENERATION_SCREENSHOTS) {
 					await mkdir(process.env.GENERATION_SCREENSHOTS, { recursive: true });
 					await page.locator("#wordlist-trigger").blur();
@@ -108,7 +129,43 @@ try {
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.inputValue("#input-text"), "入力中の歌詞");
 		assert.equal(await sound.inputValue(), "0.6");
-		assert(await sound.isHidden());
+		assert.equal(await phrase.inputValue(), "2");
+		assert.equal(await word.inputValue(), "3");
+		for (const slider of [sound, phrase, word]) assert(await slider.isHidden());
+
+		await page.route("**/sample_lyric/furusato.txt", route => route.fulfill({ status: 503, body: "unavailable" }));
+		await page.click("#btn-sample-lyrics");
+		const sampleDialog = page.getByRole("dialog", { name: "サンプル歌詞を選ぶ" });
+		await sampleDialog.getByRole("button", { name: "ふるさと", exact: true }).click();
+		await page.waitForFunction(() => document.getElementById("sample-status").textContent.startsWith("歌詞を読み込めませんでした"));
+		assert.equal(await page.inputValue("#input-text"), "入力中の歌詞");
+		assert(await sampleDialog.isVisible());
+		await sampleDialog.getByRole("button", { name: "閉じる", exact: true }).click();
+		assert.equal(await page.locator(":focus").getAttribute("id"), "btn-sample-lyrics");
+		await page.unroute("**/sample_lyric/furusato.txt");
+		const selectedBeforeSample = await page.locator("#wordlist-trigger").getAttribute("data-value");
+		await page.click("#btn-sample-lyrics");
+		await sampleDialog.getByRole("button", { name: "ももたろう", exact: true }).click();
+		await sampleDialog.waitFor({ state: "hidden" });
+		assert((await page.inputValue("#input-text")).includes("桃太郎さん"));
+		assert.equal(await page.locator("#wordlist-trigger").getAttribute("data-value"), selectedBeforeSample);
+		assert(!page.url().endsWith("editor.html"));
+
+		let delayedSample;
+		const sampleRequested = new Promise(resolve => { delayedSample = resolve; });
+		await page.route("**/sample_lyric/akatombo.txt", async route => {
+			delayedSample();
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			await route.fulfill({ status: 200, body: "遅れて届いた歌詞" }).catch(() => {});
+		});
+		const beforeCancel = await page.inputValue("#input-text");
+		await page.click("#btn-sample-lyrics");
+		await sampleDialog.getByRole("button", { name: "赤とんぼ", exact: true }).click();
+		await sampleRequested;
+		await sampleDialog.getByRole("button", { name: "閉じる", exact: true }).click();
+		await page.waitForFunction(() => !document.getElementById("btn-sample-lyrics").disabled);
+		await page.unrouteAll({ behavior: "wait" });
+		assert.equal(await page.inputValue("#input-text"), beforeCancel, "closing a loading sample must preserve the current lyrics");
 
 		const load = async (name, text) => {
 			await page.setInputFiles("#lyrics-file", { name, mimeType: name.endsWith("json") ? "application/json" : "text/plain", buffer: Buffer.from(text) });
@@ -193,7 +250,7 @@ try {
 		assert(await page.locator("#lyrics-file").isEnabled());
 		assert(!page.url().endsWith("editor.html"), "generation errors must stay in the form");
 		assert.deepEqual(errors, []);
-		console.log(`[ok] ${engine.name()}: generation form, responsive file picker, lyrics files, JSON file and paste direct editing`);
+		console.log(`[ok] ${engine.name()}: sample dialog, grouped slider disclosure, responsive form, lyrics files and JSON direct editing`);
 		await browser.close();
 		browser = null;
 	}
