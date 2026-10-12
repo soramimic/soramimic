@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { buildApp } from "./golden/harness-lib.mjs";
 import { findPlacements, originalHighlightRanges } from "../frontend/src/reverseSearch.js";
 import { lineRegenerationInput } from "../frontend/src/editorRegeneration.js";
@@ -13,8 +14,21 @@ const matches = await findPlacements(app, "ソラ", units, param);
 assert.deepEqual(matches.slice(0, 2).map(({ line, start, end, score }) => ({ line, start, end, score })), [
 	{ line: 0, start: 1, end: 3, score: 0 }, { line: 1, start: 0, end: 2, score: 0 },
 ]);
-assert(matches.every(({ line, start, end }) => start === 0 || units[line][start - 1].char_index !== units[line][start].char_index));
-assert(matches.every(({ line, end }) => end === units[line].length || units[line][end - 1].char_index !== units[line][end].char_index));
+// Search reading units independently of how many sounds each kanji represents.
+const sunsetLines = readFileSync(new URL("../sample_lyric/akatombo.txt", import.meta.url), "utf8").split("\n");
+const sunsetTokens = app.textAnalyzer.tokenizeTogether(sunsetLines);
+const sunsetUnits = sunsetTokens.map((row) => app.textAnalyzer.getYomiAndPhraseBreak(row));
+const sunsetMatches = await findPlacements(app, "ユウヤ", sunsetUnits, param);
+assert.deepEqual(sunsetMatches.slice(0, 2).map(({ line, start, end, score }) => ({ line, start, end, score })), [
+	{ line: 0, start: 0, end: 2, score: 0 }, { line: 9, start: 0, end: 2, score: 0 },
+], "a reading ending inside 焼 must rank ahead of other similar sounds");
+assert.deepEqual(originalHighlightRanges(sunsetLines[0], sunsetUnits[0], [sunsetMatches[0]], sunsetTokens[0]), [[0, 2]]);
+for (const [kana, start, end] of [["ハタ", 0, 2], ["タケ", 1, 3], ["タ", 1, 2]]) {
+	const [best] = await findPlacements(app, kana, [units[5]], param);
+	assert.deepEqual(best, { line: 0, start, end, score: 0, lengthDifference: 0 });
+	assert.deepEqual(originalHighlightRanges("畑", units[5], [best], tokens[5]), [[0, 1]],
+		"a match inside a kanji must highlight that kanji even when its unit has no surface text");
+}
 const longVowels = await findPlacements(app, "トーキョー", units, param);
 assert.equal(longVowels[0].line, 4);
 assert.equal(longVowels[0].score, 0);
@@ -76,4 +90,4 @@ const switchedResults = await new Promise((resolve) => app.soramimiMaker.generat
 const restored = generatedWords(switchedResults[0], switched.wordlistSource);
 assert.deepEqual(restored[0], foreign, "retained locks preserve their identity after generation");
 assert(restored.slice(1).some((word) => word.id === sourceWord.id), "same IDs in different lists can coexist");
-print("[ok] reverse ranking, character boundaries, variants, validation, cancellation, reusable scoring, isolated line regeneration");
+print("[ok] reverse ranking, partial kanji readings and highlights, variants, validation, cancellation, reusable scoring, isolated line regeneration");

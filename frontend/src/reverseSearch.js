@@ -27,11 +27,10 @@ export async function findPlacements(app, kana, unitsList, param, weightsList, s
 		const units = unitsList[line] || [];
 		const minimums = units.map((unit) => Math.min(...syllableVariations(unit.pronunciation)
 			.map(({ u }) => u.filter(Boolean).length)));
-		const boundary = (i) => i === 0 || i === units.length || units[i].char_index === undefined
-			|| units[i - 1].char_index !== units[i].char_index;
 		const lineMatches = [];
+		// Match on reading units, including ranges inside a character's reading.
+		// Character boundaries are only relevant when mapping matches to display text.
 		for (let start = 0; start < units.length; start++) {
-			if (!boundary(start)) continue;
 			let minimum = 0;
 			for (let end = start + 1; end <= units.length; end++) {
 				minimum += minimums[end - 1];
@@ -41,7 +40,6 @@ export async function findPlacements(app, kana, unitsList, param, weightsList, s
 					yielded = performance.now();
 				}
 				if (signal?.aborted) return [];
-				if (!boundary(end)) continue;
 				const target = units.slice(start, end).map((unit) => unit.pronunciation);
 				const candidate = search(target, 1,
 					weightsList?.[line]?.slice(start, end))[0];
@@ -100,6 +98,21 @@ export function originalHighlightRanges(source, units, matches, tokens = []) {
 		}
 	} else {
 		return [];
+	}
+	// A kanji's spelling is stored on its first reading unit; later units can
+	// have empty surfaces. Give every unit the whole character's display span.
+	for (let start = 0; start < units.length;) {
+		let end = start + 1;
+		while (units[start].char_index !== undefined && end < units.length
+			&& units[end].char_index === units[start].char_index) end++;
+		if (end > start + 1) {
+			const group = Array.from(spans.slice(start, end));
+			if (group.length === end - start && group.every(Boolean)) {
+				const span = [Math.min(...group.map(([from]) => from)), Math.max(...group.map(([, to]) => to))];
+				for (let i = start; i < end; i++) spans[i] = span;
+			}
+		}
+		start = end;
 	}
 	const ranges = matches.flatMap(({ start, end }) => {
 		const selected = Array.from(spans.slice(start, end));

@@ -180,6 +180,33 @@ try {
 		await ready();
 		assert.deepEqual((await state()).results, afterRegen.results, "regeneration persists across reload");
 	}
+	// A query may end or start inside a kanji's reading; its surface still highlights.
+	const partialPhrases = ["夕焼小焼の、赤とんぼ", "畑"];
+	const partialTokens = app.textAnalyzer.tokenizeTogether(partialPhrases);
+	const partialSeed = { ...structuredClone(seed), phrases: partialPhrases, tokensList: partialTokens,
+		unitsList: partialTokens.map((row) => app.textAnalyzer.getYomiAndPhraseBreak(row)),
+		results: [[], []], history: [], future: [], dirtyLines: [], weightsList: null };
+	for (const review of [false, true]) {
+		const session = structuredClone(partialSeed);
+		if (review) {
+			session.host = { review: true };
+			session.originalLines = partialPhrases;
+		}
+		await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), session);
+		await page.reload();
+		await ready();
+		await page.click("#reverse-search > summary");
+		const beforeSearch = await state();
+		await page.fill("#reverse-word", "ゆうや");
+		await searchDone();
+		assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents())
+			.some((text) => text.startsWith("夕焼")), "ゆうや highlights 夕焼 despite ending inside 焼");
+		await page.fill("#reverse-word", "たけ");
+		await searchDone();
+		assert.equal(await page.locator('[data-line="1"] mark.reverse-highlight').textContent(), "畑",
+			"たけ highlights 畑 despite starting inside its reading");
+		assert.deepEqual(await state(), beforeSearch, "partial reading search changes no saved editor state");
+	}
 	// Edit a source reading while reverse highlights are visible. The automatic
 	// character allocation loses part of this token's spelling, but not the line.
 	const source = "負われて見たのは、いつの日か";
