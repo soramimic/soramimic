@@ -96,3 +96,9 @@ sessionStorage を共有しているだけでイベントは飛ばないので�
 歌詞のトークナイズをAPI(pyopenjtalk-plus、数字・ユーザー辞書対応)に任せる。
 未設定・API停止時は自動でkuromojiにフォールバックする(完全静的でも動く)。
 ローカル確認: soramimic-yomi で `uv run uvicorn api.main:app --port 8123` を起動し、urlに `http://localhost:8123` を設定。
+
+編集画面の「ビデオで作る」から、編集中の歌詞をSoramimic Videoへ渡せます。
+同じ曲の音源またはMIDIは、開いた動画作成画面で選んでください。
+dev・preview・公開環境ではそれぞれ対応する環境を開きます。
+ローカルなどの独自構成では、ビルド時に `VITE_SORAMIMIC_VIDEO_URL` で接続先を指定できます。
+Video側には `SORAMIMIC_EDITOR_APP_URL` でこの編集画面のURLを設定します。
