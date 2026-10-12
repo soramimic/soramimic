@@ -1401,7 +1401,7 @@ function appendWordlistSearch(panel, used, isSelected) {
 	clear.setAttribute("aria-label", "検索を消す");
 	clear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>';
 	const status = document.createElement("p");
-	status.className = "panel-note wordlist-search-status";
+	status.className = "wordlist-search-status";
 	status.setAttribute("role", "status");
 	const results = document.createElement("div");
 	results.className = "wordlist-search-results";

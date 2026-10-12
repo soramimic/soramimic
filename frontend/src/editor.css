@@ -206,6 +206,12 @@ html.editor-free-input-open .editor-toolbar {
 	display: none;
 }
 
+.wordlist-search-status {
+	color: var(--muted);
+	margin: .3rem 0;
+	font-size: .85rem;
+}
+
 .panel-candidates-title {
 	flex-basis: 100%;
 	font-size: 0.85rem;
