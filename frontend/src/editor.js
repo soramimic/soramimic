@@ -17,6 +17,7 @@ import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
 import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
+import { alignmentFromUnits, countsForAlignment } from "./lib/readingAlignment.js";
 import { findPlacements, highlightOriginal } from "./reverseSearch.js";
 import { lineRegenerationInput } from "./editorRegeneration.js";
 import { lockPanelViewport } from "./editorPanelViewport.js";
@@ -1075,62 +1076,14 @@ function renderPanel() {
 	}
 }
 
-// ---- 表層↔モーラの手動割当 ----
-
-// 手動割当[[表層,読み],...]から、各表層文字が持つモーラ数(counts)を復元する。
-// atoms はトークンのモーラ列。整合しなければ null。
-function countsFromAlign(align, atoms) {
-	if (!Array.isArray(align)) return null;
-	const counts = [];
-	let ai = 0;
-	for (const pair of align) {
-		if (!Array.isArray(pair)) return null;
-		let acc = "";
-		let c = 0;
-		while (ai < atoms.length && acc.length < pair[1].length) {
-			acc += atoms[ai].pronunciation;
-			ai += 1;
-			c += 1;
-		}
-		if (acc !== pair[1]) return null;
-		counts.push(c);
-	}
-	return ai === atoms.length ? counts : null;
-}
-
-// n 個のモーラを k 個の表層文字へ均等に割る(余りは先頭から)。balancedAllocate と同傾向。
-function evenCounts(n, k) {
-	const base = Math.floor(n / k);
-	const rem = n % k;
-	return Array.from({ length: k }, (_, i) => base + (i < rem ? 1 : 0));
-}
-
-// 現在のユニット(atoms)の表層所有(surface_form 非空=所有, 空=直前と同じ文字)から、
-// 各表層文字が持つモーラ数を復元する。各所有が単一文字で scChars と一致する時のみ。
-function countsFromAtoms(scChars, atoms) {
-	const groups = [];
-	for (const a of atoms) {
-		if (a.surface_form && a.surface_form.length > 0) {
-			groups.push({ surface: a.surface_form, count: 1 });
-		} else if (groups.length > 0) {
-			groups[groups.length - 1].count += 1;
-		} else {
-			return null;
-		}
-	}
-	if (groups.length === scChars.length && groups.every((g, i) => g.surface === scChars[i])) {
-		return groups.map((g) => g.count);
-	}
-	return null;
-}
+// ---- 表記↔音節の手動割当 ----
 
 // 割当エディタの対象かを判定し、対象なら描画に要る材料を返す。
-// 対象外(かな語・表層1文字・モーラ数不足)なら null。renderPanel から呼ばれるため、
+// 対象外(かな語・表層1文字)なら null。renderPanel から呼ばれるため、
 // 導出が投げてもパネル全体を巻き込まないよう握りつぶして「対象外」に倒す。
 function alignModel(line, arrIndex, tokens = data.tokensList[line]) {
 	const tok = tokens[arrIndex];
-	const scChars = [...(tok.surface_form || "")];
-	if (scChars.length < 2) return null;
+	if ([...(tok.surface_form || "")].length < 2) return null;
 	if (!/[㐀-鿿々]/.test(tok.surface_form || "")) return null; // 漢字を含む語のみ
 	let fresh;
 	try {
@@ -1140,33 +1093,26 @@ function alignModel(line, arrIndex, tokens = data.tokensList[line]) {
 		return null;
 	}
 	const atoms = fresh.filter((u) => u.token_index === tok.token_index);
-	if (atoms.length < scChars.length) return null; // 各文字に最低1モーラ割けない
-
-	// 初期値: 手動割当 → 現在の自動割当 → 均等割 の順で復元し、実表示と一致させる
-	let counts = countsFromAlign(tok.manualAlign, atoms);
-	if (!counts || counts.length !== scChars.length) {
-		counts = countsFromAtoms(scChars, atoms);
-	}
-	if (!counts || counts.length !== scChars.length) {
-		counts = evenCounts(atoms.length, scChars.length);
-	}
-	return { tok, scChars, atoms, counts };
+	const align = alignmentFromUnits(atoms);
+	const counts = countsForAlignment(align, atoms);
+	if (!counts) return null;
+	return { tok, surfaces: align.map(([surface]) => surface), atoms, counts };
 }
 
-// 表層文字ごとの割当を◀▶で調整するパネル本体。model は alignModel の結果。
+// 複数文字を含む表記のまとまりの間で、音節を◀▶で移す。
 function buildAlignEditor(model, onChange) {
-	const { tok, scChars, atoms, counts } = model;
+	const { tok, surfaces, atoms, counts } = model;
 
 	const buildAlign = (cs) => {
 		let ai = 0;
-		return scChars.map((ch, i) => {
+		return surfaces.map((ch, i) => {
 			const yomi = atoms.slice(ai, ai + cs[i]).map((a) => a.pronunciation).join("");
 			ai += cs[i];
 			return [ch, yomi];
 		});
 	};
 	const moveBoundary = (b, dir) => {
-		// b と b+1 の境界: dir=-1 は左の文字へ1モーラ寄せる、+1 は右へ
+		// b と b+1 の境界: dir=-1 は左の表記へ1音節寄せる、+1 は右へ
 		const cs = counts.slice();
 		if (dir === -1 && cs[b + 1] > 1) { cs[b] += 1; cs[b + 1] -= 1; }
 		else if (dir === 1 && cs[b] > 1) { cs[b] -= 1; cs[b + 1] += 1; }
@@ -1184,7 +1130,7 @@ function buildAlignEditor(model, onChange) {
 	const row = document.createElement("div");
 	row.className = "panel-align-row";
 	let ai = 0;
-	scChars.forEach((ch, i) => {
+	surfaces.forEach((ch, i) => {
 		if (i > 0) {
 			const ctrl = document.createElement("span");
 			ctrl.className = "align-boundary";
@@ -1192,15 +1138,17 @@ function buildAlignEditor(model, onChange) {
 			left.className = "btn align-arrow";
 			left.type = "button";
 			left.textContent = "◀";
-			left.title = "左の文字へ1モーラ寄せる";
-			left.setAttribute("aria-label", `${scChars[i - 1]}へ読みを1つ移す`);
+			left.title = "左の表記へ1音節寄せる";
+			left.disabled = counts[i] <= 1;
+			left.setAttribute("aria-label", `${surfaces[i - 1]}へ読みを1つ移す`);
 			left.addEventListener("click", () => moveBoundary(i - 1, -1));
 			const right = document.createElement("button");
 			right.className = "btn align-arrow";
 			right.type = "button";
 			right.textContent = "▶";
-			right.title = "右の文字へ1モーラ寄せる";
-			right.setAttribute("aria-label", `${scChars[i]}へ読みを1つ移す`);
+			right.title = "右の表記へ1音節寄せる";
+			right.disabled = counts[i - 1] <= 1;
+			right.setAttribute("aria-label", `${surfaces[i]}へ読みを1つ移す`);
 			right.addEventListener("click", () => moveBoundary(i - 1, 1));
 			ctrl.append(left, right);
 			row.appendChild(ctrl);

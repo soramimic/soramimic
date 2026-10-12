@@ -3,6 +3,7 @@ import { removeSign } from "./utils.js";
 import { TokenFormatter } from "./character.js";
 import { hiraToKata, removeUnnaturalKanaPattern, absorbSmallKana, expandRepeatedLongVowels } from "./kanaToSyllable.js";
 import { parseRuby } from "./ruby.js";
+import { applyReadingAlignments } from "./readingAlignment.js";
 
 //ルビ記法(｜表層《よみ》)の注釈区間に割り当てる強制トークン。
 //kuromoji(ipadic)形式に合わせた既定値を持ち、posは名詞にして
@@ -261,6 +262,7 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 	function getYomiAndPhraseBreak(tokens){
 		//let tokens = tokenize(strVal);
 		//console.log("getYomiAndPhraseBreak",tokens);
+		const sourceTokens = tokens;
 		tokens = character.tokenize(tokens);
 		tokens = tokens.map(token=>{
 			let obj = {}
@@ -306,7 +308,7 @@ function TextAnalyzer(character, kanaToSyllable, english, tokenizeSentenses,getY
 		//console.log("before",tokens);
 		//moraの単位でtokenをまとめる
 		tokens = concatMora(tokens);
-		return tokens;
+		return applyReadingAlignments(tokens, sourceTokens);
 	}
 
 	return {

@@ -267,7 +267,7 @@ try {
 		JSON.stringify(["元歌詞", "元歌詞読み"]),
 		"読み修正小窓の項目名が想定外");
 	assert(await editor.textContent("#reading-fix-align-details > summary") ===
-		"文字ごとの読みを調整", "文字ごとの読み調整の表記が想定外");
+		"表記と読みの対応を調整", "読みの対応調整の表記が想定外");
 	await editor.fill(".panel-yomi .input", "abc");
 	await editor.click(".panel-yomi .btn-primary");
 	assert(await editor.locator("#editor-reading-dialog").evaluate((d) => d.open) &&
@@ -404,6 +404,7 @@ try {
 	const mixedAlignArrows = editor.locator(".panel-align .align-arrow");
 	let mixedAlignChanged = false;
 	for (let i = 0; i < await mixedAlignArrows.count(); i += 1) {
+		if (await mixedAlignArrows.nth(i).isDisabled()) continue;
 		await mixedAlignArrows.nth(i).click();
 		const after = await editor.$$eval(".panel-align .align-cell",
 			(els) => els.map((e) => e.textContent).join("|"));
@@ -673,6 +674,92 @@ try {
 		() => !document.getElementById("btn-regenerate").disabled,
 		undefined, { timeout: 120000 },
 	);
+
+	// ---- 音節単位の対応: 一音節に複数の文字がある語 ----
+	await page.fill("#input-text", "赤とんぼ\n赤ちゃん\n東京");
+	await page.click("#btn-convert");
+	await page.waitForFunction(() => !document.getElementById("btn-convert").disabled,
+		undefined, { timeout: 120000 });
+	const [alignmentEditor] = await Promise.all([
+		context.waitForEvent("page"), page.click("#btn-open-editor"),
+	]);
+	alignmentEditor.on("pageerror", (e) => pageErrors.push(e));
+	const waitForAlignmentEditor = async () => {
+		await alignmentEditor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
+		await alignmentEditor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled,
+			undefined, { timeout: 120000 });
+	};
+	await waitForAlignmentEditor();
+	const alignmentState = () => alignmentEditor.evaluate(() =>
+		JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	const readAlignment = () => alignmentEditor.$$eval(".panel-align .align-cell",
+		(cells) => cells.map((cell) => [cell.querySelector(".align-surface").textContent,
+			cell.querySelector(".align-yomi").textContent]));
+	const expectAlignment = async (expected) => assert(
+		JSON.stringify(await readAlignment()) === JSON.stringify(expected),
+		`音節と表記の対応が違う: ${JSON.stringify(await readAlignment())}`);
+	const openAlignment = async (line = 0) => {
+		await selectRange(alignmentEditor, line, 0);
+		await alignmentEditor.click(".panel-yomi-toggle");
+		await alignmentEditor.click("#reading-fix-align-details > summary");
+	};
+	const automaticAlignment = [["赤", "アカ"], ["とん", "トン"], ["ぼ", "ボ"]];
+	const movedAlignment = [["赤", "ア"], ["とん", "カトン"], ["ぼ", "ボ"]];
+	const originalAlignmentState = await alignmentState();
+	await openAlignment();
+	await expectAlignment(automaticAlignment);
+	await alignmentEditor.click("#btn-reading-fix-apply");
+	assert(JSON.stringify(await alignmentState()) === JSON.stringify(originalAlignmentState),
+		"無変更で適用しても保存状態を変えないこと");
+	await openAlignment();
+	await alignmentEditor.getByRole("button", { name: "とんへ読みを1つ移す", exact: true }).first().click();
+	await expectAlignment(movedAlignment);
+	await alignmentEditor.click("#btn-reading-fix-cancel");
+	assert(JSON.stringify(await alignmentState()) === JSON.stringify(originalAlignmentState),
+		"音節の移動をキャンセルすると保存状態を変えないこと");
+	await openAlignment();
+	await alignmentEditor.getByRole("button", { name: "とんへ読みを1つ移す", exact: true }).first().click();
+	await alignmentEditor.click("#btn-reading-fix-apply");
+	const movedAlignmentState = await alignmentState();
+	assert(JSON.stringify(movedAlignmentState.tokensList[0][0].manualAlign) === JSON.stringify(movedAlignment),
+		"複数文字への音節の移動を保存できない");
+	assert(JSON.stringify(movedAlignmentState.unitsList[0].map((u) => [u.surface_form, u.pronunciation])) ===
+		JSON.stringify([["赤", "ア"], ["とん", "カ"], ["", "トン"], ["ぼ", "ボ"]]),
+		"保存後の発音ユニットに手動の表記対応が反映されない");
+	assert(JSON.stringify(movedAlignmentState.results) === JSON.stringify(originalAlignmentState.results),
+		"対応だけの変更で候補が変わった");
+	await alignmentEditor.click("#btn-undo");
+	assert(JSON.stringify((await alignmentState()).unitsList) === JSON.stringify(originalAlignmentState.unitsList),
+		"取り消しで音節と表記の対応が戻らない");
+	await alignmentEditor.click("#btn-redo");
+	await alignmentEditor.reload();
+	await waitForAlignmentEditor();
+	await openAlignment();
+	await expectAlignment(movedAlignment);
+	await alignmentEditor.click(".align-reset");
+	await expectAlignment(automaticAlignment);
+	await alignmentEditor.click("#btn-reading-fix-apply");
+	assert(JSON.stringify((await alignmentState()).unitsList) === JSON.stringify(originalAlignmentState.unitsList),
+		"自動に戻した対応が保存されない");
+	assert(!(await alignmentState()).tokensList[0][0].manualAlign, "リセット後に手動対応が残った");
+	await openAlignment(1);
+	await expectAlignment([["赤", "アカ"], ["ちゃん", "チャン"]]);
+	await alignmentEditor.getByRole("button", { name: "ちゃんへ読みを1つ移す", exact: true }).click();
+	await expectAlignment([["赤", "ア"], ["ちゃん", "カチャン"]]);
+	await alignmentEditor.click("#btn-reading-fix-cancel");
+	await openAlignment(2);
+	await expectAlignment([["東", "トー"], ["京", "キョー"]]);
+	assert(await alignmentEditor.locator(".align-arrow:enabled").count() === 0,
+		"分割できない音節の境界で矢印が有効になっている");
+	await alignmentEditor.click("#btn-reading-fix-cancel");
+	await alignmentEditor.setViewportSize({ width: 390, height: 844 });
+	await openAlignment();
+	await expectAlignment(automaticAlignment);
+	assert(await alignmentEditor.locator(".panel-align-row").evaluate((row) => {
+		const rect = row.getBoundingClientRect();
+		return rect.left >= 0 && rect.right <= window.innerWidth && row.scrollWidth <= row.clientWidth;
+	}), "スマートフォン幅で表記と読みの対応がはみ出す");
+	await alignmentEditor.click("#btn-reading-fix-cancel");
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

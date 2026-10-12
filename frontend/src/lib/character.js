@@ -445,23 +445,6 @@ function Character(kanji){
 	  return output;
 	}
 
-	// 手動の表層↔読み割当(manualAlign)が、現在の表層/読みと整合するときだけ採用する。
-	// 形は kanjiAllocate と同じ [[surfaceChunk, yomiChunk], ...]。連結して元の
-	// surface_form / pronunciation に一致しなければ(読み修正後などで陳腐化していれば)
-	// 無効とみなし、通常の自動割当へフォールバックする。
-	function validManualAlign(align, surface_form, pronunciation){
-		if(!Array.isArray(align) || align.length === 0) return false;
-		let s = "", y = "";
-		for(const pair of align){
-			if(!Array.isArray(pair) || pair.length !== 2) return false;
-			if(typeof pair[0] !== "string" || typeof pair[1] !== "string") return false;
-			// balancedAllocate が 0 除算しないよう、各チャンクは表層・読みとも非空
-			if(pair[0].length === 0 || pair[1].length === 0) return false;
-			s += pair[0]; y += pair[1];
-		}
-		return s === surface_form && y === pronunciation;
-	}
-
 	//tokensはkuromojiのtokenizeの結果
 	function getCharCorrespondance(tokens, kanji_allocator){
 		//console.log("tokens getCharCorrespondance",tokens);
@@ -535,9 +518,7 @@ function Character(kanji){
 	      }];
 	    }else if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
 	    	//console.log("in if",token);
-		correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
-    		? token.manualAlign
-    		: kanji_allocator.allocate(token.surface_form, token.pronunciation);
+		correspondance = kanji_allocator.allocate(token.surface_form, token.pronunciation);
 	      correspondance = correspondance.map(function([surface_form,yomi]){
 	    	 let c = balancedAllocate(surface_form, yomi);
 	    	 //surfaceが１文字のとき何もしない
