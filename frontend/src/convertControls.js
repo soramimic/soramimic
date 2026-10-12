@@ -21,10 +21,10 @@ export function activeValue(container) {
 
 // 両端ラベル付きスライダーの1項目を作る(「音の合わせ方」「文節の区切り」「単語の長さ」で共通)。
 // val() は生のスライダー値(数値)を返す。ペナルティへの写像は paramFromValues() が行う。
-export function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel }) {
-	const item = document.createElement("div");
-	item.className = "param-item param-item-wide";
-	const title = document.createElement("h4");
+export function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel, collapsible = false }) {
+	const item = document.createElement(collapsible ? "details" : "div");
+	item.className = "param-item param-item-wide" + (collapsible ? " param-disclosure" : "");
+	const title = document.createElement(collapsible ? "summary" : "h4");
 	title.className = "field-label";
 	title.textContent = label;
 	const row = document.createElement("div");
@@ -108,7 +108,7 @@ export function valuesFromParam(param) {
 // - paramArea / presetArea は必須。duplicateArea は省略可(省略時 DUPLICATE=false 固定)
 // - duplicateArea が空なら「あり/なし」ボタンをここで作る(HTMLに置いてあればそれを使う)
 // - onChange(kind, detail) の kind は "preset" | "param" | "duplicate"
-export function createParamControls({ paramArea, presetArea, duplicateArea, values, onChange }) {
+export function createParamControls({ paramArea, presetArea, duplicateArea, values, onChange, collapseSound = false }) {
 	const notify = (kind, detail) => { if (onChange) onChange(kind, detail); };
 
 	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
@@ -120,6 +120,7 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 		label: "音の合わせ方", leftText: "子音重視", rightText: "母音重視",
 		min: 0.1, max: 0.9, step: 0.1, defaultValue: DEFAULT_VALUES.sound,
 		ariaLabel: "音の合わせ方(子音重視〜母音重視)",
+		collapsible: collapseSound,
 	});
 	const iptPhrasebreak = createSliderItem({
 		label: "文節の区切り", leftText: "無視", rightText: "がっちり守る",

@@ -31,25 +31,7 @@ function $id(id) {
 	return document.getElementById(id);
 }
 
-function setupTabs() {
-	const links = document.querySelectorAll("[data-tab-link]");
-	for (const link of links) {
-		link.addEventListener("click", (e) => {
-			e.preventDefault();
-			const name = link.dataset.tabLink;
-			for (const page of document.querySelectorAll(".tabpage")) {
-				page.hidden = page.id !== `tab-${name}`;
-			}
-			for (const l of document.querySelectorAll(".tabs a")) {
-				l.classList.toggle("active", l.dataset.tabLink === name);
-			}
-		});
-	}
-}
-
 export async function startApp() {
-	setupTabs();
-
 	const btnConvert = $id("btn-convert");
 	const btnCancel = $id("btn-cancel");
 	const progress = $id("progress");
@@ -203,6 +185,7 @@ export async function startApp() {
 	const paramControls = createParamControls({
 		paramArea: $id("param-area"),
 		presetArea: $id("preset-buttons"),
+		collapseSound: true,
 		duplicateArea: duplicateButtons,
 		onChange: (kind, preset) => {
 			if (kind === "preset") track("param_preset", { preset: preset.name });
@@ -263,41 +246,19 @@ export async function startApp() {
 	// 巨大DBがMapへ蓄積し続けるのを防ぎつつ、設定を戻したときの再利用は効かせる。
 	const dbCache = createLruCache(DATABASE_CACHE_LIMIT);
 
-	const wordlistSelect = $id("wordlist-select");
 	const wordlistByValue = new Map();
-
-	function setWordlistControl(activeEl) {
-		const isCustomActive = customTrigger === activeEl;
-		if (isCustomActive) wordlistSelect.value = "";
-		customTrigger.classList.toggle("active", isCustomActive);
-		if (!isCustomActive) {
-			customTextEl.textContent = "自作リスト";
-			customCapEl.hidden = true;
-			for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
-				item.setAttribute("aria-checked", "false");
-			}
+	function setWordlistControl(entry) {
+		customTrigger.dataset.value = entry.value;
+		customTrigger.setAttribute("aria-label", `単語リスト: ${entry.text}`);
+		customTrigger.classList.toggle("active", !!customWordlistId(entry.value));
+		customTextEl.textContent = entry.text;
+		for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+			item.setAttribute("aria-checked", String(item.__config.value === entry.value));
 		}
 	}
-
-	const customPlaceholder = new Option("自作リストを選択中", "");
-	customPlaceholder.disabled = true;
-	customPlaceholder.hidden = true;
-	wordlistSelect.append(customPlaceholder);
 	for (const item of config.wordlist) {
-		const group = item.items ? document.createElement("optgroup") : wordlistSelect;
-		if (item.items) {
-			group.label = item.label;
-			wordlistSelect.append(group);
-		}
 		for (const entry of item.items || [item]) {
-			group.append(new Option(entry.text, entry.value, false, !!entry.active));
-			wordlistByValue.set(entry.value, {
-				entry,
-				activate: () => {
-					wordlistSelect.value = entry.value;
-					setWordlistControl(wordlistSelect);
-				},
-			});
+			wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(entry) });
 			if (entry.active) selectedWordlist = entry;
 		}
 	}
@@ -319,23 +280,20 @@ export async function startApp() {
 	customWrap.className = "custom-wordlist-picker";
 	const customTrigger = document.createElement("button");
 	customTrigger.type = "button";
+	customTrigger.id = "wordlist-trigger";
 	customTrigger.className = "btn custom-wordlist-trigger";
 	customTrigger.setAttribute("aria-haspopup", "menu");
 	customTrigger.setAttribute("aria-expanded", "false");
 	customTrigger.setAttribute("aria-controls", "custom-wordlist-menu");
-	const customCapEl = document.createElement("span");
-	customCapEl.className = "wordlist-select-caption";
-	customCapEl.textContent = "自作";
-	customCapEl.hidden = true;
 	const customTextEl = document.createElement("span");
-	customTextEl.textContent = "自作リスト";
+	customTextEl.textContent = selectedWordlist.text;
 	const customMenu = document.createElement("div");
 	customMenu.id = "custom-wordlist-menu";
 	customMenu.className = "custom-wordlist-menu";
 	customMenu.setAttribute("role", "menu");
-	customMenu.setAttribute("aria-label", "自作リスト");
+	customMenu.setAttribute("aria-label", "単語リスト");
 	customMenu.hidden = true;
-	customTrigger.append(customCapEl, customTextEl);
+	customTrigger.append(customTextEl);
 	customWrap.append(customTrigger, customMenu);
 	wordlistButtons.appendChild(customWrap);
 
@@ -367,34 +325,55 @@ export async function startApp() {
 		return svg;
 	}
 
+	function makeWordlistOption(entry) {
+		const choose = document.createElement("button");
+		choose.type = "button";
+		choose.className = "custom-wordlist-menu-select";
+		choose.setAttribute("role", "menuitemradio");
+		choose.setAttribute("aria-label", entry.text);
+		choose.setAttribute("aria-checked", String(entry.value === selectedWordlist?.value));
+		choose.textContent = entry.text;
+		choose.dataset.value = entry.value;
+		choose.__config = entry;
+		choose.addEventListener("click", () => {
+			const found = wordlistByValue.get(entry.value);
+			if (!found) return;
+			if (selectedWordlist?.value === entry.value) {
+				closeCustomMenu();
+				return;
+			}
+			found.activate();
+			selectedWordlist = found.entry;
+			renderFacets(selectedWordlist);
+			closeCustomMenu();
+			saveMainState();
+		});
+		return choose;
+	}
+
+	function addWordlistHeading(text) {
+		const heading = document.createElement("div");
+		heading.className = "custom-wordlist-menu-heading";
+		heading.setAttribute("role", "presentation");
+		heading.textContent = text;
+		customMenu.append(heading);
+	}
+
 	function renderCustomOptions() {
 		for (const value of [...wordlistByValue.keys()]) {
 			if (customWordlistId(value)) wordlistByValue.delete(value);
 		}
 		customMenu.replaceChildren();
-		const selectedValue = selectedWordlist && selectedWordlist.value;
+		for (const item of config.wordlist) {
+			if (item.items) addWordlistHeading(item.label);
+			for (const entry of item.items || [item]) customMenu.append(makeWordlistOption(entry));
+		}
+		addWordlistHeading("自作リスト");
 		for (const list of customLists) {
 			const entry = customEntry(list);
 			const row = document.createElement("div");
 			row.className = "custom-wordlist-menu-row";
-			const choose = document.createElement("button");
-			choose.type = "button";
-			choose.className = "custom-wordlist-menu-select";
-			choose.setAttribute("role", "menuitemradio");
-			choose.setAttribute("aria-label", entry.text);
-			choose.setAttribute("aria-checked", String(entry.value === selectedValue));
-			choose.textContent = entry.text;
-			choose.__config = entry;
-			choose.addEventListener("click", (event) => {
-				event.stopPropagation();
-				const found = wordlistByValue.get(entry.value);
-				if (!found) return;
-				found.activate();
-				selectedWordlist = found.entry;
-				renderFacets(selectedWordlist);
-				closeCustomMenu();
-				saveMainState();
-			});
+			const choose = makeWordlistOption(entry);
 			const edit = document.createElement("button");
 			edit.type = "button";
 			edit.className = "custom-wordlist-menu-action";
@@ -418,17 +397,7 @@ export async function startApp() {
 			});
 			row.append(choose, edit, remove);
 			customMenu.appendChild(row);
-			wordlistByValue.set(entry.value, {
-				entry,
-				activate: () => {
-					setWordlistControl(customTrigger);
-					customTextEl.textContent = entry.text;
-					customCapEl.hidden = false;
-					for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
-						item.setAttribute("aria-checked", String(item.__config.value === entry.value));
-					}
-				},
-			});
+			wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(entry) });
 		}
 		const add = document.createElement("button");
 		add.type = "button";
@@ -444,12 +413,13 @@ export async function startApp() {
 		positionCustomMenu();
 	}
 	renderCustomOptions();
+	setWordlistControl(selectedWordlist);
 
 	function positionCustomMenu() {
 		if (customMenu.hidden) return;
 		const triggerRect = customTrigger.getBoundingClientRect();
 		const gutter = 8;
-		const width = Math.min(352, window.innerWidth - gutter * 2);
+		const width = Math.min(Math.max(352, triggerRect.width), window.innerWidth - gutter * 2);
 		customMenu.style.width = `${width}px`;
 		customMenu.style.left = `${Math.max(gutter, Math.min(
 			triggerRect.left, window.innerWidth - width - gutter))}px`;
@@ -526,14 +496,6 @@ export async function startApp() {
 	const renderFacets = (entry) => renderFacetsIn(wordlistFacets, entry);
 	const compileWhere = (entry) => compileWhereIn(wordlistFacets, entry);
 
-	wordlistSelect.addEventListener("change", () => {
-		const found = wordlistByValue.get(wordlistSelect.value);
-		if (!found) return;
-		found.activate();
-		selectedWordlist = found.entry;
-		renderFacets(selectedWordlist);
-		saveMainState();
-	});
 	renderFacets(selectedWordlist);
 
 	let editingCustomId = null;
@@ -710,24 +672,33 @@ export async function startApp() {
 		}
 	});
 
-	// ---- サンプル(歌詞 × 単語リスト) ----
-	// クリックで歌詞と単語リストをセットし、そのまま変換まで実行する
-	// (初見でも1クリックで結果に届く)。単語リストの登録は wordlistByValue に
-	// 依存するため、リスト構築後のここで配線する。変換実行中はボタンが
-	// disabledでclick()が効かないため、歌詞・リストの差し替えだけになる
-	$id("sample-buttons").addEventListener("click", async (e) => {
-		const btn = e.target.closest("button[data-path]");
-		if (!btn) return;
-		track("sample_select", { song: btn.dataset.path, wordlist: btn.dataset.wordlist });
-		const found = wordlistByValue.get(btn.dataset.wordlist);
-		if (found) {
-			found.activate();
-			selectedWordlist = found.entry;
-			renderFacets(selectedWordlist);
+	const sampleButton = $id("btn-sample-lyrics");
+	const sampleSelect = $id("sample-lyrics");
+	sampleButton.addEventListener("click", () => {
+		const picker = $id("sample-picker");
+		picker.hidden = !picker.hidden;
+		sampleButton.setAttribute("aria-expanded", String(!picker.hidden));
+		if (!picker.hidden) sampleSelect.focus();
+	});
+	sampleSelect.addEventListener("change", async () => {
+		const path = sampleSelect.value;
+		if (!path) return;
+		const status = $id("lyrics-file-status");
+		status.hidden = false;
+		status.textContent = "歌詞を読み込み中...";
+		setGenerationBusy(true);
+		try {
+			inputText.value = await fetchText(path);
+			status.textContent = "";
+			status.hidden = true;
+			saveMainState();
+			track("sample_select", { song: path });
+		} catch (error) {
+			sampleSelect.value = "";
+			status.textContent = "歌詞を読み込めませんでした: " + error.message;
+		} finally {
+			setGenerationBusy(false);
 		}
-		inputText.value = await fetchText(btn.dataset.path);
-		saveMainState();
-		btnConvert.click();
 	});
 
 	async function getDatabase(entry, where, maxUnits) {
@@ -767,7 +738,10 @@ export async function startApp() {
 			console.warn("生成画面の状態保存に失敗:", err);
 		}
 	}
-	inputText.addEventListener("input", saveMainState);
+	inputText.addEventListener("input", () => {
+		sampleSelect.value = "";
+		saveMainState();
+	});
 
 	let convertMeta = null; // 変換1回分の計測情報(convertイベント用)
 
@@ -1005,6 +979,7 @@ export async function startApp() {
 
 	// 初期化完了
 	lyricsFileButton.disabled = false;
+	sampleButton.disabled = false;
 	btnConvert.disabled = false;
 	btnConvert.textContent = "生成";
 }

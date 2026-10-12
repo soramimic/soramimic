@@ -25,13 +25,25 @@ try {
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.inputValue("#input-text"), "");
 		assert(await page.locator("#output-field").isHidden());
-		assert(await page.locator("#wordlist-select").isVisible());
+		assert(await page.locator("#wordlist-trigger").isVisible());
 		assert(await page.locator("#wordlist-facets").isHidden());
 		assert(await page.locator("#preset-buttons").isHidden());
 		await page.locator("#generation-advanced > summary").focus();
 		await page.keyboard.press("Enter");
 		assert(await page.locator("#wordlist-facets").isVisible());
 		assert(await page.locator("#param-area").isVisible());
+		const sound = page.getByRole("slider", { name: "音の合わせ方(子音重視〜母音重視)", includeHidden: true });
+		assert(await sound.isHidden());
+		await page.locator(".param-disclosure > summary").focus();
+		await page.keyboard.press("Enter");
+		assert(await sound.isVisible());
+		await sound.focus();
+		await page.keyboard.press("ArrowLeft");
+		await page.keyboard.press("ArrowLeft");
+		await page.locator(".param-disclosure > summary").click();
+		assert(await sound.isHidden());
+		assert.equal(await sound.inputValue(), "0.6");
+		await page.locator("#generation-advanced > summary").focus();
 		await page.keyboard.press("Enter");
 		await page.locator("#generation-advanced > summary").blur();
 
@@ -40,7 +52,10 @@ try {
 			for (const width of [320, 390, 1200]) {
 				await page.setViewportSize({ width, height: 844 });
 				assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-				for (const id of ["#input-text", "#wordlist-select", "#btn-lyrics-file", "#btn-convert"]) {
+				const label = await page.locator('label[for="wordlist-trigger"]').boundingBox();
+				const picker = await page.locator("#wordlist-trigger").boundingBox();
+				assert(label.x + label.width <= picker.x && Math.abs(label.y + label.height / 2 - picker.y - picker.height / 2) < 2, "wordlist label and dropdown must share a row");
+				for (const id of ["#input-text", "#wordlist-trigger", "#btn-lyrics-file", "#btn-convert"]) {
 					const bounds = await page.locator(id).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
 				}
@@ -50,6 +65,18 @@ try {
 				}
 			}
 		}
+		assert.equal(await page.locator(".site-header nav").count(), 0);
+		assert.equal(await page.locator('label[for="input-text"]').count(), 0);
+		await page.fill("#input-text", "入力中の歌詞");
+		await page.getByRole("link", { name: "サイトについて", exact: true }).click();
+		await page.waitForURL("**/about.html");
+		assert(await page.getByRole("heading", { name: "謝辞", exact: true }).isVisible());
+		await page.getByRole("link", { name: "歌詞を生成する", exact: true }).click();
+		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		assert.equal(await page.inputValue("#input-text"), "入力中の歌詞");
+		assert.equal(await sound.inputValue(), "0.6");
+		assert(await sound.isHidden());
+
 		const load = async (name, text) => {
 			await page.setInputFiles("#lyrics-file", { name, mimeType: name.endsWith("json") ? "application/json" : "text/plain", buffer: Buffer.from(text) });
 		};
