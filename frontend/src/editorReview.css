@@ -35,8 +35,7 @@
 .review-unit { min-width: 40px; min-height: 44px; padding: .35rem; }
 .review-unit[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
 .simple-editor .panel-candidates-title { display: none; }
-.simple-editor .candidate { min-height: 52px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.simple-editor .panel-free-toggle { min-height: 44px; margin: 0 0 .8rem; }
+.simple-editor .candidate, .simple-editor .panel-free-toggle { min-height: 52px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .simple-editor .panel-free-fields { grid-template-columns: 1fr; }
 .review-reading-input { color: var(--muted); font-size: .85rem; }
 .review-reading-input summary { cursor: pointer; padding: .5rem 0; }

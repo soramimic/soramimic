@@ -218,10 +218,11 @@ try {
 	assert(await wordsOf(editor) === wordsBefore, "リストを選んだだけで結果が変わった");
 	assert((await lockedOf(editor)).join("|") === lockedBefore.join("|"), "リスト変更で固定が失われた");
 
-	// 候補も新しいリストのものになる
+	// 選択中の語は解除用に残し、差し替え候補は新しいリストのものになる。
 	await closeSettings(editor);
 	await openCandidates(editor);
-	const candPokemon = await candidateSurfaces(editor);
+	const candPokemon = await editor.$$eval(CANDIDATE + '[aria-pressed="false"] .candidate-surface',
+		(els) => els.map((e) => e.textContent.replace(/×\d+$/, "")));
 	const candLeaked = candPokemon.filter((s) => !pokemonSurfaces.has(s));
 	assert(candLeaked.length === 0, "候補に旧リストの単語が出ている: " + candLeaked.join(","));
 

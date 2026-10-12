@@ -4,7 +4,7 @@ import { selectRange } from "./editor-ui.mjs";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 
-const port = 4612;
+const port = Number(process.env.EDITOR_REVIEW_PORT || 4612);
 const base = `http://localhost:${port}`;
 const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], {
 	stdio: "ignore", detached: true,
@@ -120,6 +120,25 @@ try {
 	}));
 	await page.click(".panel-free-apply");
 	assert.equal(await firstWord.textContent(), "手入力の語");
+	await firstWord.click();
+	const selectedCandidate = page.locator('.candidate[aria-pressed="true"]');
+	assert.equal(await selectedCandidate.count(), 1, "custom input appears as the only selected candidate");
+	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "手入力の語");
+	assert(await page.locator(".panel-candidates > .panel-free-toggle").isVisible(), "custom input belongs to the candidate grid");
+	assert.equal(await page.locator(".panel-clear").count(), 0, "the eraser action is removed");
+	const unselected = page.locator('.candidate[aria-pressed="false"]').first();
+	await unselected.hover();
+	assert.notEqual(await unselected.evaluate((node) => getComputedStyle(node).borderColor),
+		await selectedCandidate.evaluate((node) => getComputedStyle(node).borderColor),
+		"hovered and selected candidates must have different borders");
+	await page.keyboard.press("Tab");
+	await unselected.focus();
+	assert(await unselected.evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle !== "none"),
+		"keyboard focus remains visible");
+	await selectedCandidate.click();
+	assert.equal(await page.locator(".review-word-surface").filter({ hasText: "手入力の語" }).count(), 0);
+	await page.click("#btn-undo");
+	assert.equal(await firstWord.textContent(), "手入力の語", "undo restores custom input after deselection");
 	await page.click("#btn-undo");
 	assert.equal(await firstWord.textContent(), chosen);
 
@@ -233,7 +252,7 @@ try {
 	emptySeed.param.DUPLICATE = false;
 	await loadSeed(emptySeed);
 	await selectRange(page, 2, 2);
-	assert.equal(await page.locator(".panel-clear").count(), 0, "unassigned source has nothing to clear");
+	assert.equal(await page.locator('.candidate[aria-pressed="true"], .panel-clear-range').count(), 0, "unassigned source has nothing to clear");
 	const vinegar = page.locator(".candidate").filter({ has: page.locator(".candidate-surface", { hasText: /^酢$/ }) });
 	await vinegar.click();
 	const placed = (await readData()).results[2][0];
@@ -242,11 +261,13 @@ try {
 	assignmentSeed.results = [[fixedAssignment(1)], [fixedAssignment(2)], []];
 	await loadSeed(assignmentSeed);
 	await line(0).locator('.review-word[data-start="1"]').click();
+	assert.equal(await selectedCandidate.count(), 1);
+
 	if (process.env.EDITOR_SCREENSHOTS) {
 		await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
 		await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/clear-assignment.png` });
 	}
-	await page.click(".panel-clear");
+	await selectedCandidate.click();
 	assert.deepEqual((await readData()).results[0], []);
 	assert.equal(await gaps(0).count(), 1, "cleared word is shown as unassigned source");
 	await page.click("#btn-undo");
@@ -298,18 +319,20 @@ try {
 	await loadSeed(sameLine);
 	await selectRange(page, 2, 2);
 	await vinegar.click();
-	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 1, "exclude the word already in the selected range");
+	assert(await conflict.isHidden(), "deselecting the current word needs no duplicate warning");
+	assert.deepEqual((await readData()).results[2].map((word) => word.period), [[0, 1]],
+		"deselecting affects only the current assignment");
+	await selectRange(page, 2, 2);
+	await vinegar.click();
+	assert.equal(await page.locator("#assignment-conflict-locations li").count(), 1);
 	await page.click("#btn-assignment-move");
 	assert.deepEqual((await readData()).results[2].map((word) => word.period), [[2, 3]]);
-	await line(2).locator('.review-word[data-start="2"]').click();
-	await vinegar.click();
-	assert(await conflict.isHidden(), "reselecting the same assignment needs no warning");
 
 	const partial = structuredClone(emptySeed);
 	partial.results[0] = [fixedAssignment(1, 3), { ...fixedAssignment(3), id: "another" }, { ...fixedAssignment(6), id: "unrelated" }];
 	await loadSeed(partial);
 	await selectRange(page, 0, 2, 3);
-	await page.click(".panel-clear");
+	await page.click(".panel-clear-range");
 	assert.deepEqual((await readData()).results[0], [partial.results[0][2]], "clear overlapping assignments and preserve unrelated ones");
 	await page.click("#btn-undo");
 	assert.deepEqual((await readData()).results, partial.results);
@@ -324,6 +347,31 @@ try {
 		assert(await conflict.isHidden(), "unlocked uses or explicitly allowed duplicates need no priority choice");
 		assert.deepEqual((await readData()).results.slice(0, 2), allowed.results.slice(0, 2));
 	}
+	const retained = structuredClone(assignmentSeed);
+	retained.results[0][0] = { ...fixedAssignment(1), surface: "別リストの語", wordlistSource: "previous-list" };
+	await loadSeed(retained);
+	await line(0).locator('.review-word[data-start="1"]').click();
+	assert.equal(await selectedCandidate.count(), 1, "a retained word is available even when absent from fetched candidates");
+	assert.equal(await selectedCandidate.locator(".candidate-surface").textContent(), "別リストの語");
+	assert.equal(await vinegar.getAttribute("aria-pressed"), "false", "a reused ID in the new list is not selected");
+	await selectedCandidate.click();
+	assert.deepEqual((await readData()).results[0], []);
+
+	const grouped = structuredClone(emptySeed);
+	grouped.wordlist = { value: "ORIGINAL", text: "同名", csvText: "id,original,surface,pronunciation\n1,酢A,酢,ス\n2,酢B,酢,ス" };
+	await loadSeed(grouped);
+	await selectRange(page, 0, 1);
+	await page.locator('.candidate:has(.candidate-count)').click();
+	assert.equal(await page.locator(".group-entry").count(), 2);
+	await page.locator(".group-entry").last().click();
+	const groupChosen = (await readData()).results[0][0];
+	assert.equal(groupChosen.id, "2");
+	await line(0).locator('.review-word[data-start="1"]').click();
+	assert.equal(await selectedCandidate.count(), 1);
+	await selectedCandidate.click();
+	assert.deepEqual((await readData()).results[0], [], "the selected group can be deselected with one tap");
+	await page.click("#btn-undo");
+	assert.deepEqual((await readData()).results[0], [groupChosen]);
 	assert.deepEqual(errors, []);
 	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, assignment clearing, fixed-word priority, undo/redo, recovery");
 } finally {

@@ -163,22 +163,6 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 		lock.addEventListener("click", () => callbacks.lock(line, word));
 		actions.append(lock);
 	}
-	if ((data.results[line] || []).some((assigned) =>
-		!assigned.filler && assigned.period[0] < end && start < assigned.period[1])) {
-		const clear = element("button", "btn btn-ghost panel-clear");
-		clear.type = "button";
-		clear.setAttribute("aria-label", "替え歌の単語を消す");
-		clear.title = "替え歌の単語を消す（元歌詞は残ります）";
-		const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-		icon.setAttribute("viewBox", "0 0 24 24");
-		icon.setAttribute("aria-hidden", "true");
-		const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
-		outline.setAttribute("d", "m15 3 6 6a2 2 0 0 1 0 3l-8 8H7l-4-4a2 2 0 0 1 0-3L13 3a1.5 1.5 0 0 1 2 0ZM7 9l9 9M13 20h8");
-		icon.append(outline);
-		clear.append(icon, document.createTextNode("消す"));
-		clear.addEventListener("click", callbacks.clear);
-		actions.append(clear);
-	}
 	if (actions.childElementCount) header.append(actions);
 	panel.append(header);
 	const range = element("div", "review-range");
