@@ -478,7 +478,7 @@ try {
 	assert.equal(await page.locator(".review-selected-word").textContent(), "出戸");
 	await page.locator('.candidate[data-candidate-id="3137"]').click();
 	await page.waitForFunction(() => document.querySelector(".review-word-details")?.textContent.includes("岐阜県"));
-	await page.getByRole("button", { name: "確定して歌詞一覧に戻る", exact: true }).click();
+	await page.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true }).click();
 	assert(await page.locator("#editor-panel").evaluate((node) => !node.open));
 	assert.equal((await readData()).results[0][0].surface, "下呂", "return confirms the last chosen candidate");
 	assert.deepEqual(errors, []);
