@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 
 const port = 4663;
@@ -64,7 +65,7 @@ try {
 		const assertVisiblePanel = async () => {
 			const bounds = await page.evaluate(() => {
 				const panel = document.getElementById("editor-panel").getBoundingClientRect();
-				const close = document.querySelector(".panel-close").getBoundingClientRect();
+				const close = document.querySelector(".panel-free-back, .panel-close").getBoundingClientRect();
 				return { panel: panel.toJSON(), close: close.toJSON(), viewport: window.testViewport };
 			});
 			const { panel: box, close, viewport } = bounds;
@@ -82,13 +83,33 @@ try {
 		await panel.evaluate((node) => { node.scrollTop = 0; });
 		await assertVisiblePanel();
 
+		const selectedReading = () => page.locator('.review-unit[aria-pressed="true"]').allTextContents();
+		const selectionBefore = await selectedReading();
+		const savedBefore = await page.evaluate(() => sessionStorage.getItem("soramimic-editor"));
 		await page.locator(".panel-free-toggle").tap();
+		assert.equal(await page.locator(".review-range, .review-panel-header").count(), 0,
+			"input should have its own area without range controls or an unrelated close button");
 		await page.fill(".panel-free-surface", "入力途中");
 		await setViewport({ offsetTop: 100, height: 320 });
 		await assertVisiblePanel();
+		const cancel = await page.locator(".panel-free-back").boundingBox();
+		const apply = await page.locator(".panel-free-apply").boundingBox();
+		assert(Math.abs(cancel.y - apply.y) < 1 && cancel.x + cancel.width <= apply.x,
+			"cancel and confirm must share one row");
+		assert(cancel.height >= 44 && apply.height >= 44 && apply.y + apply.height <= 420,
+			"both actions must fit above the keyboard");
+		if (process.env.EDITOR_SCREENSHOTS && engine === webkit) {
+			await mkdir(process.env.EDITOR_SCREENSHOTS, { recursive: true });
+			await page.emulateMedia({ colorScheme: "dark" });
+			await page.screenshot({ path: `${process.env.EDITOR_SCREENSHOTS}/lyrics-input-mobile.png`,
+				clip: { x: 0, y: 100, width: 390, height: 320 } });
+		}
 		await page.locator(".panel-free-back").tap();
 		await setViewport({ offsetTop: 45, height: 650 });
 		await assertVisiblePanel();
+		assert.deepEqual(await selectedReading(), selectionBefore, "cancel must preserve the selected range");
+		assert.equal(await page.evaluate(() => sessionStorage.getItem("soramimic-editor")), savedBefore,
+			"cancel must discard the draft without changing saved lyrics or undo history");
 		await panel.evaluate((node) => { node.scrollTop = node.scrollHeight; });
 		await assertVisiblePanel();
 

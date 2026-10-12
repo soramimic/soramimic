@@ -121,8 +121,8 @@ try {
 		"自由入力中にも候補一覧が表示されている");
 	assert(await editor.locator(".panel-free-back").evaluate((button) => {
 		const box = button.getBoundingClientRect();
-		return button.closest(".review-panel-header") && box.width >= 44 && box.height >= 44;
-	}), "入力を閉じるボタンがヘッダーにないか、押せる大きさではない");
+		return button.closest(".panel-free-actions") && box.width >= 44 && box.height >= 44;
+	}), "キャンセルが入力欄の操作エリアにないか、押せる大きさではない");
 	await editor.click(".panel-free-back");
 	assert(await editor.locator(".panel-free").count() === 0 &&
 		await editor.locator(".panel-candidates").count() === 1,

@@ -65,6 +65,14 @@ try {
 			await page.click(".panel-yomi-toggle");
 			await page.keyboard.press("Escape");
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.classList.contains("open")), "Escape in reading dialog must preserve selection");
+			await page.click(".panel-free-toggle");
+			const cancelBounds = await page.locator(".panel-free-back").boundingBox();
+			const applyBounds = await page.locator(".panel-free-apply").boundingBox();
+			assert(Math.abs(cancelBounds.y - applyBounds.y) < 1 && cancelBounds.x + cancelBounds.width <= applyBounds.x,
+				"input actions must stay side by side even at 320px");
+			assert(await page.locator("#editor-panel").evaluate((panel) => panel.scrollWidth <= panel.clientWidth),
+				"input area must fit the panel width");
+			await page.click(".panel-free-back");
 			await page.click(".panel-close");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
@@ -122,6 +130,8 @@ try {
 	await page.keyboard.press("Escape");
 	assert(await page.locator("#editor-panel").evaluate((panel) => panel.open) &&
 		await page.locator(".panel-candidates").isVisible(), "Escape from custom input returns to candidates");
+	assert(await page.locator(".panel-free-toggle").evaluate((button) => document.activeElement === button),
+		"keyboard cancellation returns focus to the input launcher");
 	await page.evaluate(() => { navigator.clipboard.writeText = async (value) => { window.copied = value; }; });
 	await menuAction(page, "#btn-copy");
 	await page.waitForFunction(() => window.copied?.length > 0);
