@@ -75,6 +75,7 @@
           から再開できます。
         </p>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
+        <p id="bridge-status" class="editor-status" role="status" hidden></p>
         <div id="editor-toolbar" class="editor-toolbar" hidden>
           <div class="toolbar-group">
             <button id="btn-regenerate" class="btn btn-primary">固定中以外を再生成</button>
@@ -103,6 +104,7 @@
           <div class="toolbar-group">
             <button id="btn-import" class="btn btn-ghost">読み込み</button>
             <button id="btn-export" class="btn btn-ghost">書き出し</button>
+            <button id="btn-video" class="btn" type="button" hidden>ビデオで作る ↗</button>
           </div>
         </div>
         <input id="import-file" type="file" accept=".json,application/json" hidden />

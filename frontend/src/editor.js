@@ -4,6 +4,7 @@
 // 以降: タップ・ドラッグ選択、候補グループ化・使用中表示・長押し詳細、戻る/進む
 import "./style.css";
 import "./editor.css";
+import "./appBridge.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -20,6 +21,8 @@ import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
 } from "./convertControls.js";
+
+const videoPeer = window.SoramimicBridge.peer("video", import.meta.env.VITE_SORAMIMIC_VIDEO_URL);
 
 export const EDITOR_STORAGE_KEY = "soramimic-editor";
 const GROUP_PAGE = 30; // 「もっと見る」1回で増える候補グループ数
@@ -2528,7 +2531,7 @@ export function validateEditorData(obj) {
 
 // ホスト固有の一時情報(host / hostRequest)は載せない。書き出しJSONは
 // 単体の編集ツールでも読み直せる自己完結した内容だけにする
-function exportData() {
+function exportPayload() {
 	const payload = {
 		format: EXPORT_FORMAT,
 		phrases: data.phrases,
@@ -2546,6 +2549,12 @@ function exportData() {
 	// 元歌詞(字幕用)は持っているときだけ載せる。ホストはこれを字幕に使う
 	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
 	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
+	if (data.song?.title) payload.song = { title: data.song.title };
+	return payload;
+}
+
+function exportData() {
+	const payload = exportPayload();
 	const blob = new Blob([JSON.stringify(payload, null, 1)], {
 		type: "application/json",
 	});
@@ -2596,6 +2605,20 @@ function setupImportExport() {
 	}
 	const exportBtn = $id("btn-export");
 	if (exportBtn) exportBtn.addEventListener("click", exportData);
+	const videoBtn = $id("btn-video");
+	videoBtn.hidden = !videoPeer || window.parent !== window;
+	videoBtn.addEventListener("click", async () => {
+		const status = $id("bridge-status");
+		status.hidden = false;
+		status.textContent = "ビデオへ歌詞を渡しています…";
+		videoBtn.disabled = true;
+		try {
+			const payload = window.SoramimicBridge.portable(exportPayload());
+			await window.SoramimicBridge.send(videoPeer, () => payload);
+			status.textContent = "ビデオへ歌詞を渡しました。開いた画面で同じ曲の音源またはMIDIを選んでください。";
+		} catch (error) { status.textContent = error.message; }
+		finally { videoBtn.disabled = false; }
+	});
 }
 
 // ---- 起動 ----
@@ -2738,7 +2761,29 @@ async function start() {
 
 setupEmbedNavigation();
 setupReplacementPanel();
-const initialization = start();
+const initialization = (async () => {
+	const status = $id("bridge-status");
+	try {
+		if (new URL(location.href).searchParams.has("lyrics-transfer")) {
+			status.hidden = false;
+			status.textContent = "ビデオから歌詞を受け取っています…";
+		}
+		const received = await window.SoramimicBridge.receive(videoPeer, (payload) => {
+			const problem = validateEditorData(payload);
+			if (problem) throw new Error(problem);
+			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
+		});
+		if (received) status.textContent = "ビデオの歌詞を読み込みました。";
+	} catch (error) {
+		status.hidden = false;
+		status.textContent = error.message;
+		// A failed handoff must not present an unrelated previous edit as this job.
+		setupImportExport();
+		$id("editor-empty").hidden = false;
+		return;
+	}
+	await start();
+})();
 // The same-origin video host waits for completion before reading shared storage.
 window.soramimicVideoReview = {
 	async regenerateUnlocked() {
