@@ -584,9 +584,9 @@ try {
 		"候補をクリックすると確認前にパネルが閉じた");
 	assert(await editor.textContent(".review-selected-word") === candSurface,
 		"選択した候補が上部に反映されない");
-	await editor.getByRole("button", { name: "確定して歌詞一覧に戻る", exact: true }).click();
+	await editor.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true }).click();
 	assert(await editor.locator("#editor-panel").evaluate((el) => !el.open),
-		"戻るボタンで候補を確定して歌詞一覧に戻れない");
+		"決定ボタンで候補を確定して歌詞一覧に戻れない");
 	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
 	assert(await editor.locator(".review-word.locked .chip-lock-icon").count() > 0,
 		"差し替え後の自動固定が鍵アイコンに反映されない");
