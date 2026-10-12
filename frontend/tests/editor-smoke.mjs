@@ -88,9 +88,11 @@ try {
 	assert(wordTitle && wordTitle.includes("→") && wordTitle.includes("ID:"), "単語詳細が失われた");
 	const firstWord = editor.locator(".review-word:not(.filler)").first();
 	await firstWord.click();
+	assert(await editor.locator(".panel-close").textContent() === "×", "未変更では閉じる表示にする");
 	const panelLock = editor.locator(".panel-lock");
 	const initiallyLocked = await panelLock.getAttribute("aria-pressed") === "true";
 	await panelLock.click();
+	assert(await editor.locator(".panel-close").textContent() === "決定", "固定の変更も決定表示にする");
 	assert((await panelLock.getAttribute("aria-pressed") === "true") === !initiallyLocked,
 		"固定を切り替えられない");
 	assert(await firstWord.evaluate((node) => node.classList.contains("locked")) === !initiallyLocked,
@@ -98,6 +100,7 @@ try {
 	assert(await firstWord.locator(".chip-lock-icon").count() === (initiallyLocked ? 0 : 1),
 		"固定中だけ鍵が表示されない");
 	await panelLock.click();
+	assert(await editor.locator(".panel-close").textContent() === "×", "固定を元に戻したら閉じる表示に戻す");
 	await editor.locator(".panel-close").click();
 
 	// ---- 自由入力は通常時には畳み、歌詞と読みを一緒に確定できる ----

@@ -89,6 +89,7 @@ let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確�
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
 let reviewPreviousSelection = null;
 let reviewPanelViewportCleanup = null;
+let panelInitialResults = null;
 
 function $id(id) {
 	return document.getElementById(id);
@@ -467,12 +468,25 @@ function toggleLock(line, word) {
 
 // ---- 選択 ----
 
+// Compare assignments and locks, excluding history and candidate browsing state.
+// Include every line because moving a duplicate can clear another assignment.
+function panelResultsSnapshot(results) {
+	return JSON.stringify(results.map((words) => words.map((word) => ({
+		id: isCustomWord(word) ? "custom" : word.id,
+		wordlistSource: word.wordlistSource || data.wordlistSource,
+		surface: word.surface, kana: word.kana,
+		period: word.period, locked: !!word.locked, filler: !!word.filler,
+	}))));
+}
+
 function setSelection(next) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
 	const prev = selection;
+	if (!next) panelInitialResults = null;
+	else if (!prev) panelInitialResults = structuredClone(data.results);
 	selection = next;
 	if (prev) rerenderLine(prev.line);
 	if (next && (!prev || prev.line !== next.line)) rerenderLine(next.line);
@@ -1331,6 +1345,7 @@ function buildPanel() {
 	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
 	appendReviewHeader(panel, data, selection, {
+		hasChanges: panelResultsSnapshot(data.results) !== panelResultsSnapshot(panelInitialResults),
 		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
 		lockIcon: makeLockIcon,
 		pointer: onUnitPointerDown,
