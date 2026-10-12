@@ -45,7 +45,8 @@ export async function findPlacements(app, kana, unitsList, param, weightsList, s
 					weightsList?.[line]?.slice(start, end))[0];
 				if (!candidate || !Number.isFinite(candidate.sim)) continue;
 				lineMatches.push({ line, start, end,
-					score: candidate.sim / Math.max(target.length, candidate.pronunciation.length),
+					// Keep the total distance so longer ranges retain their variation penalties.
+					score: candidate.sim,
 					lengthDifference: Math.abs(target.length - syllables.length),
 				});
 			}
