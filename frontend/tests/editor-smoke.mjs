@@ -204,7 +204,7 @@ try {
 			await editor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
 			assert(JSON.stringify((await snapshot()).results) === JSON.stringify(after.results),
 				"音数が違う手入力を再読込で復元できない");
-			await editor.click("#btn-regenerate");
+			await regenerateAll(editor);
 			await editor.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
 			assert(JSON.stringify((await snapshot()).results[0].find((word) => word.id === saved.id)) === JSON.stringify(saved),
 				"再生成で音数が違う手入力が失われた");
