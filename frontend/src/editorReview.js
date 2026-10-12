@@ -151,7 +151,8 @@ export function appendReviewHeader(panel, data, selection, callbacks) {
 	const header = element("div", "panel-header review-panel-header");
 	const close = element("button", "btn btn-ghost panel-close", "←");
 	close.type = "button";
-	close.setAttribute("aria-label", "歌詞一覧に戻る");
+	close.setAttribute("aria-label", "確定して歌詞一覧に戻る");
+	close.title = "確定して歌詞一覧に戻る";
 	close.addEventListener("click", callbacks.close);
 	const title = element("h2", "review-selected-word", word?.surface || kana);
 	const selected = element("div", "review-selected");

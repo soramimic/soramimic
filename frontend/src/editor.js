@@ -20,6 +20,7 @@ import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 import { findPlacements, highlightOriginal } from "./reverseSearch.js";
 import { lineRegenerationInput } from "./editorRegeneration.js";
 import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
+import { appendWordDetails } from "./editorWordDetails.js";
 import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
@@ -666,7 +667,8 @@ function applyReplacement(word, conflicts = []) {
 	words.sort((a, b) => a.period[0] - b.period[0]);
 	data.results[line] = words;
 	saveData();
-	setSelection(freeInputOpen ? selection : null);
+	setSelection(selection);
+	$id("editor-panel").scrollTop = 0;
 	for (const otherLine of new Set(conflicts.map((conflict) => conflict.line))) {
 		if (otherLine !== line) rerenderLine(otherLine);
 	}
@@ -1378,12 +1380,6 @@ function appendReplacementControls(panel, target, rangeWeights) {
 
 function setCandidateSelected(button, selected) {
 	button.setAttribute("aria-pressed", String(selected));
-	if (!selected) return;
-	const check = document.createElement("span");
-	check.className = "candidate-check";
-	check.textContent = "✓";
-	check.setAttribute("aria-hidden", "true");
-	button.appendChild(check);
 }
 
 function buildPanel() {
@@ -1411,6 +1407,9 @@ function buildPanel() {
 			open: () => openReadingFixDialog(line, start, end, span),
 		} : null,
 	});
+	const selectedWord = (data.results[line] || []).find((word) => !word.filler
+		&& word.period[0] === start && word.period[1] === end);
+	appendWordDetails(panel, selectedWord, data.wordlist, data.wordlistSource);
 
 	if (!db || settingsUpdating) {
 		const note = document.createElement("p");
@@ -1431,8 +1430,6 @@ function buildPanel() {
 		: null;
 	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
 	const used = usedIdSet(line, start, end);
-	const selectedWord = (data.results[line] || []).find((word) => !word.filler
-		&& word.period[0] === start && word.period[1] === end);
 	const isSelected = (cand) => !!selectedWord && cand.id === selectedWord.id
 		&& cand.surface === selectedWord.surface && cand.kana === selectedWord.kana
 		&& (cand.wordlistSource || data.wordlistSource) === (selectedWord.wordlistSource || data.wordlistSource);

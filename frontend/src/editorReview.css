@@ -29,6 +29,11 @@
 .review-selected { flex: 1; min-width: 0; }
 .review-selected-reading { color: var(--muted); font-size: .8rem; }
 .review-selected-word { font-size: 1.1rem; margin: 0; flex: 1; overflow-wrap: anywhere; }
+.review-word-details { margin: 0 0 1rem; padding: .65rem .8rem; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); font-size: .8rem; line-height: 1.5; max-height: 11rem; overflow: auto; overflow-wrap: anywhere; }
+.review-word-details p { margin: 0; color: var(--muted); }
+.review-word-details dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .2rem .7rem; margin: 0; }
+.review-word-details dt { color: var(--muted); }
+.review-word-details dd { margin: 0; white-space: pre-line; }
 .review-range { border-bottom: 1px solid var(--border); padding: .5rem 0 .8rem; margin-bottom: 1rem; color: var(--muted); font-size: .85rem; }
 .review-range-units { display: flex; flex-wrap: wrap; gap: .25rem; }
 .review-unit { min-width: 40px; min-height: 44px; padding: .35rem; }

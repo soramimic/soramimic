@@ -318,6 +318,11 @@ try {
 	const single = editor.locator(".panel-candidates .candidate:not(:has(.candidate-count))").first();
 	const candSurface = await single.locator(".candidate-surface").textContent();
 	await single.tap();
+	assert(await editor.locator("#editor-panel").evaluate((panel) => panel.open),
+		"候補をタップすると確認前に候補選択画面が閉じた");
+	assert(await editor.textContent(".review-selected-word") === candSurface,
+		"タップした候補が上部に反映されない");
+	await editor.locator(".panel-close").tap();
 	await editor.waitForSelector("#editor-panel.open", { state: "hidden", timeout: 10000 });
 	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
 	const lockedSurface = await editor.textContent(".review-word.locked .review-word-surface");
@@ -342,6 +347,9 @@ try {
 	const afterDeselect = await editor.evaluate(() =>
 		JSON.stringify(JSON.parse(sessionStorage.getItem("soramimic-editor")).results));
 	await single.tap();
+	assert(await editor.locator("#editor-panel").evaluate((panel) => panel.open),
+		"解除後に選び直すと確認前に候補選択画面が閉じた");
+	await editor.locator(".panel-close").tap();
 	await editor.waitForSelector("#editor-panel.open", { state: "hidden" });
 	assert(await editor.locator(".review-word.locked").count() === 1,
 		"解除した範囲へ続けて候補を割り当てられない");
