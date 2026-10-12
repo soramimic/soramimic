@@ -38,6 +38,7 @@
 		}
 		if (entry && typeof entry.csvText === "string") {
 			result.wordlist = { value: "ORIGINAL", text: entry.text || "自作リスト", csvText: entry.csvText };
+			if (entry.textOnly === true) result.wordlist.textOnly = true;
 		}
 		if (result.song) result.song = { title: String(result.song.title || "") };
 		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) {

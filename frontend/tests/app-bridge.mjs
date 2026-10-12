@@ -44,7 +44,8 @@ try {
 		format: "soramimic-editor/1", phrases: ["シズム"],
 		unitsList: [[{ pronunciation: "シ", surface_form: "し" }, { pronunciation: "ズ", surface_form: "ず" }, { pronunciation: "ム", surface_form: "む" }]],
 		results: [[{ surface: "清水", kana: "シミズ", pronunciation: "シミズ", originalkana: "シミズ", period: [0, 3], locked: true }]],
-		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
+		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", textOnly: true,
+			csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
 		lyrics: "沈む", originalLines: ["沈む"], song: { title: "テスト曲" },
 		host: { review: true }, hostRequest: { secret: true }, history: ["old"],
 	};
@@ -74,6 +75,7 @@ try {
 	assert.equal(returned.lyrics, payload.lyrics);
 	assert.equal(returned.song.title, payload.song.title);
 	assert.equal(returned.wordlist.csvText, payload.wordlist.csvText);
+	assert.equal(returned.wordlist.textOnly, true);
 	assert.equal(await target.evaluate(() => SoramimicBridge.peer("video").href), video + "/");
 	assert.equal(await target.evaluate(() => SoramimicBridge.peer("video", "javascript:alert(1)")), null);
 	assert.equal(await target.evaluate(() => {
