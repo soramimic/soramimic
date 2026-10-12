@@ -19,7 +19,7 @@ function canonicalUnits(parts) {
 }
 
 export function vowelSequence(kana) {
-	return canonicalUnits(syllables(kana)).map((unit) => charToVowel(unit === "ヲ" ? "オ" : unit))
+	return canonicalUnits(syllables(kana)).map((unit) => charToVowel(unit.replace(/^ヲ/, "オ")))
 		.filter((vowel) => /^[アイウエオ]$/.test(vowel)).join("");
 }
 

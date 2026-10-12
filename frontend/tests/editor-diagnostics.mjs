@@ -4,7 +4,7 @@ import { buildApp } from "../../tests/golden/harness-lib.mjs";
 const print = console.log.bind(console);
 
 for (const [left, right] of [["ケイ", "ケー"], ["コウ", "コー"], ["キャ", "ヤ"],
-	["カン", "カ"], ["カッ", "カ"], ["ヲ", "オ"], ["こー", "コウ"]]) {
+	["カン", "カ"], ["カッ", "カ"], ["ヲ", "オ"], ["ヲー", "オー"], ["こー", "コウ"]]) {
 	assert.equal(vowelSequence(left), vowelSequence(right), `${left}/${right}`);
 }
 assert.notEqual(vowelSequence("カカ"), vowelSequence("カ"), "separate syllables must retain their vowels");
