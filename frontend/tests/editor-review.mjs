@@ -117,10 +117,7 @@ try {
 	assert(await page.locator(".panel-free-reading").isHidden());
 	await page.fill(".panel-free-surface", "手入力の語");
 	await page.click(".review-reading-input summary");
-	await page.fill(".panel-free-reading", await page.evaluate(() => {
-		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
-		return data.results[0].find((word) => !word.filler).kana;
-	}));
+	await page.fill(".panel-free-reading", "あ".repeat(20));
 	await page.click(".panel-free-apply");
 	assert.equal(await firstWord.textContent(), "手入力の語");
 	assert(await page.locator("#editor-panel").evaluate((node) => node.open), "custom input returns to candidates for confirmation");
@@ -141,6 +138,10 @@ try {
 	assert(await selectedCandidate.locator(".candidate-source").isVisible(), "custom input is identified in candidates");
 	assert(await page.locator(".panel-candidates > .panel-free-toggle").isVisible(), "custom input belongs to the candidate grid");
 	const customBeforeEdit = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+	const customWord = customBeforeEdit.results[0].find((word) => word.surface === "手入力の語");
+	assert.equal(customWord.kana, "ア".repeat(20), "review accepts a reading longer than the selected range");
+	assert.equal(customWord.pronunciation.join(""), customWord.kana, "review retains the full custom reading");
+	assert.deepEqual(customWord.period, [start, end], "review keeps the source range despite the longer reading");
 	await page.click(".panel-free-toggle");
 	assert.equal(await page.inputValue(".panel-free-surface"), "手入力の語", "editing starts with the custom word");
 	assert.equal(await page.inputValue(".panel-free-reading"), customBeforeEdit.results[0].find((word) => word.surface === "手入力の語").kana,
