@@ -102,7 +102,7 @@ try {
 	assert(await page.textContent("#setup-song-title") === SONG_TITLE,
 		"曲名が表示されていない");
 
-	// 設定UI(⚙モーダルと同じ実体)がセットアップ画面の中に来ていること
+	// 設定UI(設定モーダルと同じ実体)がセットアップ画面の中に来ていること
 	assert(await page.$eval("#editor-settings-body",
 		(el) => !!el.closest("#editor-setup")),
 		"設定UIがセットアップ画面に入っていない");
@@ -121,10 +121,10 @@ try {
 
 	assert(await isHidden(page, "#editor-setup"), "変換後もセットアップ画面が残っている");
 	assert(!(await isHidden(page, "#editor-toolbar")), "変換後にツールバーが出ていない");
-	// 設定UIは⚙モーダルの中へ戻る
+	// 設定UIは設定モーダルの中へ戻る
 	assert(await page.$eval("#editor-settings-body",
 		(el) => !!el.closest("#editor-settings")),
-		"設定UIが⚙モーダルに戻っていない");
+		"設定UIが設定モーダルに戻っていない");
 
 	const afterConvert = await readData(page);
 	assert(afterConvert.results.length === PHRASES.length,
@@ -144,22 +144,22 @@ try {
 	const wordsFirst = await wordsOf(page);
 	assert(wordsFirst.length > 0, "替え歌単語が表示されていない");
 
-	// ---- 変換後: ⚙モーダルと再変換が従来どおり効く ----
-	await page.click("#btn-settings");
+	// ---- 変換後: 設定モーダルと再変換が従来どおり効く ----
+	await menuAction(page, "#btn-settings");
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await page.click("#editor-preset-buttons button:has-text('音そっくり')");
 	await waitIdle(page);
 	assert(await wordsOf(page) === wordsFirst, "設定変更で歌詞が変わった");
 	await page.click("#btn-settings-close");
-	await menuAction(page, "#btn-regenerate");
+	await page.click("#btn-regenerate");
 	await waitIdle(page);
 	const afterReconvert = await readData(page);
 	assert(afterReconvert.param.WORD_NUMBER_PENALTY === 0,
-		"⚙からの再変換でパラメータが反映されていない");
+		"設定変更後の再変換でパラメータが反映されていない");
 	assert(await wordsOf(page) !== wordsFirst, "再変換したのに結果が同じ");
 	// 「固定中以外を再生成」も使える
-	await menuAction(page, "#btn-regenerate");
+	await page.click("#btn-regenerate");
 	await page.waitForFunction(() => document.getElementById("regen-progress").hidden,
 		undefined, { timeout: 180000 });
 

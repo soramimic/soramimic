@@ -1,5 +1,5 @@
 import { selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
-// 編集ツールの「変換のしかた」モーダル(ツールバーの⚙から開く)のE2E: 生成画面へ戻らずに
+// 編集ツールの「変換のしかた」モーダル(三点メニューから開く)のE2E: 生成画面へ戻らずに
 // 設定の自動保存で今の歌詞を保持し、明示的な再生成だけで結果が変わること、
 // 設定変更と再生成を別々に取り消せること、位置別重み(weightsList)が
 // エンジンまで届くことを確認する。
@@ -61,12 +61,12 @@ function waitIdle(page) {
 	}, undefined, { timeout: 180000 });
 }
 
-// ⚙でモーダルを開く(既に開いていれば何もしない)
+// 三点メニューからモーダルを開く(既に開いていれば何もしない)
 async function openSettings(page) {
 	const open = await page.$eval("#editor-settings", (d) => d.open);
 	if (!open) {
 		await closeSelection(page);
-		await page.click("#btn-settings");
+		await menuAction(page, "#btn-settings");
 	}
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
@@ -133,7 +133,7 @@ try {
 		{ timeout: 120000 },
 	);
 
-	// ---- ⚙でモーダルが開く ----
+	// ---- 三点メニューからモーダルが開く ----
 	assert(!(await settingsOpen(editor)), "初期状態でモーダルが開いている");
 	await openSettings(editor);
 	await editor.waitForSelector("#editor-param-area input[type=range]", { state: "attached", timeout: 10000 });
@@ -141,7 +141,7 @@ try {
 	assert(!await editor.isVisible("#editor-param-area"), "詳細パラメータは最初は閉じる");
 	assert(!await editor.isVisible("#editor-duplicate-buttons"), "単語重複も詳細設定に含める");
 
-	// Escで閉じ、⚙で開き直せる(生成画面のダイアログと同じ操作)
+	// Escで閉じ、三点メニューから開き直せる(生成画面のダイアログと同じ操作)
 	await editor.keyboard.press("Escape");
 	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
@@ -184,7 +184,7 @@ try {
 	await waitIdle(editor);
 	assert((await readData(editor)).param.WORD_NUMBER_PENALTY === 60, "再読み込みで設定が消えた");
 	assert(await wordsOf(editor) === wordsBefore, "再読み込みで歌詞が変わった");
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 	assert(await wordsOf(editor) !== wordsBefore, "明示的な再生成に設定が反映されない");
 
@@ -288,7 +288,7 @@ try {
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
 	warnings.length = 0;
-	await menuAction(editor, "#btn-regenerate");
+	await editor.click("#btn-regenerate");
 	await waitIdle(editor);
 	const weighted = await editor.evaluate((k) =>
 		JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);

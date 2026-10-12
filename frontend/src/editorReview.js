@@ -53,7 +53,6 @@ export function setupReviewToolbar(review) {
 		button.title = label;
 		actions.append(button);
 	}
-	if (!review) actions.append(document.getElementById("btn-settings"));
 	const menu = element("div", "review-menu");
 	const summary = element("button", "btn btn-ghost review-menu-toggle", "•••");
 	summary.type = "button";
@@ -71,8 +70,15 @@ export function setupReviewToolbar(review) {
 	summary.addEventListener("click", () => setOpen(body.hidden));
 	const regenerate = document.getElementById("btn-regenerate");
 	regenerate.addEventListener("click", () => { setOpen(false); });
-	body.append(regenerate);
-	if (!review) {
+	if (review) {
+		body.append(regenerate);
+	} else {
+		regenerate.className = "btn btn-ghost btn-icon";
+		regenerate.setAttribute("aria-label", "固定中以外を再生成");
+		regenerate.title = "固定中以外を再生成";
+		regenerate.textContent = "↻";
+		actions.append(regenerate);
+		body.append(document.getElementById("btn-settings"));
 		for (const id of ["btn-import", "btn-export"]) body.append(document.getElementById(id));
 		const copy = element("div", "editor-copy-options");
 		copy.append(document.querySelector('label[for="copy-format"]'),

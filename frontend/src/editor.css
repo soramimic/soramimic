@@ -551,10 +551,10 @@ html.editor-free-input-open .editor-toolbar {
 .align-reset { font-size: 0.85em; }
 
 /* ---- 変換のしかたモーダル ----
-   生成画面のダイアログ(style.css の dialog)の見た目を踏襲し、ツールバーの⚙から
+   生成画面のダイアログ(style.css の dialog)の見た目を踏襲し、三点メニューから
    開く。中身のスライダーやチェックボックスは style.css の共通スタイルをそのまま使う */
 
-/* ツールバーの⚙。文字ボタンと高さを揃えつつ、正方形に近い当たり判定にする */
+/* ツールバーのアイコン。文字ボタンと高さを揃え、押しやすい余白を取る */
 .btn-icon {
 	padding: 0.45rem 0.7rem;
 	font-size: 1.05rem;
