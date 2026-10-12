@@ -89,6 +89,10 @@ try {
 	await page.setViewportSize({ width: 320, height: 568 });
 	const customTrigger = page.locator(".custom-wordlist-trigger");
 	const customMenu = page.locator("#custom-wordlist-menu");
+	const chooseWordlist = async (value) => {
+		await customTrigger.click();
+		await customMenu.locator(`[role="menuitemradio"][data-value="${value}"]`).click();
+	};
 	if (await customTrigger.getAttribute("aria-haspopup") !== "menu"
 		|| await customTrigger.getAttribute("aria-controls") !== "custom-wordlist-menu"
 		|| await customTrigger.getAttribute("aria-expanded") !== "false") {
@@ -138,11 +142,10 @@ try {
 	await page.keyboard.press("Tab");
 	if (!await customMenu.isHidden()) throw new Error("Tabでメニューが閉じない");
 	await customTrigger.click();
+	await page.mouse.click(2, 2);
+	if (!await customMenu.isHidden()) throw new Error("外側クリックでメニューが閉じない");
 	await page.click("#input-text");
-	if (!await customMenu.isHidden()
-		|| !await page.locator("#input-text").evaluate((el) => el === document.activeElement)) {
-		throw new Error("外側クリックでメニューを閉じた後にクリック先へfocusしない");
-	}
+	assert(await page.locator("#input-text").evaluate(el => el === document.activeElement));
 	await customTrigger.click();
 	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
 	if (!await customTrigger.evaluate((el) => el.classList.contains("active")
@@ -176,8 +179,8 @@ try {
 			+ JSON.stringify(selectedMenuVisual));
 	}
 	await page.keyboard.press("Escape");
-	// 自作リストから通常のnative selectへ移ると、自作triggerのactiveを解除する。
-	await page.selectOption("#wordlist-select", "MARINE_LIFE");
+	// 同じメニューから通常リストへ移ると、自作リストの選択状態を解除する。
+	await chooseWordlist("MARINE_LIFE");
 	if (await customTrigger.evaluate((el) => el.classList.contains("active"))) {
 		throw new Error("通常リスト選択後も自作リストがactiveのまま");
 	}
@@ -342,7 +345,7 @@ try {
 	await customMenu.getByRole("menuitem", { name: "「食べ物」を削除" }).click();
 	const afterDelete = await page.evaluate(() => ({
 		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
-		active: document.querySelector("#wordlist-select").value,
+		active: document.querySelector("#wordlist-trigger").dataset.value,
 		triggerFocused: document.querySelector(".custom-wordlist-trigger") === document.activeElement,
 	}));
 	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL" || !afterDelete.triggerFocused) {
@@ -350,7 +353,7 @@ try {
 	}
 
 	// ---- ファセット: Excel風の「すべて選択」で全選択・全解除・中間状態を表す ----
-	await page.selectOption("#wordlist-select", "POKEMON");
+	await chooseWordlist("POKEMON");
 	await page.click("#generation-advanced > summary");
 	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>
 		groups.map((group) => ({
@@ -391,11 +394,14 @@ try {
 		throw new Error("すべて選択を入れても全件チェックされない");
 	}
 	await firstFacet.locator("input.facet-value").first().uncheck();
+	await chooseWordlist("POKEMON");
+	assert(!await firstFacet.locator("input.facet-value").first().isChecked(),
+		"同じ単語リストを選び直しても絞り込みを保持する");
 	if (!await selectAll.evaluate((el) => el.indeterminate)) {
 		throw new Error("一部選択時にすべて選択が中間状態にならない");
 	}
 	// 科学者: 実際のUIが組み立てるwhereで、著名人博士の全行を任意選択できる。
-	await page.selectOption("#wordlist-select", "SCIENTIST");
+	await chooseWordlist("SCIENTIST");
 	const scope = page.locator("#wordlist-facets .facet-group").filter({ hasText: "通常の科学者" });
 	const ordinary = scope.locator("input.facet-value[value='no']");
 	const celebrities = scope.locator("input.facet-value[value='yes']");
@@ -467,7 +473,7 @@ try {
 		.every((row) => row[flagIndex] === "no"), "旧設定の復元で著名人博士が混入した");
 
 	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
-	await page.selectOption("#wordlist-select", "BASEBALL");
+	await chooseWordlist("BASEBALL");
 	const baseballSelectAll = page.getByRole("checkbox", { name: "種類をすべて選択" });
 	if (!await baseballSelectAll.evaluate((el) => el.indeterminate)) {
 		throw new Error("既定が部分選択のファセットで中間状態にならない");
@@ -574,24 +580,14 @@ try {
 		throw new Error("元歌詞対応づけのステータスが想定外: " + alignStatus);
 	}
 
-	// ---- サンプルチップ: クリックで歌詞と単語リストが入り、自動で変換が始まる ----
-	// (完了まで待つと全曲変換で時間がかかるため、開始=ボタンdisabledまでを確認する)
-	await page.locator("#generation-advanced").evaluate(el => { el.open = true; });
-	await page.click("#sample-buttons button:has-text('ももたろう × ポケモン')");
-	await page.waitForFunction(
-		() => document.getElementById("input-text").value.includes("桃太郎さん"),
-		{ timeout: 15000 },
-	);
-	const sampleWordlist = await page.evaluate(
-		() => document.querySelector("#wordlist-select").value,
-	);
-	if (sampleWordlist !== "POKEMON") {
-		throw new Error("サンプルチップで単語リストが切り替わらない: " + sampleWordlist);
-	}
-	await page.waitForFunction(
-		() => document.getElementById("btn-convert").disabled,
-		{ timeout: 15000 },
-	);
+	// サンプルは歌詞だけを読み込み、選択中のリストで生成できる。
+	const selectedBeforeSample = await customTrigger.getAttribute("data-value");
+	await page.click("#btn-sample-lyrics");
+	await page.selectOption("#sample-lyrics", "sample_lyric/momotaro.txt");
+	await page.waitForFunction(() => document.getElementById("input-text").value.includes("桃太郎さん"));
+	assert.equal(await customTrigger.getAttribute("data-value"), selectedBeforeSample);
+	assert(!page.url().endsWith("editor.html"));
+	await page.click("#btn-convert");
 
 	// ---- 中止ボタン: 変換中に押すとUIが即座に待機状態へ戻る ----
 	await page.waitForSelector("#btn-cancel:not([hidden])", { timeout: 15000 });

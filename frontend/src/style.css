@@ -70,28 +70,6 @@ body {
 	}
 }
 
-/* ナビはボタンではなくタブとして見せる(下線でアクティブ表示) */
-.tabs {
-	display: flex;
-	gap: 0.5rem;
-}
-
-.tabs a {
-	padding: 0.35rem 0.6rem;
-	border-bottom: 2px solid transparent;
-	color: var(--muted);
-	text-decoration: none;
-}
-
-.tabs a:hover {
-	color: var(--text);
-}
-
-.tabs a.active {
-	color: var(--accent);
-	border-bottom-color: var(--accent);
-	font-weight: 600;
-}
 
 main {
 	max-width: 1100px;
@@ -115,7 +93,7 @@ main {
 	background: var(--panel);
 }
 
-.generation-card .field-label {
+.generation-card label.field-label {
 	display: block;
 }
 
@@ -129,24 +107,94 @@ main {
 	min-height: 44px;
 }
 
-.generation-wordlist {
-	display: flex;
-	flex-wrap: wrap;
-	gap: .6rem;
+.generation-wordlist-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: .75rem;
 }
 
-.generation-file-row {
+.generation-wordlist-row > .field-label {
+	margin: 0;
+	white-space: nowrap;
+}
+
+.generation-wordlist,
+.generation-wordlist .custom-wordlist-picker {
+	min-width: 0;
+	width: 100%;
+}
+
+#wordlist-trigger {
+	width: 100%;
+	grid-template-columns: minmax(0, 1fr) auto;
+	padding: .5rem .65rem;
+	background: var(--panel);
+	border-color: var(--border);
+	color: var(--text);
+	text-align: left;
+}
+
+#wordlist-trigger > span {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#wordlist-trigger::after {
+	grid-row: 1;
+}
+
+.generation-input-actions {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: .4rem .75rem;
-	margin-top: .5rem;
+	justify-content: space-between;
+	gap: 0 .5rem;
+	margin-top: .25rem;
 }
 
-.generation-file-row .field-note {
-	margin: 0;
+.generation-source-link {
+	min-height: 44px;
+	padding: .35rem 0;
+	border: 0;
+	background: none;
+	color: var(--accent);
+	font: inherit;
+	font-size: .85rem;
+	cursor: pointer;
+}
+
+.generation-source-link:disabled {
+	opacity: .5;
+	cursor: default;
+}
+
+.generation-source-link:hover:not(:disabled) {
+	text-decoration: underline;
+}
+
+.site-footer {
+	max-width: 720px;
+	margin: 0 auto 2rem;
+	padding: 0 1rem;
+	text-align: center;
+	font-size: .85rem;
+}
+
+.site-footer a {
 	color: var(--muted);
-	font-size: .8rem;
+}
+
+.generation-card #param-area {
+	margin-top: .8rem;
+}
+
+.param-disclosure > summary {
+	min-height: 44px;
+	padding: .55rem 0;
+	cursor: pointer;
 }
 
 #lyrics-file-status {
@@ -154,11 +202,6 @@ main {
 	overflow-wrap: anywhere;
 }
 
-.generation-wordlist > select {
-	flex: 1 1 12rem;
-	min-width: 0;
-	width: auto;
-}
 
 .generation-advanced > summary,
 .generation-output > summary {
@@ -700,6 +743,19 @@ dialog h2 {
 	background: color-mix(in srgb, var(--accent) 12%, var(--panel));
 	outline: 2px solid currentColor;
 	outline-offset: -2px;
+}
+
+.custom-wordlist-menu-heading {
+	margin: .4rem 0 .1rem;
+	padding: .5rem .7rem;
+	font-size: .8rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.custom-wordlist-menu > .custom-wordlist-menu-select {
+	display: block;
+	width: 100%;
 }
 
 .custom-wordlist-menu-select {

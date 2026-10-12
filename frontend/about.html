@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>サイトについて | Soramimic</title>
+    <meta name="description" content="歌詞を入力して、単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。" />
+    <link rel="canonical" href="https://soramimic.com/about.html" />
+    <link rel="icon" type="image/png" href="/logo-soramimic-symbol-v4.png" />
+    <link rel="apple-touch-icon" href="/logo-soramimic-symbol-v4.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:site_name" content="Soramimic" />
+    <meta property="og:title" content="サイトについて | Soramimic" />
+    <meta property="og:description" content="歌詞を入力して、単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。" />
+    <meta property="og:url" content="https://soramimic.com/about.html" />
+    <meta property="og:image" content="https://soramimic.com/og-image-v2.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Soramimic 空耳歌詞メーカー。空耳でつくる、替え歌。" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="サイトについて | Soramimic" />
+    <meta name="twitter:description" content="歌詞を入力して、単語リストを選ぶだけ。空耳で置き換えた「○○で歌ってみた」風の替え歌を作れます。" />
+    <meta name="twitter:image" content="https://soramimic.com/og-image-v2.png" />
+    <meta name="twitter:image:alt" content="Soramimic 空耳歌詞メーカー。空耳でつくる、替え歌。" />
+    <script>
+      // Google Analytics (GA4)。本番ドメインでのみ有効化する
+      // (ローカル開発・CI・プレビューの計測混入を防ぐ)
+      (function () {
+        if (location.hostname !== "soramimic.com") return;
+        var s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=G-HY0DQQKKW8";
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { dataLayer.push(arguments); };
+        gtag("js", new Date());
+        gtag("config", "G-HY0DQQKKW8");
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="site-header">
+        <a class="brand" href="./"><img class="brand-logo"
+          src="/logo-soramimic-horizontal-v3.png" width="1900" height="467" alt=""
+          aria-hidden="true" /><span class="visually-hidden">Soramimic</span></a>
+      </header>
+
+      <main>
+        <section id="tab-about">
+          <h2>サイトについて</h2>
+          <p>本サイトは空耳作詞支援システム「Soramimic」のWebインターフェースを提供します</p>
+          <p>特定種類の単語(野球選手名、駅名など)で元歌の歌詞を再現するように作られた替え歌、通称「〇〇で歌ってみた」の歌詞を自動生成することができます</p>
+          <p>Soramimicは「空耳」と「mimic(模倣)」をかけ合わせた造語です。「ソラミミック」と発音します</p>
+          <p>本サイトはアクセス解析にGoogle Analyticsを使用しています</p>
+          <h2>開発者</h2>
+          <p><a target="_blank" href="https://x.com/shimajiroxyz">shimajiroxyz</a></p>
+          <h2>謝辞</h2>
+          <p>当サイトの開発・運営にご協力くださった皆さまに心より感謝申し上げます(以下、順不同)</p>
+          <p>サイト運営費、開発費をご寄付いただいた皆様:
+            篠永康平 様、増田一也 様、中崎宏祐 様、ちら@修羅ひよこ大学院生 様、
+            高橋仁 様、久保井亮一 様、藤原政彦 様、さいとてつや 様、横田将志 様、松田実 様、
+            細田一史 様、渡辺祐太 様
+          </p>
+          <p>単語リストを提供いただいた皆さま:野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、サッカー選手表-&gt;ヨロスーさま、駅名表-&gt;すきやきすきや様</p>
+          <h2>更新履歴</h2>
+          <div id="changelog">
+            <div>2026/08/11 自作の単語リストを名前付きで複数保存し、CSV・テキストファイルから読み込めるようにしました</div>
+            <div>2026/07/26 「うっせぇ」「はぁ」など小書きカナを含む行が変換できない不具合を修正</div>
+            <div>2026/07/20 v2を公開(サイトを全面リニューアル)</div>
+            <div>2024/12/25 野球選手表更新(20240811ver)</div>
+            <div>2024/05/09 ポケモン表の更新(第9世代を追加)</div>
+            <div>2022/05/11 野球選手表更新(2022年度選手を追加)</div>
+            <div>2021/06/02 初期読み込み速度の改善</div>
+            <div>2021/05/07 出力フォーマットを選ぶ機能の追加</div>
+            <div>2021/03/14 サイトデザインを更新</div>
+            <div>2021/03/12 サンプル歌詞の入力機能を追加</div>
+            <div>2020/05/21 ポケモン表の更新(第8世代を追加)</div>
+            <div>2020/04/09 サッカー選手の更新(監督名を追加)</div>
+            <div>2020/03/26 サッカー選手の追加、野球選手と物理学者リストの更新</div>
+            <div>2019/08/25 英単語の変換に対応</div>
+            <div>2019/08/19 Webサイト公開</div>
+          </div>
+        </section>
+      </main>
+      <footer class="site-footer"><a href="./">歌詞を生成する</a></footer>
+    </div>
+  </body>
+</html>
