@@ -72,10 +72,19 @@ try {
 	await page.setViewportSize({ width: 390, height: 740 });
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.click("#btn-settings");
-	for (const selector of ["#editor-wordlist", "#editor-param-area", "#editor-duplicate-buttons"]) {
+	for (const selector of ["#editor-wordlist", "#editor-preset-buttons"]) {
 		assert(await page.locator(selector).isVisible(), `${selector} settings retained`);
 	}
+	for (const selector of ["#editor-param-area", "#editor-duplicate-buttons"]) {
+		assert(await page.locator(selector).isHidden(), `${selector} starts collapsed`);
+	}
 	await screenshot("settings");
+	await page.locator("#editor-advanced-settings > summary").focus();
+	await page.keyboard.press("Enter");
+	for (const selector of ["#editor-param-area", "#editor-duplicate-buttons"]) {
+		assert(await page.locator(selector).isVisible(), `${selector} expands with the keyboard`);
+	}
+	await screenshot("settings-expanded");
 	await page.click("#btn-settings-close");
 	await first.click();
 	await page.locator(".panel-close").focus();

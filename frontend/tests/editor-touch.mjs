@@ -333,7 +333,8 @@ try {
 	await editor.touchscreen.tap(gear.x + gear.width / 2, gear.y + gear.height / 2);
 	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
-	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+	await editor.waitForSelector("#editor-param-area input[type=range]", { state: "attached", timeout: 10000 });
+	assert(await editor.locator("#editor-param-area").isHidden(), "詳細パラメータは最初は閉じる");
 
 	// 狭い画面ではほぼ全画面(横幅いっぱい)になっていること
 	const dlg = await editor.locator("#editor-settings").boundingBox();
@@ -348,6 +349,10 @@ try {
 	const wordnum = await editor.$$eval("#editor-param-area input[type=range]",
 		(els) => Number(els[2].value));
 	assert(wordnum === 6, "タッチでプリセットが適用されない: " + wordnum);
+	const advanced = editor.locator("#editor-advanced-settings > summary");
+	await advanced.scrollIntoViewIfNeeded();
+	await advanced.tap();
+	assert(await editor.locator("#editor-param-area").isVisible(), "詳細設定をタップで開けない");
 
 	// ×のタップで閉じられること(Esc の使えないスマホでの主な閉じ方)
 	const close = await editor.locator("#btn-settings-close").boundingBox();
