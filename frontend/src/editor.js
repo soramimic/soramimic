@@ -1398,6 +1398,7 @@ function buildPanel() {
 
 	appendReviewHeader(panel, data, selection, {
 		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
+		lockIcon: makeLockIcon,
 		clear: clearSelectionAssignment,
 		pointer: onUnitPointerDown,
 		reading: !isVideoReview(data) && span ? {

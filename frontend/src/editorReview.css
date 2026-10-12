@@ -80,9 +80,11 @@
 .reverse-highlight { color: var(--text); background: color-mix(in srgb, #edb932 32%, var(--bg)); border-radius: 3px; }
 .review-word.reverse-word-match { background: color-mix(in srgb, #edb932 25%, var(--panel)); border-color: #ac8318; color: var(--text); }
 .review-word.reverse-word-match.locked { box-shadow: inset 0 -3px var(--accent); }
-.review-panel-header .panel-clear { min-height: 44px; font-size: .85rem; }
 .review-word-actions { display: flex; gap: .25rem; flex: none; }
-.review-word-actions .btn { padding-left: .5rem; padding-right: .5rem; font-size: .8rem; white-space: nowrap; }
+.review-word-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; min-width: 44px; min-height: 44px; padding: .5rem; font-size: .8rem; white-space: nowrap; }
+.review-word-actions svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.review-word-actions .panel-lock[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, var(--bg)); }
+.review-word-actions .chip-lock-icon { color: inherit; }
 .assignment-conflict-dialog p, .assignment-conflict-dialog li { overflow-wrap: anywhere; line-height: 1.7; }
 .assignment-conflict-dialog .dialog-buttons { flex-wrap: wrap; }
 .assignment-conflict-dialog .btn { min-height: 44px; }
