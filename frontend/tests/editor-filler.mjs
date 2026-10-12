@@ -1,4 +1,4 @@
-import { selectRange, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, selectRange, menuAction } from "./editor-ui.mjs";
 // filler(万能候補)のE2E(#128)。
 // 語数の少ない自作リストで再変換すると、置ける単語が無い区間は「元歌詞のまま」の
 // filler チップ(破線)になり、行が空にならないこと。filler をタップすれば通常どおり
@@ -103,7 +103,7 @@ try {
 	await editor.click("#btn-original-register");
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
-	await editor.click("#btn-regenerate");
+	await regenerateAll(editor);
 	await waitIdle(editor);
 
 	// ---- 空行にならず、埋まらない区間が filler になっている ----

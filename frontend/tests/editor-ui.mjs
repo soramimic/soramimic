@@ -36,6 +36,12 @@ export async function menuAction(page, id) {
 	await page.locator(id).click();
 }
 
+export async function regenerateAll(page) {
+	await closeSelection(page);
+	await page.locator("#btn-regenerate").click();
+	await page.locator("#btn-regenerate-confirm").click();
+}
+
 export async function closeSelection(page) {
 	if (await page.locator("#editor-panel").evaluate((panel) => panel.classList.contains("open"))) {
 		await page.locator(".panel-close").click();
