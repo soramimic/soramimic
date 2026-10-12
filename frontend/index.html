@@ -106,7 +106,14 @@
             <p id="generation-error" class="generation-error" role="alert" hidden></p>
           </section>
           <details class="generation-output" id="output-field" hidden>
-            <summary>前回の生成結果</summary>
+            <summary>過去の生成結果 <span id="history-count"></span></summary>
+            <div class="history-toolbar">
+              <label class="visually-hidden" for="history-select">保存した生成結果</label>
+              <select id="history-select" class="input" disabled></select>
+              <button id="history-delete" class="btn" type="button" aria-label="選択した生成結果を削除" disabled>削除</button>
+            </div>
+            <p class="history-hint">直近20件をこのブラウザに保存します。</p>
+            <p id="history-status" class="history-status" role="status" hidden></p>
             <div class="output-header">
               <h2 id="output-heading">出力結果</h2>
               <div class="output-toolbar">

@@ -397,6 +397,35 @@ body:has(#sample-picker[open]) {
 	margin-bottom: 0.7rem;
 }
 
+.history-toolbar {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: .6rem;
+	margin-bottom: .4rem;
+}
+
+.history-toolbar .input,
+.history-toolbar .btn {
+	min-height: 44px;
+}
+
+.generation-output .btn {
+	min-height: 44px;
+}
+
+.history-hint,
+.history-status {
+	font-size: .85rem;
+	color: var(--muted);
+	margin: .4rem 0 .8rem;
+	overflow-wrap: anywhere;
+}
+
+#history-count {
+	font-weight: 400;
+	color: var(--muted);
+}
+
 .output-header h2 {
 	flex: none;
 	margin: 0;
@@ -425,6 +454,16 @@ body:has(#sample-picker[open]) {
 	flex: none;
 	min-height: 2.75rem;
 	white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+	.output-header {
+		display: block;
+	}
+
+	.output-toolbar {
+		margin-top: .55rem;
+	}
 }
 
 #btn-copy-result.copy-success {
