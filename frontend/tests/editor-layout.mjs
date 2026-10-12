@@ -60,6 +60,12 @@ try {
 			await page.locator(".review-unit").first().scrollIntoViewIfNeeded();
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.getBoundingClientRect().height >= 700), "editing should use the viewport");
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "selection overflows");
+			const done = page.getByRole("button", { name: "決定して歌詞一覧に戻る", exact: true });
+			const doneBox = await done.boundingBox();
+			const headerBox = await page.locator(".review-panel-header").boundingBox();
+			assert(doneBox.width >= 44 && doneBox.height >= 44, "confirmation must be touch accessible");
+			assert(Math.abs(doneBox.x + doneBox.width - headerBox.x - headerBox.width) < 2,
+				"confirmation stays at the right edge of the header");
 			assert(await page.locator(".panel-yomi-toggle").isVisible(), "source reading repair remains available");
 			if (width === 390 && colorScheme === "dark") await screenshot("selection");
 			await page.click(".panel-yomi-toggle");
@@ -73,7 +79,8 @@ try {
 			assert(await page.locator("#editor-panel").evaluate((panel) => panel.scrollWidth <= panel.clientWidth),
 				"input area must fit the panel width");
 			await page.click(".panel-free-back");
-			await page.click(".panel-close");
+			await done.focus();
+			await page.keyboard.press("Enter");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
 			assert(await page.getByRole("button", { name: "設定", exact: true }).isVisible());
@@ -124,6 +131,7 @@ try {
 	await page.keyboard.press("Shift+Tab");
 	assert(await page.locator("#editor-panel").evaluate((panel) => panel.contains(document.activeElement)), "focus stays inside selection");
 	await page.click(".panel-free-toggle");
+	assert.equal(await page.locator(".panel-done").count(), 0, "free input uses its own apply action");
 	assert(await page.locator(".panel-free-reading").isHidden());
 	await page.click(".review-reading-input summary");
 	assert(await page.locator(".panel-free-reading").isVisible());

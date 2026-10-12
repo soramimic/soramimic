@@ -42,6 +42,7 @@
 .simple-editor .editor-panel.open { transform: none; }
 .review-panel-header { position: sticky; top: 0; z-index: 2; background: var(--bg); align-items: flex-start; gap: .7rem; padding: calc(.6rem + env(safe-area-inset-top)) 0 .6rem; margin: 0; }
 .review-panel-header .panel-close { min-width: 44px; min-height: 44px; font-size: 1.25rem; }
+.review-panel-header .panel-done { flex: none; padding: .5rem .8rem; font-size: .9rem; font-weight: 600; white-space: nowrap; }
 .review-selected { flex: 1; min-width: 0; display: flow-root; }
 .review-selected-name { overflow-wrap: anywhere; }
 /* The summary sits beside the name; expanded facts use the full selected area. */
