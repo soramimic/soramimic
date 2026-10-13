@@ -47,6 +47,7 @@ try {
 		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", textOnly: true,
 			csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
 		lyrics: "沈む", originalLines: ["沈む"], song: { title: "テスト曲" },
+		videoMetadata: {songTitle: "手入力の曲名", songCredit: "作詞・作曲: テスト\n許諾表記", thumbnailWordlistLabel: "表示用の名前", secret: "not portable"},
 		host: { review: true }, hostRequest: { secret: true }, history: ["old"],
 	};
 	await source.evaluate(data => { window.payload = data; }, payload);
@@ -59,6 +60,10 @@ try {
 	const received = await target.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	assert.deepEqual(received.results, payload.results);
 	assert.deepEqual(received.unitsList, payload.unitsList);
+	assert.deepEqual(received.videoMetadata, {
+		songTitle: payload.videoMetadata.songTitle, songCredit: payload.videoMetadata.songCredit,
+		thumbnailWordlistLabel: payload.videoMetadata.thumbnailWordlistLabel,
+	});
 	assert.equal(received.host, undefined);
 	assert.equal(received.hostRequest, undefined);
 	assert.notDeepEqual(received.history, ["old"]);
@@ -74,6 +79,7 @@ try {
 	assert.deepEqual(returned.unitsList, payload.unitsList);
 	assert.equal(returned.lyrics, payload.lyrics);
 	assert.equal(returned.song.title, payload.song.title);
+	assert.deepEqual(returned.videoMetadata, received.videoMetadata);
 	assert.equal(returned.wordlist.csvText, payload.wordlist.csvText);
 	assert.equal(returned.wordlist.textOnly, true);
 	assert.equal(await target.evaluate(() => SoramimicBridge.peer("video").href), video + "/");

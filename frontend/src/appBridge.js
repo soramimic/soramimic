@@ -41,6 +41,16 @@
 			if (entry.textOnly === true) result.wordlist.textOnly = true;
 		}
 		if (result.song) result.song = { title: String(result.song.title || "") };
+		// Carry only display metadata. Never forward host/session or upload details.
+		if (data.videoMetadata && typeof data.videoMetadata === "object") {
+			const metadata = {};
+			for (const [key, limit] of [["songTitle", 200], ["songCredit", 2000], ["thumbnailWordlistLabel", 100]]) {
+				if (typeof data.videoMetadata[key] === "string") {
+					metadata[key] = data.videoMetadata[key].slice(0, limit);
+				}
+			}
+			result.videoMetadata = metadata;
+		}
 		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) {
 			throw new Error("歌詞データが4MBを超えるため開けません。");
 		}

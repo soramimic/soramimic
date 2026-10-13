@@ -2749,6 +2749,7 @@ function exportPayload() {
 	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
 	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
 	if (data.song?.title) payload.song = { title: data.song.title };
+	if (data.videoMetadata) payload.videoMetadata = data.videoMetadata;
 	return payload;
 }
 
