@@ -124,7 +124,7 @@ try {
 		await page.fill("#input-text", "入力中の歌詞");
 		await page.getByRole("link", { name: "サイトについて", exact: true }).click();
 		await page.waitForURL("**/about.html");
-		assert(await page.getByRole("heading", { name: "支えてくださった皆さま", exact: true }).isVisible());
+		assert(await page.getByRole("heading", { name: "謝辞", exact: true }).isVisible());
 		await page.getByRole("link", { name: "歌詞を生成する", exact: true }).click();
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.inputValue("#input-text"), "入力中の歌詞");

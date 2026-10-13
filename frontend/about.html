@@ -45,7 +45,6 @@
     <link rel="stylesheet" href="/src/about.css" />
   </head>
   <body class="about-page">
-    <a class="about-skip-link" href="#about-content">本文へスキップ</a>
     <div id="app">
       <header class="site-header">
         <a class="brand" href="./"><img class="brand-logo"
@@ -53,110 +52,63 @@
           aria-hidden="true" /><span class="visually-hidden">Soramimic</span></a>
       </header>
 
-      <main id="about-content" class="about-main">
-        <section class="about-hero" aria-labelledby="about-title">
-          <div class="about-intro">
-            <p class="about-eyebrow">サイトについて</p>
-            <h1 id="about-title"><span>空耳でつくる、</span><span>替え歌。</span></h1>
-            <p class="about-lead">野球選手の名前で。駅の名前で。<br />好きな言葉で、歌ってみる。</p>
-            <p>Soramimicは、元の歌詞に似た響きの単語を探して、<br class="about-desktop-break" />「○○で歌ってみた」の歌詞づくりを手伝うサービスです。</p>
-            <a class="about-cta" href="./">空耳歌詞をつくる <span aria-hidden="true">→</span></a>
-          </div>
-          <div class="about-name">
-            <img src="/logo-soramimic-symbol-v4.png" width="112" height="112" alt="" />
-            <p class="about-name-word">Soramimic<span>ソラミミック</span></p>
-            <p class="about-name-origin">「空耳」＋ mimic<span>（模倣）</span></p>
-            <p>ふたつの言葉を合わせた名前です。</p>
-          </div>
-        </section>
+      <main class="about-main">
+        <article id="tab-about">
+          <section class="about-section" aria-labelledby="about-title">
+            <h1 id="about-title">サイトについて</h1>
+            <div class="about-section-content">
+              <p>本サイトは空耳作詞支援システム「Soramimic」のWebインターフェースを提供します</p>
+              <p>特定種類の単語(野球選手名、駅名など)で元歌の歌詞を再現するように作られた替え歌、通称「〇〇で歌ってみた」の歌詞を自動生成することができます</p>
+              <p>Soramimicは「空耳」と「mimic(模倣)」をかけ合わせた造語です。「ソラミミック」と発音します</p>
+              <p>本サイトはアクセス解析にGoogle Analyticsを使用しています</p>
+            </div>
+          </section>
 
-        <section class="about-section" aria-labelledby="how-title">
-          <h2 id="how-title">歌詞づくりの流れ</h2>
-          <ol class="about-steps" role="list">
-            <li>
-              <span class="about-step-number" aria-hidden="true">01</span>
-              <h3>歌詞を入れる</h3>
-              <p>元の歌詞を入力します。サンプル歌詞でも試せます。</p>
-            </li>
-            <li>
-              <span class="about-step-number" aria-hidden="true">02</span>
-              <h3>単語リストを選ぶ</h3>
-              <p>野球選手名や駅名などから選んで生成。自作のリストも使えます。</p>
-            </li>
-            <li>
-              <span class="about-step-number" aria-hidden="true">03</span>
-              <h3>好きな響きに仕上げる</h3>
-              <p>編集ツールで候補を比べて、言葉を差し替えながら調整できます。</p>
-            </li>
-          </ol>
-        </section>
-
-        <section class="about-section about-thanks" aria-labelledby="thanks-title">
-          <div class="about-section-heading">
-            <h2 id="thanks-title">支えてくださった皆さま</h2>
-            <p>開発・運営へのご協力に、心より感謝申し上げます。<span class="about-order">（順不同）</span></p>
-          </div>
-          <h3>運営費・開発費のご支援</h3>
-          <ul class="about-supporters" role="list">
-            <li>篠永康平 様</li>
-            <li>増田一也 様</li>
-            <li>中崎宏祐 様</li>
-            <li>ちら@修羅ひよこ大学院生 様</li>
-            <li>高橋仁 様</li>
-            <li>久保井亮一 様</li>
-            <li>藤原政彦 様</li>
-            <li>さいとてつや 様</li>
-            <li>横田将志 様</li>
-            <li>松田実 様</li>
-            <li>細田一史 様</li>
-            <li>渡辺祐太 様</li>
-          </ul>
-          <h3>単語リストのご提供</h3>
-          <dl class="about-contributors">
-            <div><dt>野球選手表</dt><dd>Moto（選手表ニキ）様と協力者の皆様</dd></div>
-            <div><dt>サッカー選手表</dt><dd>ヨロスー 様</dd></div>
-            <div><dt>駅名表</dt><dd>すきやきすきや 様</dd></div>
-          </dl>
-        </section>
-
-        <section class="about-section" aria-labelledby="history-title">
-          <h2 id="history-title">更新履歴</h2>
-          <ol class="about-history" id="changelog" role="list">
-            <li><time datetime="2026-08-11">2026.08.11</time><p>自作の単語リストを名前付きで複数保存し、CSV・テキストファイルから読み込めるようにしました。</p></li>
-            <li><time datetime="2026-07-26">2026.07.26</time><p>「うっせぇ」「はぁ」など、小書きカナを含む行が変換できない不具合を修正しました。</p></li>
-            <li><time datetime="2026-07-20">2026.07.20</time><p>v2を公開し、サイトを全面リニューアルしました。</p></li>
-          </ol>
-          <details class="about-history-archive">
-            <summary>これまでの更新を見る<span aria-hidden="true">＋</span></summary>
-            <ol class="about-history" role="list">
-              <li><time datetime="2024-12-25">2024.12.25</time><p>野球選手表を更新（20240811ver）。</p></li>
-              <li><time datetime="2024-05-09">2024.05.09</time><p>ポケモン表を更新（第9世代を追加）。</p></li>
-              <li><time datetime="2022-05-11">2022.05.11</time><p>野球選手表を更新（2022年度選手を追加）。</p></li>
-              <li><time datetime="2021-06-02">2021.06.02</time><p>初期読み込み速度を改善しました。</p></li>
-              <li><time datetime="2021-05-07">2021.05.07</time><p>出力フォーマットを選ぶ機能を追加しました。</p></li>
-              <li><time datetime="2021-03-14">2021.03.14</time><p>サイトデザインを更新しました。</p></li>
-              <li><time datetime="2021-03-12">2021.03.12</time><p>サンプル歌詞の入力機能を追加しました。</p></li>
-              <li><time datetime="2020-05-21">2020.05.21</time><p>ポケモン表を更新（第8世代を追加）。</p></li>
-              <li><time datetime="2020-04-09">2020.04.09</time><p>サッカー選手表に監督名を追加しました。</p></li>
-              <li><time datetime="2020-03-26">2020.03.26</time><p>サッカー選手リストの追加、野球選手と物理学者リストの更新。</p></li>
-              <li><time datetime="2019-08-25">2019.08.25</time><p>英単語の変換に対応しました。</p></li>
-              <li><time datetime="2019-08-19">2019.08.19</time><p>Webサイトを公開しました。</p></li>
-            </ol>
-          </details>
-        </section>
-
-        <section class="about-section about-site-info" aria-labelledby="developer-title">
-          <div>
+          <section class="about-section" aria-labelledby="developer-title">
             <h2 id="developer-title">開発者</h2>
-            <a class="about-developer" href="https://x.com/shimajiroxyz" target="_blank" rel="noopener noreferrer">shimajiroxyz <span>X（別タブで開きます）<span aria-hidden="true"> ↗</span></span></a>
-          </div>
-          <div class="about-analytics">
-            <h3>アクセス解析について</h3>
-            <p>本サイトはアクセス解析にGoogle Analyticsを使用しています。</p>
-          </div>
-        </section>
+            <div class="about-section-content">
+              <p><a target="_blank" rel="noopener noreferrer" href="https://x.com/shimajiroxyz">shimajiroxyz</a></p>
+            </div>
+          </section>
+
+          <section class="about-section" aria-labelledby="thanks-title">
+            <h2 id="thanks-title">謝辞</h2>
+            <div class="about-section-content">
+              <p>当サイトの開発・運営にご協力くださった皆さまに心より感謝申し上げます(以下、順不同)</p>
+              <p><span class="about-credit-label">サイト運営費、開発費をご寄付いただいた皆様:</span>
+                <span class="about-donor">篠永康平 様、</span><span class="about-donor">増田一也 様、</span><span class="about-donor">中崎宏祐 様、</span><span class="about-donor">ちら@修羅ひよこ大学院生 様、</span>
+                <span class="about-donor">高橋仁 様、</span><span class="about-donor">久保井亮一 様、</span><span class="about-donor">藤原政彦 様、</span><span class="about-donor">さいとてつや 様、</span><span class="about-donor">横田将志 様、</span><span class="about-donor">松田実 様、</span>
+                <span class="about-donor">細田一史 様、</span><span class="about-donor">渡辺祐太 様</span>
+              </p>
+              <p><span class="about-credit-label">単語リストを提供いただいた皆さま:</span><span class="about-list-credit">野球選手表-&gt;Moto(選手表ニキ)様と協力者の皆様、</span><span class="about-list-credit">サッカー選手表-&gt;ヨロスーさま、</span><span class="about-list-credit">駅名表-&gt;すきやきすきや様</span></p>
+            </div>
+          </section>
+
+          <section class="about-section" aria-labelledby="history-title">
+            <h2 id="history-title">更新履歴</h2>
+            <div class="about-section-content">
+              <div id="changelog">
+                <div><time datetime="2026-08-11">2026/08/11</time> <span>自作の単語リストを名前付きで複数保存し、CSV・テキストファイルから読み込めるようにしました</span></div>
+                <div><time datetime="2026-07-26">2026/07/26</time> <span>「うっせぇ」「はぁ」など小書きカナを含む行が変換できない不具合を修正</span></div>
+                <div><time datetime="2026-07-20">2026/07/20</time> <span>v2を公開(サイトを全面リニューアル)</span></div>
+                <div><time datetime="2024-12-25">2024/12/25</time> <span>野球選手表更新(20240811ver)</span></div>
+                <div><time datetime="2024-05-09">2024/05/09</time> <span>ポケモン表の更新(第9世代を追加)</span></div>
+                <div><time datetime="2022-05-11">2022/05/11</time> <span>野球選手表更新(2022年度選手を追加)</span></div>
+                <div><time datetime="2021-06-02">2021/06/02</time> <span>初期読み込み速度の改善</span></div>
+                <div><time datetime="2021-05-07">2021/05/07</time> <span>出力フォーマットを選ぶ機能の追加</span></div>
+                <div><time datetime="2021-03-14">2021/03/14</time> <span>サイトデザインを更新</span></div>
+                <div><time datetime="2021-03-12">2021/03/12</time> <span>サンプル歌詞の入力機能を追加</span></div>
+                <div><time datetime="2020-05-21">2020/05/21</time> <span>ポケモン表の更新(第8世代を追加)</span></div>
+                <div><time datetime="2020-04-09">2020/04/09</time> <span>サッカー選手の更新(監督名を追加)</span></div>
+                <div><time datetime="2020-03-26">2020/03/26</time> <span>サッカー選手の追加、野球選手と物理学者リストの更新</span></div>
+                <div><time datetime="2019-08-25">2019/08/25</time> <span>英単語の変換に対応</span></div>
+                <div><time datetime="2019-08-19">2019/08/19</time> <span>Webサイト公開</span></div>
+              </div>
+            </div>
+          </section>
+        </article>
       </main>
-      <footer class="site-footer"><a href="./">歌詞を生成する <span aria-hidden="true">→</span></a></footer>
+      <footer class="site-footer"><a href="./">歌詞を生成する</a></footer>
     </div>
   </body>
 </html>
