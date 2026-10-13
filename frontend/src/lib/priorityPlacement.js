@@ -1,7 +1,6 @@
 import { normalizePriorityWords } from "./priorityWords.js";
 import { syllableVariations } from "./kanaToSyllable.js";
 
-export const PRIORITY_MAX_DISTANCE_PER_UNIT = 20;
 const BEAM_SIZE = 32;
 const CANDIDATES_PER_WORD = 16;
 
@@ -73,8 +72,7 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 						if (signal?.aborted) return [];
 						const target = units.slice(start, end).map(unit => unit.pronunciation);
 						const word = scoreRange(subset, target, line, start, end);
-						if (!word || !Number.isFinite(word.sim)
-							|| word.sim / target.length > PRIORITY_MAX_DISTANCE_PER_UNIT) continue;
+						if (!word || !Number.isFinite(word.sim)) continue;
 						const placed = { ...word, period: [start, end], originalkana: target.join(""),
 							score: word.sim + boundaryCost(units, end, param), priorityPlaced: true };
 						candidates.push({ preference, line, word: placed,
@@ -84,7 +82,21 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 			}
 		}
 		candidates.sort((a, b) => a.cost - b.cost || a.line - b.line || a.word.period[0] - b.word.period[0]);
-		groups.push({ preference, candidates: candidates.slice(0, CANDIDATES_PER_WORD) });
+		// Include positions from different lines so several requested words can
+		// fit even when their cheapest positions compete within the same line.
+		const limit = Math.max(CANDIDATES_PER_WORD, Math.min(64, requested.length * 2));
+		const diverse = [];
+		const lines = new Set();
+		for (const candidate of candidates) {
+			if (lines.has(candidate.line)) continue;
+			lines.add(candidate.line); diverse.push(candidate);
+			if (diverse.length === limit) break;
+		}
+		for (const candidate of candidates) {
+			if (diverse.length === limit) break;
+			if (!diverse.includes(candidate)) diverse.push(candidate);
+		}
+		groups.push({ preference, candidates: diverse });
 	}
 	// Scarce words go first, but retain alternative assignments and omission paths.
 	groups.sort((a, b) => a.candidates.length - b.candidates.length || a.preference - b.preference);

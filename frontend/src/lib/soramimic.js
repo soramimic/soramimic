@@ -631,9 +631,9 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				const score = results.flat().reduce((sum, word) => sum
 					+ (Number.isFinite(word.score) ? word.score : Number.isFinite(word.sim) ? word.sim : 0)
 					+ param.WORD_NUMBER_PENALTY, 0);
-				if(!best || metrics.fillerUnits < best.metrics.fillerUnits
-					|| (metrics.fillerUnits === best.metrics.fillerUnits && metrics.included.length > best.metrics.included.length)
-					|| (metrics.fillerUnits === best.metrics.fillerUnits && metrics.included.length === best.metrics.included.length && score < best.score)){
+				if(!best || metrics.included.length > best.metrics.included.length
+					|| (metrics.included.length === best.metrics.included.length && metrics.fillerUnits < best.metrics.fillerUnits)
+					|| (metrics.included.length === best.metrics.included.length && metrics.fillerUnits === best.metrics.fillerUnits && score < best.score)){
 					best = { results, metrics, score };
 				}
 			}

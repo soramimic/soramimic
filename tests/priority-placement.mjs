@@ -37,12 +37,16 @@ assert.equal(priorityMetrics((await generate(["カキ"], joint,
 const gapDb = await wordList.parsePlain("通常,カカカ\n指定,ササ");
 const gapPrefs = [preferred("1", "指定")];
 const gap = await generate(["カカカ"], gapDb, gapPrefs);
-assert.equal(priorityMetrics(gap.results, gapPrefs).fillerUnits, 0, "consider the remainder before choosing a placement");
-assert.equal(priorityMetrics(gap.results, gapPrefs).included.length, 0);
+assert.equal(priorityMetrics(gap.results, gapPrefs).included.length, 1, "explicit preferences outrank a cleaner remainder");
+assert.equal(priorityMetrics(gap.results, gapPrefs).fillerUnits, 1, "report the unmatched remainder rather than silently dropping the requested word");
 
 const single = await wordList.parsePlain("通常,カ\n指定,サ\n遠い,キ");
 const distant = [preferred("2", "遠い")];
-assert.equal(priorityMetrics((await generate(["カ"], single, distant)).results, distant).included.length, 0, "poor phonetic matches are not forcibly placed");
+assert.equal(priorityMetrics((await generate(["カ"], single, distant)).results, distant).included.length, 1, "use explicitly requested words even when phonetically distant");
+const distantDb = await wordList.parsePlain("通常,カ\n指定A,キ\n指定B,ク\n指定C,ケ");
+const distantPrefs = [preferred("1", "指定A"), preferred("2", "指定B"), preferred("3", "指定C")];
+assert.equal(priorityMetrics((await generate(["カ", "カ", "カ"], distantDb, distantPrefs)).results,
+	distantPrefs).included.length, 3, "all three requested words outrank phonetic similarity when they fit");
 const repeated = await generate(["カ", "カ"], single, [preferred("1", "指定")]);
 assert.equal(repeated.results.flat().filter(word => word.id === "1").length, 1, "reserve a future placement's ID across lines");
 assert.equal(new Set(repeated.results.flat().map(word => word.id)).size, 2);
@@ -76,4 +80,4 @@ const cancelled = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether
 	() => { updated = true; }, () => { completed = true; });
 cancelled.cancel(); await cancelled.finished;
 assert(!completed && !updated, "cancelling suppresses updates and completion during planning");
-print("[ok] priority placement: alternatives, scopes, quality gate, remainder/fillers, future ID reservations, locks, weights, character boundaries and cancellation");
+print("[ok] priority placement: requested-word priority, alternatives, scopes, remainder/fillers, future ID reservations, locks, weights, character boundaries and cancellation");
