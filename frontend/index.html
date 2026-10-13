@@ -117,20 +117,17 @@
             <p id="history-status" class="history-status" role="status" hidden></p>
             <div class="output-header">
               <h2 id="output-heading">出力結果</h2>
-              <div class="output-toolbar">
-                <label class="visually-hidden" for="format-select">出力形式</label>
-                <select id="format-select" class="input output-format-control">
-                  <option value="4" selected>替え歌/元歌詞ひらがな（対応区切り）</option>
-                  <option value="1">替え歌/元歌詞</option>
-                  <option value="2">替え歌読み/元歌詞読み</option>
-                  <option value="3">元歌詞/元歌詞読み/替え歌/替え歌読み/単語</option>
-                </select>
-                <button id="btn-copy-result" class="btn" type="button" disabled>コピー</button>
-                <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
-              </div>
+              <button id="btn-copy-result" class="btn output-copy" type="button"
+                aria-label="出力結果をコピー" title="出力結果をコピー" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <g class="copy-symbol"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></g>
+                  <path class="copy-success-symbol" d="m5 12 4 4L19 6" />
+                  <path class="copy-error-symbol" d="M12 5v9m0 4v1" />
+                </svg>
+              </button>
+              <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
             </div>
-            <textarea id="output-text" class="input" rows="12" placeholder="出力結果"
-              aria-labelledby="output-heading"></textarea>
+            <div id="output-text" class="output-text" role="region" aria-labelledby="output-heading"></div>
             <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
           </details>
         </section>
