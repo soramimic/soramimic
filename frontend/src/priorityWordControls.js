@@ -74,7 +74,12 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	for (const [value, text] of [["score", "音の近さで優先"], ["placement", "先に配置して生成"]]) {
 		method.append(new Option(text, value));
 	}
-	method.addEventListener("change", onChange);
+	function syncMethodHelp() {
+		help.textContent = method.value === "placement"
+			? "指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない語は比較結果に表示します。"
+			: "選択中のリストから、音が近い箇所で優先して使います。必ず含まれるとは限りません。";
+	}
+	method.addEventListener("change", () => { syncMethodHelp(); onChange(); });
 	methodRow.append(method);
 	if (onCompare) {
 		const compare = document.createElement("button");
@@ -234,6 +239,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		},
 		setValues: values => {
 			if (values.priorityStrategy !== undefined) method.value = values.priorityStrategy === "placement" ? "placement" : "score";
+			syncMethodHelp();
 			if (values.priorityWords === undefined) return;
 			selected = normalizePriorityWords(values.priorityWords);
 			context = values.priorityContext ?? getContext();

@@ -35,7 +35,7 @@ export function createPriorityComparison({ prepare, onChoose }) {
 	status.setAttribute("role", "status");
 	const note = document.createElement("p");
 	note.className = "field-note";
-	note.textContent = "同じ歌詞・単語リスト・優先語・設定で比較します。青い語が優先指定です。音の距離は低いほど近く、未変換箇所は距離に含めず別に表示します。";
+	note.textContent = "同じ入力で比較します。「先に配置」は音が離れていても指定語の採用を最優先します。青い語が優先指定です。音の距離は低いほど近く、未変換箇所は距離に含めず別に表示します。";
 	const columns = document.createElement("div");
 	columns.className = "priority-comparison-columns";
 	dialog.append(header, status, note, columns);
