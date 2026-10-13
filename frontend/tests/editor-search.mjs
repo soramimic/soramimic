@@ -315,21 +315,43 @@ try {
 		await assertCurrent(1, 0, 0);
 		await page.locator("#reverse-previous").tap();
 		await assertCurrent(3, 25, 0);
-		await page.evaluate(() => {
-			window.searchViewportHeight = 350;
-			visualViewport.dispatchEvent(new Event("resize"));
-		});
-		await assertCurrent(3, 25, 0);
-		await page.evaluate(() => {
-			window.searchViewportTop = 65;
-			visualViewport.dispatchEvent(new Event("scroll"));
-		});
-		await assertCurrent(3, 25, 0);
+		// A small phone's keyboard can leave less room than the full page header.
+		// Keep the query, navigation and a useful part of the lyrics visible together.
+		await page.locator("#reverse-word").focus();
+		for (const [width, height, top] of [[390, 350, 0], [375, 227, 129], [320, 180, 60]]) {
+			await page.setViewportSize({ width, height: 640 });
+			await page.evaluate(([height, top]) => {
+				window.searchViewportHeight = height;
+				window.searchViewportTop = top;
+				visualViewport.dispatchEvent(new Event("resize"));
+				visualViewport.dispatchEvent(new Event("scroll"));
+			}, [height, top]);
+			await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+			const main = await page.locator("main").boundingBox();
+			assert(main.height >= 64, "the keyboard must leave enough lyrics visible to inspect a hit");
+			for (const selector of ["#reverse-word", "#reverse-previous", "#reverse-next", "#reverse-search > summary"]) {
+				const box = await page.locator(selector).boundingBox();
+				assert(box.y >= top && box.y + box.height <= top + height,
+					`${selector} stays within the visual viewport above the keyboard`);
+				assert(box.height >= 44, "search controls retain their touch target size");
+			}
+			initialUpperPositions = await upperPositions();
+			await assertCurrent(3, 25, 0);
+			await page.locator("#reverse-word").press("Enter");
+			await assertCurrent(1, 0, 0);
+			await page.locator("#reverse-word").press("Shift+Enter");
+			await assertCurrent(3, 25, 0);
+			assert.equal(await page.inputValue("#reverse-word"), "ソラ");
+			assert(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement),
+				"resizing and navigating keep the query focused");
+		}
 		await page.evaluate(() => {
 			delete visualViewport.height;
 			delete visualViewport.offsetTop;
 			visualViewport.dispatchEvent(new Event("resize"));
 		});
+		await page.waitForFunction(() => document.querySelector(".review-tools").getBoundingClientRect().height > 0);
+		assert(await page.locator("#editor-visualization").isVisible(), "the full toolbar returns when the keyboard closes");
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
