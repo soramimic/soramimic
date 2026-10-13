@@ -207,6 +207,10 @@ try {
 		await page.reload();
 		await ready();
 		await page.setViewportSize({ width: 320, height: 640 });
+		if (!review) await page.locator("#bridge-status").evaluate((node) => {
+			node.hidden = false;
+			node.textContent = "ビデオの歌詞を読み込みました。";
+		});
 		await page.click("#reverse-search > summary");
 		const beforeNavigation = await state();
 		await page.fill("#reverse-word", "ソラ");
@@ -238,7 +242,8 @@ try {
 			assert.equal(await page.locator("#editor-panel").evaluate((node) => node.open), false, "navigation does not open the editor");
 			const hitBox = await current.boundingBox();
 			const toolbarBox = await page.locator("#editor-toolbar").boundingBox();
-			assert(hitBox.y >= toolbarBox.y + toolbarBox.height && hitBox.y + hitBox.height <= page.viewportSize().height,
+			const visibleBottom = await page.evaluate(() => visualViewport.offsetTop + visualViewport.height);
+			assert(hitBox.y >= toolbarBox.y + toolbarBox.height && hitBox.y + hitBox.height <= visibleBottom,
 				"the active hit is visible below the search controls");
 			const nextBox = await page.locator("#reverse-next").boundingBox();
 			assert(nextBox.y >= 0 && nextBox.y + nextBox.height <= page.viewportSize().height, "controls stay on screen after moving");
@@ -276,6 +281,36 @@ try {
 		await page.locator("#reverse-previous").tap();
 		await assertCurrent(3, 25, 0);
 		assert(await page.locator("main").evaluate((node) => node.scrollTop > 500), "distant hits scroll inside the lyrics");
+		// On phones the keyboard/browser controls can shrink only the visual viewport.
+		await page.setViewportSize({ width: 390, height: 640 });
+		await page.evaluate(() => {
+			window.searchViewportHeight = 420;
+			window.searchViewportTop = 0;
+			Object.defineProperty(visualViewport, "height", { configurable: true, get: () => window.searchViewportHeight });
+			Object.defineProperty(visualViewport, "offsetTop", { configurable: true, get: () => window.searchViewportTop });
+			visualViewport.dispatchEvent(new Event("resize"));
+		});
+		initialUpperPositions = await upperPositions();
+		await assertCurrent(3, 25, 0);
+		await page.locator("#reverse-next").tap();
+		await assertCurrent(1, 0, 0);
+		await page.locator("#reverse-previous").tap();
+		await assertCurrent(3, 25, 0);
+		await page.evaluate(() => {
+			window.searchViewportHeight = 350;
+			visualViewport.dispatchEvent(new Event("resize"));
+		});
+		await assertCurrent(3, 25, 0);
+		await page.evaluate(() => {
+			window.searchViewportTop = 65;
+			visualViewport.dispatchEvent(new Event("scroll"));
+		});
+		await assertCurrent(3, 25, 0);
+		await page.evaluate(() => {
+			delete visualViewport.height;
+			delete visualViewport.offsetTop;
+			visualViewport.dispatchEvent(new Event("resize"));
+		});
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
@@ -292,6 +327,9 @@ try {
 		assert.equal(await page.textContent("#reverse-count"), "0 / 0");
 		assert.equal(await page.locator(".reverse-current").count(), 0);
 		await page.click("#reverse-search > summary");
+		await page.waitForFunction(() => !document.documentElement.classList.contains("reverse-search-open"));
+		assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue("--reverse-viewport-height")), "",
+			"closing search releases its visual viewport height");
 		await page.locator('.review-line[data-line="25"]').scrollIntoViewIfNeeded();
 		assert(await page.locator("#editor-toolbar").evaluate((node) => node.getBoundingClientRect().bottom < 0),
 			"closing search restores the normal scrolling header");
@@ -381,7 +419,7 @@ try {
 	await searchDone();
 	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);
-	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, short viewport, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
+	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, visual viewport resizing/panning, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid, "SIGTERM"); } catch {}

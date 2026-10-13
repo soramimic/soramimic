@@ -117,7 +117,7 @@
 .reverse-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; padding-bottom: .5rem; }
 /* Search navigation scrolls the lyrics, keeping mobile browser chrome and the header still. */
 html.simple-editor.reverse-search-open { overflow: hidden; }
-.simple-editor.reverse-search-open #app { display: flex; flex-direction: column; height: 100dvh; }
+.simple-editor.reverse-search-open #app { display: flex; flex-direction: column; height: var(--reverse-viewport-height, 100dvh); }
 .simple-editor.reverse-search-open .review-page-header { flex: none; z-index: 3; background: var(--bg); }
 .simple-editor.reverse-search-open main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .reverse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
