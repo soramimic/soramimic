@@ -136,9 +136,7 @@ html.simple-editor.reverse-search-open { overflow: hidden; }
 .reverse-word-field .input { width: 100%; min-width: 0; min-height: 44px; padding-right: 44px; }
 #reverse-word { font-size: 1rem; }
 @media (max-width: 600px) {
-	.simple-editor.reverse-search-compact .reverse-controls { flex-wrap: wrap; }
-	.reverse-word-field,
-	.simple-editor.reverse-search-compact .reverse-word-field { flex-basis: 100%; }
+	.simple-editor:not(.reverse-search-compact) .reverse-word-field { flex-basis: 100%; }
 }
 .reverse-clear { position: absolute; right: 0; top: 0; width: 44px; height: 100%; min-height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
 .reverse-clear[hidden] { display: none; }
