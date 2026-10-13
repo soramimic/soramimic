@@ -51,6 +51,8 @@ jobs:
         run: node tests/streaming-exact.mjs
       - name: 優先単語の選択・生成テスト
         run: node tests/priority-words.mjs
+      - name: 優先単語の先行配置テスト
+        run: node tests/priority-placement.mjs
       - name: 音節バリエーション早期枝刈りのテスト
         run: node tests/variation-pruning.mjs
       - name: 発音候補の省メモリ検索と列挙結果の一致テスト
