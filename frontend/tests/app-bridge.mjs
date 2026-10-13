@@ -60,7 +60,14 @@ try {
 	const target = await opened;
 	await target.waitForFunction(() => document.getElementById("bridge-status")?.textContent === "ビデオの歌詞を読み込みました。");
 	await target.locator("#btn-video").waitFor({ state: "visible" });
-	await target.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
+	async function waitForReceivedEditor(page) {
+		await page.waitForFunction(() => {
+			const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+			const persisted = data?.generationHistoryId || document.getElementById("bridge-status")?.textContent.includes("過去の結果に保存できませんでした");
+			return persisted && document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled;
+		});
+	}
+	await waitForReceivedEditor(target);
 	const received = await target.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	assert.deepEqual(received.results, payload.results);
 	assert.deepEqual(received.unitsList, payload.unitsList);
@@ -83,7 +90,7 @@ try {
 		const opened = context.waitForEvent("page");
 		await source.click("#send");
 		const page = await opened;
-		await page.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
+		await waitForReceivedEditor(page);
 		return page;
 	}
 	const duplicate = await sendAgain(payload);
