@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { vowelSequence, wordDiagnostics } from "../src/editorVisualization.js";
 import { buildApp } from "../../tests/golden/harness-lib.mjs";
+import { sameVowelAlignment } from "../src/editorVowelAlignment.js";
 const print = console.log.bind(console);
 
 for (const [left, right] of [["ケイ", "ケー"], ["コウ", "コー"], ["キャ", "ヤ"],
@@ -32,12 +33,31 @@ assert.equal(wordDiagnostics({ kana: "キャク" }, ["キャ", "ク"]).single, f
 assert.equal(wordDiagnostics({ kana: "タカ" }, ["タ", "コ"]).vowel, true);
 assert.deepEqual(wordDiagnostics({ filler: true }, ["カ"]), { filler: true });
 assert.deepEqual(wordDiagnostics({}, ["カ"]), {});
+for (const [left, right] of [
+	[["アン", "カ"], ["ア", "ナ", "カ"]],
+	[["アッ", "カ"], ["ア", "ナ", "カ"]],
+]) {
+	assert.equal(sameVowelAlignment(left, right), false);
+	assert.equal(sameVowelAlignment(right, left), false, "nasal/geminate lengthening must not supply a vowel in either direction");
+}
+assert.equal(wordDiagnostics({ kana: "アンカ", pronunciation: ["アー", "カ"], vcost: 1 }, ["ア", "ナ", "カ"]).vowel, true,
+	"a selected nasal-lengthening variant must not hide a vowel mismatch");
+assert.equal(sameVowelAlignment(["カーン"], ["カー"]), true, "nasal omission preserves the real vowel");
+assert.equal(sameVowelAlignment(["カンッ"], ["カッ"]), true);
+assert.equal(sameVowelAlignment(["セイ"], ["セー"]), true);
+assert.equal(sameVowelAlignment(["コウ"], ["コー"]), true);
+assert.equal(sameVowelAlignment(["コー", null], ["コウ"]), true, "phrase separators do not emit vowels");
+assert.equal(sameVowelAlignment(Array(40).fill("コー"), Array(40).fill("コウ")), true,
+	"spelling alternatives must use bounded graph matching, not a Cartesian product");
+assert.equal(sameVowelAlignment(Array(40).fill("コー"), [...Array(39).fill("コウ"), "カ"]), false,
+	"a long negative comparison must exhaust shared states, not all spelling combinations");
 
 const { app } = await buildApp({ tokenizer: "kuromoji" });
 const param = { VOWEL_RATIO: .8, VARIATION_COST: 16, APPROX_CANDIDATES: 0 };
 const matrix = app.kanaSimilarity.getKanaSimilarity(param);
 const diagnose = (kana, pronunciation, target, extra = {}) =>
 	wordDiagnostics({ kana, pronunciation, ...extra }, target, app, param, matrix);
+assert.equal(diagnose("カ", ["カ"], ["カ", null]).vowel, false, "source phrase boundaries remain supported with scoring enabled");
 for (const [kana, pronunciation, target] of [
 	["コー", ["コー"], ["コ", "オ"]],
 	["サツケバー", ["サ", "ツ", "ケ", "バー"], ["ワ", "ス", "レ", "ガ", "タ"]],
@@ -62,6 +82,31 @@ for (const [kana, pronunciation, target, extra] of [
 assert.equal(diagnose("カン", ["カ", "ン"], ["カン"]).nasal, false);
 assert.equal(diagnose("カッ", ["カ", "ッ"], ["カッ"]).nasal, false);
 assert.equal(diagnose("カタ", ["カ", "タ"], ["サ", "ナ"]).nasal, false);
+assert.equal(diagnose("アンカ", ["アー", "カ"], ["ア", "ナ", "カ"], { vcost: 1 }).long, false,
+	"lengthening a nasal is separate from expanding a real long vowel");
+for (const [kana, target] of [
+	["アナカ", ["アン", "カ"]], ["アンカ", ["ア", "ナ", "カ"]],
+]) {
+	const db = await app.wordList.parsePlain(kana);
+	const candidate = app.soramimiMaker.getCandidates(db, target, param, 1)[0];
+	assert.ok(candidate);
+	assert.equal(wordDiagnostics(candidate, target, app, param, matrix).vowel, true,
+		`${kana}: the real generated candidate must report the missing/present vowel`);
+}
+for (const [kana, target, expanded] of [
+	["コウ", ["コ", "ト"], true], ["セイ", ["セ", "リ"], true],
+	["オウ", ["オ", "ウ"], true], ["オウ", ["オ", "オ"], true],
+	["エイ", ["エ", "イ"], true], ["エイ", ["エ", "エ"], true],
+	["オウ", ["オー"], false], ["エイ", ["エー"], false],
+	["コウ", ["コー"], false], ["セイ", ["セー"], false],
+]) {
+	const db = await app.wordList.parsePlain(kana);
+	const candidate = app.soramimiMaker.getCandidates(db, target, param, 1)[0];
+	assert.ok(candidate);
+	const result = wordDiagnostics(candidate, target, app, param, matrix);
+	assert.equal(result.vowel, false, `${kana}: real long-vowel spelling remains vowel-compatible`);
+	assert.equal(result.long, expanded, `${kana}: expansion must be distinguished from holding`);
+}
 for (const [kana, target] of [["カタ", ["タ", "カ"]], ["コー", ["コ", "オ"]], ["カン", ["タン"]]]) {
 	const db = await app.wordList.parsePlain(kana);
 	const word = app.soramimiMaker.getCandidates(db, target, param, 1)[0];

@@ -1,5 +1,6 @@
-import { KanaToSyllable, charToVowel, hiraToKata, syllableVariations, longVowelExpansion } from "./lib/kanaToSyllable.js";
+import { KanaToSyllable, hiraToKata, syllableVariations, longVowelExpansion } from "./lib/kanaToSyllable.js";
 import { PronunciationSearch } from "./lib/pronunciationSearch.js";
+import { unitVowel, sameVowelAlignment } from "./editorVowelAlignment.js";
 
 const splitter = KanaToSyllable();
 const STORAGE_KEY = "soramimic-editor-visualization";
@@ -16,12 +17,6 @@ function syllables(kana) {
 function canonicalUnits(parts) {
 	return parts.flatMap((part) => syllableVariations(part, false)
 		.filter(({ c }) => c === 0).sort((a, b) => a.u.length - b.u.length)[0]?.u || []);
-}
-
-function unitVowel(unit) {
-	// charToVowel's legacy table omits small ョ. Normalize only for this
-	// diagnostic so conversion scores and output remain unchanged.
-	return charToVowel(unit.replace(/ョ/g, "ヨ").replace(/^ヲ/, "オ"));
 }
 
 export function vowelSequence(kana) {
@@ -52,7 +47,7 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 	if (!parts.length) return {};
 	const source = target.join("");
 	const sourceVowels = vowelSequence(source), wordVowels = vowelSequence(word.kana);
-	const result = { vowel: sourceVowels !== wordVowels, single: parts.length === 1,
+	const result = { vowel: !sameVowelAlignment(target, parts), single: parts.length === 1,
 		sourceVowels, wordVowels };
 	// Free input stores unsimplified syllables, whereas generated words retain
 	// their selected pronunciation variant and its conversion cost.
@@ -62,21 +57,6 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 	const originalNasals = nasalCounts(canonicalUnits(parts));
 	const selectedNasals = nasalCounts(pronunciation);
 	result.nasal = originalNasals.some((count, i) => count !== selectedNasals[i]);
-	if (result.vowel) {
-		const vowelPronunciation = pronunciation.map((unit) => {
-			const vowel = unitVowel(unit);
-			return /^[アイウエオ]$/.test(vowel) ? vowel + (unit.endsWith("ー") ? "ー" : "") : unit;
-		});
-		const vowelTarget = target.map((unit) => unit.replace(/ョ/g, "ヨ"));
-		const search = pronunciationSearch(vowelTarget, vowelPronunciation);
-		// A long vowel may cover one or two source units. Compare the same
-		// reachable alignments as generation instead of contracting each side
-		// independently. Consonant differences and variation costs are irrelevant
-		// to whether the aligned vowels agree.
-		const vowelDistance = (score, left, right) => score + Number(unitVowel(left) !== unitVowel(right));
-		result.vowel = !search.lengths.some((length) =>
-			search.distanceExpanded(vowelPronunciation, length, vowelDistance, 0, 0, null) === 0);
-	}
 	if (!app || !matrix) return result;
 	const search = pronunciationSearch(target, pronunciation);
 	const cost = Number(param.VARIATION_COST) || 0;
@@ -88,9 +68,9 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 	if (Number.isFinite(distance)) {
 		// Rejoin previously expanded spellings from older saved results too.
 		const held = canonicalUnits(syllables(pronunciation.join("")));
-		const hasLongVowel = held.some((unit) => longVowelExpansion(unit))
-			|| target.some((unit) => syllableVariations(unit).some(({u}) =>
-				u.some((part) => longVowelExpansion(part))));
+		const hasLongVowel = [...parts, ...target].some((unit) =>
+			unit !== null && syllableVariations(unit, false).some(({u, c}) => c === 0
+				&& u.some((part) => longVowelExpansion(part))));
 		if (hasLongVowel) {
 			const unexpanded = pronunciationSearch(target, held, { expandLongVowels: false });
 			const heldDistance = unexpanded.score(held, matrix, cost, wordCost);

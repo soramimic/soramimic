@@ -121,6 +121,38 @@ try {
 	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
 	assert.equal(await page.locator(".visualization-long").count(), 4, "expansion preference survives reload");
 	assert.equal(await page.locator(".visualization-nasal").count(), 1);
+	// Native nasal/geminate origins must survive the generation variant used
+	// for display; real おう/えい long vowels must still expand or stay whole.
+	const nativeSeed = { ...seed, phrases: [], tokensList: [], unitsList: [], results: [], history: [], future: [] };
+	for (const [original, kana, pronunciation, vcost] of [
+		[["アン", "カ"], "アナカ", ["ア", "ナ", "カ"], 0],
+		[["ア", "ナ", "カ"], "アンカ", ["アー", "カ"], 1],
+		[["コ", "ト"], "コウ", ["コー"], 0],
+		[["セ", "リ"], "セイ", ["セ", "イ"], 0],
+		[["オー"], "オウ", ["オー"], 0],
+		[["エー"], "エイ", ["エー"], 0],
+	]) {
+		const text = original.join("");
+		nativeSeed.phrases.push(text);
+		nativeSeed.tokensList.push([{ surface_form: text, pronunciation: text, reading: text, pos: "名詞" }]);
+		nativeSeed.unitsList.push(original.map((pronunciation) => ({ pronunciation, surface_form: pronunciation, phrase: 0 })));
+		nativeSeed.results.push([{ id: `native-${nativeSeed.results.length}`, surface: kana, kana,
+			pronunciation, vcost, period: [0, original.length], original_surface: text, originalkana: text }]);
+	}
+	await page.evaluate((data) => sessionStorage.setItem("soramimic-editor", JSON.stringify(data)), nativeSeed);
+	await page.reload();
+	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+	await page.locator("#editor-visualization summary").click();
+	await page.check("#visualize-vowel");
+	assert.equal(await page.locator(".visualization-vowel").count(), 2, "アンカ/アナカ must mismatch in both directions");
+	assert.equal(await page.locator(".visualization-long").count(), 2, "only the expanded おう/えい cases count");
+	for (const line of [0, 1]) {
+		assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-vowel`).count(), 1);
+		assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-long`).count(), 0,
+			"nasal lengthening is not a real long vowel");
+	}
+	for (const line of [2, 3]) assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-long`).count(), 1);
+	for (const line of [4, 5]) assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-long`).count(), 0);
 	assert.deepEqual(errors, []);
 	console.log("[ok] visualization E2E: combined highlights, threshold, persistence, mobile layout, corrections and undo");
 } finally {
