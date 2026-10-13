@@ -57,6 +57,7 @@ const param = { VOWEL_RATIO: .8, VARIATION_COST: 16, APPROX_CANDIDATES: 0 };
 const matrix = app.kanaSimilarity.getKanaSimilarity(param);
 const diagnose = (kana, pronunciation, target, extra = {}) =>
 	wordDiagnostics({ kana, pronunciation, ...extra }, target, app, param, matrix);
+assert.equal(diagnose("カ", ["カ"], ["カ", null]).vowel, false, "source phrase boundaries remain supported with scoring enabled");
 for (const [kana, pronunciation, target] of [
 	["コー", ["コー"], ["コ", "オ"]],
 	["サツケバー", ["サ", "ツ", "ケ", "バー"], ["ワ", "ス", "レ", "ガ", "タ"]],

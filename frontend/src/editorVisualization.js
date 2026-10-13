@@ -69,7 +69,7 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 		// Rejoin previously expanded spellings from older saved results too.
 		const held = canonicalUnits(syllables(pronunciation.join("")));
 		const hasLongVowel = [...parts, ...target].some((unit) =>
-			syllableVariations(unit, false).some(({u, c}) => c === 0
+			unit !== null && syllableVariations(unit, false).some(({u, c}) => c === 0
 				&& u.some((part) => longVowelExpansion(part))));
 		if (hasLongVowel) {
 			const unexpanded = pronunciationSearch(target, held, { expandLongVowels: false });
