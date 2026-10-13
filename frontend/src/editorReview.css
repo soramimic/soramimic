@@ -117,9 +117,17 @@
 .reverse-inputs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; padding-bottom: .5rem; }
 /* Search navigation scrolls the lyrics, keeping mobile browser chrome and the header still. */
 html.simple-editor.reverse-search-open { overflow: hidden; }
-.simple-editor.reverse-search-open #app { display: flex; flex-direction: column; height: var(--reverse-viewport-height, 100dvh); }
+.simple-editor.reverse-search-open #app { display: flex; flex-direction: column; height: var(--reverse-viewport-height, 100dvh); position: relative; top: var(--reverse-viewport-top, 0px); }
 .simple-editor.reverse-search-open .review-page-header { flex: none; z-index: 3; background: var(--bg); }
 .simple-editor.reverse-search-open main { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+/* Keep search and lyrics together above the keyboard; closing search restores all tools. */
+.simple-editor.reverse-search-compact .review-page-header > :not(#editor-toolbar),
+.simple-editor.reverse-search-compact #editor-toolbar > :not(#reverse-search) { display: none; }
+.simple-editor.reverse-search-compact #editor-toolbar { padding: 0; }
+.simple-editor.reverse-search-compact .reverse-search summary { padding: .3rem 0; }
+.simple-editor.reverse-search-compact .reverse-inputs { padding-bottom: .3rem; }
+.simple-editor.reverse-search-compact .reverse-controls { flex-wrap: nowrap; }
+.simple-editor.reverse-search-compact .reverse-word-field { flex-basis: 0; }
 .reverse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .reverse-word-field { position: relative; flex: 1 1 140px; min-width: 0; }
 .reverse-navigation { display: flex; align-items: center; gap: .25rem; margin-left: auto; }

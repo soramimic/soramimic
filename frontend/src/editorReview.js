@@ -127,7 +127,12 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 	let viewportFrame;
 	const resizeSearch = () => {
 		if (!search.open) return;
-		root.style.setProperty("--reverse-viewport-height", `${window.visualViewport?.height ?? innerHeight}px`);
+		const viewport = window.visualViewport;
+		const height = viewport?.height ?? innerHeight;
+		root.style.setProperty("--reverse-viewport-height", `${height}px`);
+		root.style.setProperty("--reverse-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+		// The full toolbar can consume a small phone's entire keyboard viewport.
+		root.classList.toggle("reverse-search-compact", height < 400);
 		onSearchViewportChange?.();
 	};
 	const scheduleResize = () => {
@@ -150,6 +155,8 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 			main.scrollTo({ top, behavior: "instant" });
 		} else {
 			root.style.removeProperty("--reverse-viewport-height");
+			root.style.removeProperty("--reverse-viewport-top");
+			root.classList.remove("reverse-search-compact");
 			window.scrollTo({ top, behavior: "instant" });
 		}
 	});
