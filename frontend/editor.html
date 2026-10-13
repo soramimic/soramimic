@@ -136,8 +136,9 @@
             <summary>単語から当てはめ先を探す</summary>
             <div class="reverse-inputs">
               <div class="reverse-controls">
-                <div class="reverse-word-field">
-                  <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで入力" aria-label="使いたい単語の読み" aria-describedby="reverse-status" spellcheck="false" disabled />
+                <div class="reverse-word-field kana-search-field">
+                  <svg class="kana-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+                  <input id="reverse-word" class="input" type="text" maxlength="100" placeholder="ひらがな・カタカナで検索" aria-label="使いたい単語の読み" aria-describedby="reverse-status" spellcheck="false" disabled />
                   <button id="reverse-clear" class="reverse-clear" type="button" aria-label="入力を消す" title="入力を消す" hidden>
                     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
                   </button>

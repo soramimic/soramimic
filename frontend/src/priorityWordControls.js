@@ -28,13 +28,29 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	const label = document.createElement("label");
 	label.className = "field-label";
 	label.textContent = "優先して含めたい単語";
+	const heading = document.createElement("div");
+	heading.className = "priority-heading";
+	const info = document.createElement("button");
+	info.type = "button";
+	info.className = "priority-info";
+	info.textContent = "ⓘ";
+	info.setAttribute("aria-label", "優先単語の説明");
+	info.setAttribute("aria-expanded", "false");
+	heading.append(label, info);
 	const row = document.createElement("div");
 	row.className = "priority-search-row";
+	const field = document.createElement("div");
+	field.className = "kana-search-field";
+	const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	icon.classList.add("kana-search-icon");
+	icon.setAttribute("viewBox", "0 0 24 24");
+	icon.setAttribute("aria-hidden", "true");
+	icon.innerHTML = '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>';
 	const input = document.createElement("input");
 	input.id = `${container.id}-search`;
 	input.className = "input";
 	input.type = "search";
-	input.placeholder = "かなで単語を検索";
+	input.placeholder = "ひらがな・カタカナで検索";
 	input.autocomplete = "off";
 	input.setAttribute("role", "combobox");
 	input.setAttribute("aria-autocomplete", "list");
@@ -65,6 +81,12 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	help.className = "field-note";
 	help.id = `${container.id}-hint`;
 	help.textContent = "選択中のリストから、音が近い箇所で優先して使います。必ず含まれるとは限りません。";
+	help.hidden = true;
+	info.setAttribute("aria-controls", help.id);
+	info.addEventListener("click", () => {
+		help.hidden = !help.hidden;
+		info.setAttribute("aria-expanded", String(!help.hidden));
+	});
 	input.setAttribute("aria-describedby", help.id);
 	const methodRow = document.createElement("div");
 	methodRow.className = "priority-method-row";
@@ -89,8 +111,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		compare.addEventListener("click", onCompare);
 		methodRow.append(compare);
 	}
-	row.append(input, scope);
-	container.append(label, row, tags, list, status, methodRow, help);
+	field.append(icon, input);
+	row.append(field, scope);
+	container.append(heading, row, tags, list, status, methodRow, help);
 
 	function hideResults() {
 		list.hidden = true;
