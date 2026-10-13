@@ -889,6 +889,7 @@ export async function startApp() {
 		editorPayload = entry ? structuredClone(entry.payload) : null;
 		pastResult = editorPayload?.results || null;
 		outputText.textContent = pastResult?.length ? makeResultText(pastResult, RESULT_FORMAT) : "";
+		outputText.scrollTop = 0;
 		btnCopyResult.disabled = !outputText.textContent;
 		btnOpenEditor.hidden = !pastResult?.length;
 		outputField.hidden = !historyEntries.length && !editorPayload && historyStatus.hidden;
