@@ -2838,7 +2838,7 @@ async function start() {
 	}
 	setupMode = !converted || data.setupFirst === true;
 	{
-		setupReviewToolbar(isVideoReview(data));
+		setupReviewToolbar(isVideoReview(data), scrollToReverseMatch);
 		visualization = setupVisualization(() => ({ app, param: data.param }));
 		const panel = $id("editor-panel");
 		panel.addEventListener("cancel", (event) => {

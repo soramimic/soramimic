@@ -39,7 +39,7 @@ function reviewWords(data, line) {
 	return words;
 }
 
-export function setupReviewToolbar(review) {
+export function setupReviewToolbar(review, onSearchViewportChange) {
 	document.documentElement.classList.add("simple-editor");
 	document.documentElement.classList.toggle("video-review", review);
 	const toolbar = document.getElementById("editor-toolbar");
@@ -122,15 +122,34 @@ export function setupReviewToolbar(review) {
 	pageHeader.append(header, document.getElementById("editor-status"),
 		document.getElementById("bridge-status"), toolbar);
 	const main = document.querySelector("main");
-	document.getElementById("reverse-search").addEventListener("toggle", (event) => {
+	const search = document.getElementById("reverse-search");
+	const root = document.documentElement;
+	let viewportFrame;
+	const resizeSearch = () => {
+		if (!search.open) return;
+		root.style.setProperty("--reverse-viewport-height", `${window.visualViewport?.height ?? innerHeight}px`);
+		onSearchViewportChange?.();
+	};
+	const scheduleResize = () => {
+		if (!search.open) return;
+		cancelAnimationFrame(viewportFrame);
+		viewportFrame = requestAnimationFrame(resizeSearch);
+	};
+	window.addEventListener("resize", scheduleResize);
+	window.visualViewport?.addEventListener("resize", scheduleResize);
+	window.visualViewport?.addEventListener("scroll", scheduleResize);
+	search.addEventListener("toggle", (event) => {
+		cancelAnimationFrame(viewportFrame);
 		const open = event.currentTarget.open;
 		const top = open ? window.scrollY : main.scrollTop;
-		document.documentElement.classList.toggle("reverse-search-open", open);
+		root.classList.toggle("reverse-search-open", open);
 		// Transfer the lyric position when changing between page and lyric scrolling.
 		if (open) {
+			resizeSearch();
 			window.scrollTo({ top: 0, behavior: "instant" });
 			main.scrollTo({ top, behavior: "instant" });
 		} else {
+			root.style.removeProperty("--reverse-viewport-height");
 			window.scrollTo({ top, behavior: "instant" });
 		}
 	});
