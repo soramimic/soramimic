@@ -77,6 +77,40 @@ try {
 		assert.deepEqual(storage.afterFailure, storage.before, "failed addition must retain every existing result");
 		assert.equal(storage.resurrected, false, "editing an evicted/deleted item must not recreate it");
 
+		const receipts = await page.evaluate(async fixture => {
+			const { createGenerationHistoryRepository } = await import("/__history-test.js");
+			const repo = createGenerationHistoryRepository({ databaseName: "history-receipts-test" });
+			const pair = await Promise.all([repo.add(fixture, "受信", { deduplicate: true }),
+				repo.add({ ...fixture, host: { review: true }, history: ["old"] }, "再受信", { deduplicate: true })]);
+			const reverseKeys = value => {
+				if (Array.isArray(value)) return value.map(reverseKeys);
+				if (!value || typeof value !== "object") return value;
+				return Object.fromEntries(Object.keys(value).reverse().map(key => [key, reverseKeys(value[key])]));
+			};
+			const reordered = await repo.add(reverseKeys(fixture), "同じ内容", { deduplicate: true });
+			await repo.update(pair[0].id, { ...fixture, wordlistSource: { kind: "local" } });
+			const withDiagnostics = await repo.add(fixture, "同じ歌詞", { deduplicate: true });
+			const edited = structuredClone(fixture);
+			edited.results[0][0].locked = false;
+			await repo.update(pair[0].id, edited);
+			const original = await repo.add(fixture, "古い内容", { deduplicate: true });
+			const changedLyrics = await repo.add({ ...fixture, lyrics: "違う歌詞" }, "歌詞変更", { deduplicate: true });
+			const changedCsv = await repo.add({ ...fixture, wordlist: { ...fixture.wordlist, csvText: "different" } }, "リスト変更", { deduplicate: true });
+			const ordinary = await repo.add(fixture, "通常生成");
+			const entries = await repo.list();
+			await repo.close();
+			return { pair, reordered, withDiagnostics, original, changedLyrics, changedCsv, ordinary, entries };
+		}, fixture);
+		assert.equal(receipts.pair[0].id, receipts.pair[1].id, "concurrent identical receipts must share one item");
+		assert.equal(receipts.reordered.id, receipts.pair[0].id, "object key order must not create duplicates");
+		assert.equal(receipts.withDiagnostics.id, receipts.pair[0].id, "local diagnostics must not affect identity");
+		assert.equal(receipts.entries.length, 5);
+		assert.notEqual(receipts.original.id, receipts.pair[0].id, "old content must not overwrite an edited item");
+		assert.equal(receipts.entries.find(entry => entry.id === receipts.pair[0].id).payload.results[0][0].locked, false);
+		assert.notEqual(receipts.changedLyrics.id, receipts.original.id);
+		assert.notEqual(receipts.changedCsv.id, receipts.original.id);
+		assert.notEqual(receipts.ordinary.id, receipts.original.id, "ordinary generation still creates a new item");
+
 		await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository();
