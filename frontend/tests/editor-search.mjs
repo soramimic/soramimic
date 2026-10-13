@@ -116,14 +116,14 @@ try {
 		await page.click(".panel-free-apply");
 		assert((await state()).results[0].some((item) => item.surface === "ソラ" && item.locked));
 		await page.click(".panel-close");
+		await page.click("#reverse-search > summary");
+		await page.waitForFunction(() => !document.querySelector(".reverse-highlight, .reverse-word-match"));
+		assert.equal(await page.locator("#reverse-next").isEnabled(), false, "closing search disables navigation");
 		await page.click("#btn-undo");
 		assert.deepEqual((await state()).results, initial.results);
 		await page.click("#btn-redo");
 		assert((await state()).results[0].some((item) => item.surface === "ソラ" && item.locked));
 		await page.click("#btn-undo");
-		await page.click("#reverse-search > summary");
-		assert.equal(await page.locator(".reverse-highlight, .reverse-word-match").count(), 0, "closing search clears highlights");
-		assert.equal(await page.locator("#reverse-next").isEnabled(), false, "closing search disables navigation");
 		await page.click("#reverse-search > summary");
 		await searchDone();
 		await page.fill("#reverse-word", "かぜ");
@@ -183,6 +183,7 @@ try {
 		assert.deepEqual(afterRegen.unitsList, beforeRegen.unitsList);
 		assert.deepEqual(afterRegen.originalLines, beforeRegen.originalLines);
 		assert.deepEqual(afterRegen.weightsList, beforeRegen.weightsList);
+		await page.click("#reverse-search > summary");
 		await page.click("#btn-undo");
 		assert.deepEqual((await state()).results, beforeRegen.results, "one undo restores the whole regeneration");
 		await page.click("#btn-redo");
@@ -317,9 +318,12 @@ try {
 		await assertCurrent(3, 25, 0);
 		// A small phone's keyboard can leave less room than the full page header.
 		// Keep the query, navigation and a useful part of the lyrics visible together.
-		await page.locator("#reverse-word").focus();
-		for (const [width, height, top] of [[390, 350, 0], [375, 227, 129], [320, 180, 60]]) {
-			await page.setViewportSize({ width, height: 640 });
+		const searchPositions = () => page.locator("#reverse-word, #reverse-previous, #reverse-next, #reverse-search > summary").evaluateAll(
+			(nodes) => nodes.map((node) => {
+				const { x, y, width, height } = node.getBoundingClientRect();
+				return { x, y: y - visualViewport.offsetTop, width, height };
+			}));
+		const setSearchViewport = async (height, top) => {
 			await page.evaluate(([height, top]) => {
 				window.searchViewportHeight = height;
 				window.searchViewportTop = top;
@@ -327,6 +331,26 @@ try {
 				visualViewport.dispatchEvent(new Event("scroll"));
 			}, [height, top]);
 			await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		};
+		const assertStationary = async (positions) => {
+			const current = await searchPositions();
+			for (let i = 0; i < positions.length; i++) {
+				for (const key of ["x", "y", "width", "height"]) {
+					assert(Math.abs(current[i][key] - positions[i][key]) < 1,
+						`keyboard changes must not move or resize search controls: ${JSON.stringify({ positions, current })}`);
+				}
+			}
+		};
+		await page.locator("#reverse-word").focus();
+		for (const [width, height, top] of [[390, 350, 0], [375, 227, 129], [320, 180, 60]]) {
+			await page.setViewportSize({ width, height: 640 });
+			await setSearchViewport(640, 0);
+			const positions = await searchPositions();
+			const input = await page.locator("#reverse-word").boundingBox();
+			const search = await page.locator("#reverse-search").boundingBox();
+			assert(input.width >= search.width - 1, "mobile search keeps its full-width reading field");
+			await setSearchViewport(height, top);
+			await assertStationary(positions);
 			const main = await page.locator("main").boundingBox();
 			assert(main.height >= 64, "the keyboard must leave enough lyrics visible to inspect a hit");
 			for (const selector of ["#reverse-word", "#reverse-previous", "#reverse-next", "#reverse-search > summary"]) {
@@ -344,14 +368,26 @@ try {
 			assert.equal(await page.inputValue("#reverse-word"), "ソラ");
 			assert(await page.locator("#reverse-word").evaluate((node) => node === document.activeElement),
 				"resizing and navigating keep the query focused");
+			// A tap on an arrow dismisses the native keyboard; refocusing opens it again.
+			await page.locator("#reverse-next").tap();
+			await setSearchViewport(640, 0);
+			await assertStationary(positions);
+			initialUpperPositions = await upperPositions();
+			await assertCurrent(1, 0, 0);
+			await page.locator("#reverse-word").focus();
+			await setSearchViewport(height, top);
+			await assertStationary(positions);
+			await page.locator("#reverse-word").press("Shift+Enter");
+			initialUpperPositions = await upperPositions();
+			await assertCurrent(3, 25, 0);
 		}
 		await page.evaluate(() => {
 			delete visualViewport.height;
 			delete visualViewport.offsetTop;
 			visualViewport.dispatchEvent(new Event("resize"));
 		});
-		await page.waitForFunction(() => document.querySelector(".review-tools").getBoundingClientRect().height > 0);
-		assert(await page.locator("#editor-visualization").isVisible(), "the full toolbar returns when the keyboard closes");
+		assert.equal(await page.locator(".review-tools").isVisible(), false,
+			"closing the keyboard must not expand the toolbar during a search");
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
@@ -369,6 +405,8 @@ try {
 		assert.equal(await page.locator(".reverse-current").count(), 0);
 		await page.click("#reverse-search > summary");
 		await page.waitForFunction(() => !document.documentElement.classList.contains("reverse-search-open"));
+		assert(await page.locator(".review-tools").isVisible(), "closing search restores editing actions");
+		assert(await page.locator("#editor-visualization").isVisible(), "closing search restores visualization controls");
 		assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue("--reverse-viewport-height")), "",
 			"closing search releases its visual viewport height");
 		await page.locator('.review-line[data-line="25"]').scrollIntoViewIfNeeded();
@@ -451,12 +489,16 @@ try {
 	assert(correctedHighlights.some((text) => text.startsWith("負わ")));
 	assert(correctedHighlights.every((text) => text.length < source.length), "reading edit must not highlight the whole line");
 	assert(await page.locator('.reverse-word-match').count() > 0, "parody highlights are recomputed after reading edits");
+	await page.click("#reverse-search > summary");
 	await page.click("#btn-undo");
 	await ready();
+	await page.click("#reverse-search > summary");
 	await searchDone();
 	assert.equal((await state()).tokensList[0][0].pronunciation, "オワ");
+	await page.click("#reverse-search > summary");
 	await page.click("#btn-redo");
 	await ready();
+	await page.click("#reverse-search > summary");
 	await searchDone();
 	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);

@@ -131,8 +131,11 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 		const height = viewport?.height ?? innerHeight;
 		root.style.setProperty("--reverse-viewport-height", `${height}px`);
 		root.style.setProperty("--reverse-viewport-top", `${viewport?.offsetTop ?? 0}px`);
-		// The full toolbar can consume a small phone's entire keyboard viewport.
-		root.classList.toggle("reverse-search-compact", height < 400);
+		// Choose the mobile layout before typing, and retain it until search closes.
+		// Keyboard resize/blur must not move the query or the navigation buttons.
+		if (matchMedia("(max-width: 600px), (pointer: coarse)").matches || height < 400) {
+			root.classList.add("reverse-search-compact");
+		}
 		onSearchViewportChange?.();
 	};
 	const scheduleResize = () => {
