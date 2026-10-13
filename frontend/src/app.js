@@ -15,6 +15,7 @@ import {
 } from "./customWordlists.js";
 import { readCustomWordlistFile } from "./customWordlistFile.js";
 import { createLruCache } from "./lib/lruCache.js";
+import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
 import { maximumVariationLength } from "./lib/kanaToSyllable.js";
 import {
 	createParamControls,
@@ -195,15 +196,6 @@ export async function startApp() {
 	// ---- 単語重複・パラメータ ----
 	// スライダー・プリセット・単語重複のUIは編集ツールと共有する(convertControls.js)。
 	// ここで足すのは生成画面固有の副作用(GA計測・状態保存)だけ
-	const paramControls = createParamControls({
-		paramArea: $id("param-area"),
-		presetArea: $id("preset-buttons"),
-		duplicateArea: duplicateButtons,
-		onChange: (kind, preset) => {
-			if (kind === "preset") track("param_preset", { preset: preset.name });
-			saveMainState();
-		},
-	});
 
 	function getParam() {
 		return Object.assign(paramControls.getParam(), {
@@ -274,6 +266,21 @@ export async function startApp() {
 			if (entry.active) selectedWordlist = entry;
 		}
 	}
+
+	const paramControls = createParamControls({
+		paramArea: $id("param-area"),
+		presetArea: $id("preset-buttons"),
+		duplicateArea: duplicateButtons,
+		priorityArea: $id("priority-words"),
+		getPriorityContext: () => priorityContext(selectedWordlist),
+		getPriorityWords: createPriorityCatalogLoader(
+			async () => (await enginePromise).appFor(),
+			() => ({ entry: selectedWordlist, where: compileWhere(selectedWordlist) })),
+		onChange: (kind, preset) => {
+			if (kind === "preset") track("param_preset", { preset: preset.name });
+			saveMainState();
+		},
+	});
 
 	// 自作リストは名前付きで複数保存し、行ごとに選択・編集・削除できるメニューから選ぶ。
 	// 保存本文はentryにもスナップショットとして持たせ、変換・編集ツールが
@@ -506,7 +513,11 @@ export async function startApp() {
 
 	// ファセット絞り込み(描画・whereのコンパイル)も編集ツールと共有する。
 	// 共有関数はコンテナ引数を取るので、生成画面のコンテナを束ねただけのラッパにする
-	const renderFacets = (entry) => renderFacetsIn(wordlistFacets, entry);
+	const renderFacets = (entry) => {
+		renderFacetsIn(wordlistFacets, entry);
+		paramControls.refreshPriority();
+	};
+	wordlistFacets.addEventListener("change", () => paramControls.refreshPriority());
 	const compileWhere = (entry) => compileWhereIn(wordlistFacets, entry);
 
 	renderFacets(selectedWordlist);
@@ -767,6 +778,8 @@ export async function startApp() {
 				phrase: values.phrase,
 				wordnum: values.wordnum,
 				duplicate: String(values.duplicate),
+				priorityWords: values.priorityWords,
+				priorityContext: values.priorityContext,
 				historyId: selectedHistoryId,
 				unsavedResult: !selectedHistoryId ? editorPayload : undefined,
 				pastResult: !selectedHistoryId && !editorPayload ? pastResult : undefined,
@@ -1059,6 +1072,7 @@ export async function startApp() {
 				renderFacets(selectedWordlist);
 			}
 		}
+		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext });
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
 			pastResult = savedMain.pastResult;
 			lastConversion = savedMain.lastConversion;

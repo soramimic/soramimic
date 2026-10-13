@@ -1,6 +1,7 @@
 // js/soramimic.js から移植(ロジック無改変、ESモジュール化のみ)
 import { zip } from "./utils.js";
 import { PronunciationSearch } from "./pronunciationSearch.js";
+import { createPriorityReward } from "./priorityWords.js";
 
 /*
 ======================================================================
@@ -186,7 +187,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	//省略時は従来と完全同一。変種でユニット数が変わる場合は変種側の由来index(srcIndex)を
 	//たどって元音節の重みを引く
 	const getSimilarWord = (wordlist,target,kanaDist,length=1,variationCost=0,weights=null,
-		approximateLimit=0,approximateVowelRatio=0.8,excludedIds=null) => {
+		approximateLimit=0,approximateVowelRatio=0.8,excludedIds=null,priorityReward=()=>0) => {
 		// 小さい入力は列挙、分岐が多い入力は音節ごとの状態を共有して全変種を採点する。
 		// maxUnitsだけでは同じ長さの変種が指数的に増えるため、直積自体を避ける。
 		const search = new PronunciationSearch(target,Object.keys(wordlist));
@@ -240,8 +241,10 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 			}
 			if(useApproximation){
 				const bestById = new Map();
+				const preferredIds = new Set();
 				for(const i in candidates){
 					for(const word of wordlist[i]){
+						if(priorityReward(word))preferredIds.add(word.id);
 						const score = word.pronunciation.length<Number(i)
 							? search.coarseScoreExpanded(word.pronunciation,Number(i),unitFeature,
 								approximateVowelRatio,variationCost/16,word.vcost||0,weights)
@@ -256,6 +259,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				}
 				const selected = takeBestBy([...bestById.values()],approximateLimit,v=>v.score);
 				approximateIds = new Set(selected.map(v=>v.id));
+				for(const id of preferredIds)approximateIds.add(id);
 			}
 		}
 		//重複なし生成では、DPがこの時点で必要とするのは使用可能なexact最良IDだけ。
@@ -265,6 +269,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 		if(excludedIds){
 			let best=null;
 			let bestScore=Infinity;
+			let bestSim=Infinity;
 			let bestOrder=null;
 			let nonIndexOrder=0;
 			const nonIndexOrders=new Map();
@@ -282,15 +287,17 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 					const currentOrder=propertyOrder(w.id);
 					if(excludedIds.has(w.id))continue;
 					const sim=exactScore(i,w);
-					if(sim<bestScore || (sim===bestScore && earlier(currentOrder,bestOrder))
-						|| (sim===bestScore && best?.id===w.id)){
+					const score=sim-priorityReward(w);
+					if(score<bestScore || (score===bestScore && earlier(currentOrder,bestOrder))
+						|| (score===bestScore && best?.id===w.id)){
 						best=w;
-						bestScore=sim;
+						bestScore=score;
+						bestSim=sim;
 						bestOrder=currentOrder;
 					}
 				}
 			}
-			return best ? [Object.assign({},best,{sim:bestScore})] : [];
+			return best ? [Object.assign({},best,{sim:bestSim})] : [];
 		}
 		let words = {}
 		for(let i in candidates){
@@ -299,7 +306,8 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				//共有オブジェクトを直接書き換えるとDPの再帰中に別セグメントの
 				//クエリがsimを上書きし、スコア計算が汚染される(#99)。コピーに載せる
 				const sim = exactScore(i,w);
-				if(w.id in words && sim > words[w.id].sim) continue;
+				if(w.id in words && sim-priorityReward(w)
+					> words[w.id].sim-priorityReward(words[w.id])) continue;
 				words[w.id] = Object.assign({}, w, {sim: sim});
 			}
 		}
@@ -309,7 +317,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 			words2.push(words[id]);
 		}
 		//console.timeEnd("in gs");
-		return takeBestBy(words2,length,w=>w.sim);
+		return takeBestBy(words2,length,w=>w.sim-priorityReward(w));
 	}
 
 	function getMin(array, getValue){
@@ -355,6 +363,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 		const midPhraseBreak = param.MID_PHRASE_BREAK_PENALTY || 0; //未指定(旧呼び出し元)は0=従来と同一 #98
 		const wordsNum = param.WORD_NUMBER_PENALTY;
 		const takeLen = param.LENGTH;
+		const priorityReward = createPriorityReward(param.PRIORITY_WORDS);
 		
         //固定単語は使用済み扱いにする(DUPLICATE=falseのとき再利用されないように)。
         //固定区間の隙間を順に生成する際、前の区間の採用単語も追記していく(可変配列)
@@ -465,7 +474,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				
 				newWord.originalkana = subtarget.join("");
 
-				newWord.score = newWord.sim;
+				newWord.score = newWord.sim - priorityReward(newWord);
 				if(phraseBreaks.includes(t)){
 					//wscore -= samePhraseBreak*1;
 					newWord.score -= samePhraseBreak*1;
@@ -561,13 +570,14 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	function createCandidateSearch(wordlist, parameter){
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
+		const priorityReward = createPriorityReward(param.PRIORITY_WORDS);
 		return (target, length=30, weights=null) => {
 			const w = normalizeWeights(weights, (target||[]).length, "getCandidates");
 			const configuredLimit = Number(param.APPROX_CANDIDATES);
 			const approximateLimit = Number.isFinite(configuredLimit) && configuredLimit>0
 				? Math.max(Math.floor(configuredLimit),length) : 0;
 			const words = getSimilarWord(wordlist,target,kanaDist,length,param.VARIATION_COST,w,
-				approximateLimit,param.VOWEL_RATIO??0.8) || [];
+				approximateLimit,param.VOWEL_RATIO??0.8,null,priorityReward) || [];
 			return words.slice(0, length).map(w=>Object.assign({}, w));
 		};
 	}
@@ -588,6 +598,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	function generateFromTokens(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null){
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
+		const priorityReward = createPriorityReward(param.PRIORITY_WORDS);
 		const tokenized_phrases = tokens_list.map(v=>textAnalyzer.getYomiAndPhraseBreak(v));
 		//重複可では最良1件を共有cacheする。重複なしでは使用済み集合がDP経路ごとに
 		//異なるためcacheせず、検索時に禁止IDを除外してexact最良1件だけを返す。
@@ -603,12 +614,12 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 			return function(target,start,end,excludedIds=null){
 				if(excludedIds){
 					return getSimilarWord(wordlist,target,kanaDist,1,param.VARIATION_COST,
-						null,0,param.VOWEL_RATIO??0.8,excludedIds);
+						null,0,param.VOWEL_RATIO??0.8,excludedIds,priorityReward);
 				}
 				const joined_target = target.join("");
 				if(joined_target in gsmemo)return gsmemo[joined_target];
 				const result = getSimilarWord(wordlist,target,kanaDist,candidateLimit,
-					param.VARIATION_COST,null,approximateLimit,param.VOWEL_RATIO??0.8);
+					param.VARIATION_COST,null,approximateLimit,param.VOWEL_RATIO??0.8,null,priorityReward);
 				gsmemo[joined_target] = result;
 				return result;
 			}
@@ -620,13 +631,13 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 			return function(target, start, end, excludedIds=null){
 				if(excludedIds){
 					return getSimilarWord(wordlist,target,kanaDist,1,param.VARIATION_COST,
-						lineWeights.slice(start,end),0,param.VOWEL_RATIO??0.8,excludedIds);
+						lineWeights.slice(start,end),0,param.VOWEL_RATIO??0.8,excludedIds,priorityReward);
 				}
 				const key = start + ":" + end;
 				if(key in gsmemo)return gsmemo[key];
 				const result = getSimilarWord(wordlist,target,kanaDist,candidateLimit,
 					param.VARIATION_COST,lineWeights.slice(start,end),approximateLimit,
-					param.VOWEL_RATIO??0.8);
+					param.VOWEL_RATIO??0.8,null,priorityReward);
 				gsmemo[key] = result;
 				return result;
 			}

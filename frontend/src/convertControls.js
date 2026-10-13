@@ -1,6 +1,8 @@
 // 変換の設定UI(パラメータ・単語重複・ファセット絞り込み)の共有部品。
 // 生成画面(app.js)と編集ツール(editor.js)の両方から使うため、
 // DOMのidには依存せずコンテナ要素を引数で受け取って中身を組み立てる。
+import { createPriorityWordControls } from "./priorityWordControls.js";
+import { normalizePriorityWords } from "./lib/priorityWords.js";
 
 // 単一選択のボタングループ
 export function setupButtonGroup(container, onChange) {
@@ -87,6 +89,7 @@ export function paramFromValues(values) {
 		MID_PHRASE_BREAK_PENALTY: v.phrase * 20,
 		WORD_NUMBER_PENALTY: v.wordnum * 10,
 		DUPLICATE: v.duplicate === true || v.duplicate === "true",
+		PRIORITY_WORDS: normalizePriorityWords(v.priorityWords),
 	};
 }
 
@@ -101,15 +104,21 @@ export function valuesFromParam(param) {
 		phrase: clamp(Math.round(num(p.MID_PHRASE_BREAK_PENALTY, DEFAULT_VALUES.phrase * 20) / 20), 0, 8),
 		wordnum: clamp(Math.round(num(p.WORD_NUMBER_PENALTY, DEFAULT_VALUES.wordnum * 10) / 10), 0, 6),
 		duplicate: p.DUPLICATE === true,
+		priorityWords: normalizePriorityWords(p.PRIORITY_WORDS),
 	};
 }
 
 // パラメータUI(プリセット + スライダー3本 + 単語重複)をコンテナへ組み立てる。
 // - paramArea / presetArea は必須。duplicateArea は省略可(省略時 DUPLICATE=false 固定)
 // - duplicateArea が空なら「あり/なし」ボタンをここで作る(HTMLに置いてあればそれを使う)
-// - onChange(kind, detail) の kind は "preset" | "param" | "duplicate"
-export function createParamControls({ paramArea, presetArea, duplicateArea, values, onChange, collapseSound = false }) {
+// - priorityArea は省略可。指定時は検索用 getPriorityWords / getPriorityContext を渡す
+// - onChange(kind, detail) の kind は "preset" | "param" | "duplicate" | "priority"
+export function createParamControls({ paramArea, presetArea, duplicateArea, priorityArea, getPriorityWords, getPriorityContext, values, onChange, collapseSound = false }) {
 	const notify = (kind, detail) => { if (onChange) onChange(kind, detail); };
+	const priority = priorityArea ? createPriorityWordControls({
+		container: priorityArea, getWords: getPriorityWords, getContext: getPriorityContext,
+		onChange: () => notify("priority"),
+	}) : null;
 
 	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
 	// - 「音の合わせ方」= vowelRatio(r)。行列がコア音素タイブレーク方式になったので、
@@ -183,12 +192,14 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 			phrase: iptPhrasebreak.val(),
 			wordnum: iptWordnum.val(),
 			duplicate: duplicateArea ? activeValue(duplicateArea) === "true" : false,
+			...priority?.getValues(),
 		};
 	}
 
 	// 与えられたキーだけ反映する(欠けているキーは現状維持)
 	function setValues(v) {
 		if (!v) return;
+		priority?.setValues(v);
 		if (typeof v.sound === "number") iptSound.set(v.sound);
 		if (typeof v.phrase === "number") iptPhrasebreak.set(v.phrase);
 		if (typeof v.wordnum === "number") iptWordnum.set(v.wordnum);
@@ -222,6 +233,7 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 
 	return {
 		getValues,
+		refreshPriority: () => priority?.refresh(),
 		setValues,
 		getParam: () => paramFromValues(getValues()),
 		applyPreset,

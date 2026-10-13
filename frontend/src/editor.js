@@ -27,6 +27,7 @@ import { lineRegenerationInput } from "./editorRegeneration.js";
 import { lockPanelViewport } from "./editorPanelViewport.js";
 import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
 import { appendWordDetails } from "./editorWordDetails.js";
+import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
 import { normalizeWordSearch, searchWordlist } from "./editorWordlistSearch.js";
 import {
 	createParamControls, valuesFromParam,
@@ -1870,6 +1871,7 @@ async function syncEngine() {
 // モーダルが閉じていてもDOMは生きているので、次に開いたときに正しい表示になる
 function syncSettingsUi() {
 	if (!paramControls) return;
+	syncWordlistUi();
 	paramControls.setValues(valuesFromParam(data.param));
 	paramControls.syncPreset();
 	const noteField = $id("editor-note-length-field");
@@ -1878,7 +1880,6 @@ function syncSettingsUi() {
 	if (noteInput && Array.isArray(data.noteLengthRawList)) {
 		noteInput.value = String(data.noteLengthAlpha);
 	}
-	syncWordlistUi();
 }
 
 // ---- 自作リストの入力(貼り付け / ファイル読み込み) ----
@@ -1989,6 +1990,7 @@ function syncWordlistUi() {
 	} else {
 		$id("editor-facets").innerHTML = "";
 	}
+	paramControls?.refreshPriority();
 }
 
 // 選んだリストの絞り込みを表示し、今ある歌詞を保ったまま設定を保存する。
@@ -2151,7 +2153,10 @@ async function setupWordlistPicker() {
 			sel.value = def.value;
 		}
 	}
-	sel.addEventListener("change", onWordlistChange);
+	sel.addEventListener("change", () => {
+		onWordlistChange();
+		if (!$id("editor-original-dialog").open) paramControls.refreshPriority();
+	});
 	syncWordlistUi();
 	$id("editor-wordlist-field").hidden = false;
 }
@@ -2182,6 +2187,7 @@ async function saveSettings() {
 	const revision = ++settingsRevision;
 	const previousEntry = data.wordlist;
 	const nextEntry = pickedWordlistEntry();
+	paramControls.refreshPriority();
 	const listChanged = wordlistKey(nextEntry) !== wordlistKey(data.wordlist);
 	const alpha = Number($id("editor-note-length-alpha").value);
 	const next = {
@@ -2239,6 +2245,12 @@ function setupSettingsPanel() {
 		paramArea: $id("editor-param-area"),
 		presetArea: $id("editor-preset-buttons"),
 		duplicateArea: $id("editor-duplicate-buttons"),
+		priorityArea: $id("editor-priority-words"),
+		getPriorityContext: () => priorityContext(pickedWordlistEntry()),
+		getPriorityWords: createPriorityCatalogLoader(() => app, () => {
+			const entry = pickedWordlistEntry();
+			return { entry, where: hasFacets(entry) ? compileWhere($id("editor-facets"), entry) : data.where };
+		}),
 		values: valuesFromParam(data.param),
 		onChange: saveSettings,
 	});
@@ -2246,7 +2258,7 @@ function setupSettingsPanel() {
 	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)。
 	// リスト切替で出たり消えたりするので、リスナはコンテナに固定で付けておく
 	syncWordlistUi();
-	$id("editor-facets").addEventListener("change", saveSettings);
+	$id("editor-facets").addEventListener("change", () => { paramControls.refreshPriority(); saveSettings(); });
 	$id("editor-note-length-alpha").addEventListener("input", saveSettings);
 	// 単語リストの選択肢は conf の取得を待つので、あとから足す
 	setupWordlistPicker().catch((err) => console.error(err));
