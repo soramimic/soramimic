@@ -119,7 +119,7 @@
 html.simple-editor.reverse-search-open { overflow: hidden; }
 .simple-editor.reverse-search-open #app { display: flex; flex-direction: column; height: var(--reverse-viewport-height, 100dvh); }
 .simple-editor.reverse-search-open .review-page-header { flex: none; z-index: 3; background: var(--bg); }
-.simple-editor.reverse-search-open main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.simple-editor.reverse-search-open main { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .reverse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .reverse-word-field { position: relative; flex: 1 1 140px; min-width: 0; }
 .reverse-navigation { display: flex; align-items: center; gap: .25rem; margin-left: auto; }

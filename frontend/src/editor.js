@@ -475,10 +475,11 @@ function scrollToReverseMatch() {
 	const viewport = window.visualViewport;
 	const top = Math.max(bounds.top, viewport?.offsetTop || 0) + 12;
 	const bottom = Math.min(bounds.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight) - 12;
-	const hit = target.getBoundingClientRect();
-	// Calculate the final position before scrolling; never scroll the page or its header.
-	const destination = Math.max(top, (top + bottom - hit.height) / 2);
-	main.scrollBy({ top: hit.top - destination, behavior: "instant" });
+	// Layout offsets stay independent of iOS's asynchronously painted scroll position.
+	let contentTop = 0;
+	for (let node = target; node && node !== main; node = node.offsetParent) contentTop += node.offsetTop;
+	const destination = Math.max(top, (top + bottom - target.offsetHeight) / 2);
+	main.scrollTo({ top: contentTop - (destination - bounds.top), behavior: "instant" });
 }
 
 function moveReverseMatch(direction) {

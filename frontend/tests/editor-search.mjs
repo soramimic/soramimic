@@ -192,7 +192,7 @@ try {
 		assert.deepEqual((await state()).results, afterRegen.results, "regeneration persists across reload");
 	}
 	// Visit adjacent hits independently, then cross a long gap without losing the controls.
-	const navigationPhrases = ["空空", ...Array(24).fill(""), "空"];
+	const navigationPhrases = ["空空", ...Array(24).fill(""), "空", ...Array(24).fill("")];
 	const navigationTokens = app.textAnalyzer.tokenizeTogether(navigationPhrases);
 	navigationTokens[0] = [...structuredClone(tokensList[1]), ...structuredClone(tokensList[1])];
 	for (const review of [false, true]) {
@@ -281,6 +281,25 @@ try {
 		await page.locator("#reverse-previous").tap();
 		await assertCurrent(3, 25, 0);
 		assert(await page.locator("main").evaluate((node) => node.scrollTop > 500), "distant hits scroll inside the lyrics");
+		await page.locator("#reverse-next").tap();
+		await assertCurrent(1, 0, 0);
+		// Mobile scrolling can update scrollTop before it paints new client rectangles.
+		await page.evaluate(() => {
+			const main = document.querySelector("main");
+			const paintedScrollTop = main.scrollTop;
+			const getBounds = Element.prototype.getBoundingClientRect;
+			Element.prototype.getBoundingClientRect = function () {
+				const box = getBounds.call(this);
+				if (!this.matches("mark.reverse-current, .review-word.reverse-current")) return box;
+				return new DOMRect(box.x, box.y + main.scrollTop - paintedScrollTop, box.width, box.height);
+			};
+			window.restoreSearchBounds = () => { Element.prototype.getBoundingClientRect = getBounds; };
+			document.getElementById("reverse-previous").click();
+			visualViewport.dispatchEvent(new Event("resize"));
+		});
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		await page.evaluate(() => window.restoreSearchBounds());
+		await assertCurrent(3, 25, 0);
 		// On phones the keyboard/browser controls can shrink only the visual viewport.
 		await page.setViewportSize({ width: 390, height: 640 });
 		await page.evaluate(() => {
