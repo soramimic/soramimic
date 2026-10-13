@@ -50,7 +50,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	input.id = `${container.id}-search`;
 	input.className = "input";
 	input.type = "search";
-	input.placeholder = "ひらがな・カタカナで検索";
+	input.placeholder = "ひらがな・カタカナ";
 	input.autocomplete = "off";
 	input.setAttribute("role", "combobox");
 	input.setAttribute("aria-autocomplete", "list");
