@@ -407,6 +407,9 @@ try {
 	const celebrities = scope.locator("input.facet-value[value='yes']");
 	assert(await ordinary.isChecked(), "通常の科学者が既定で選ばれていない");
 	assert(!await celebrities.isChecked(), "著名人博士が既定で選ばれている");
+	const fields = page.locator("#wordlist-facets .facet-group").filter({ hasText: "理学（専攻未詳）" });
+	const economics = fields.locator("input.facet-value[value='経済学']");
+	assert(!await economics.isChecked(), "分野の経済学が既定で選ばれている");
 	const config = await (await fetch(`http://localhost:${PORT}/conf/setting.json`)).json();
 	const scientist = config.wordlist.find((entry) => entry.value === "SCIENTIST");
 	const controlsSource = await readFile(new URL("../src/convertControls.js", import.meta.url), "utf8");
@@ -419,12 +422,28 @@ try {
 	const [header, ...rows] = csv.trimEnd().split(/\r?\n/).map((line) => line.split(","));
 	const flagIndex = header.indexOf("celebrity_doctorate");
 	assert(flagIndex >= 0, "配信CSVに著名人博士フラグがない");
-	const reviewed = rows.filter((row) => row[flagIndex] === "yes");
+	const fieldIndex = header.indexOf("field");
+	const reviewed = rows.filter((row) => row[flagIndex] === "yes" && row[fieldIndex] !== "経済学");
 	assert(reviewed.length > 0, "著名人博士の検証対象が空");
 	const parser = Parser();
 	assert(scientist.where && parser.filter(scientist.where, header, rows)
 		.every((row) => row[flagIndex] === "no"), "エントリの既定条件に著名人博士が混入した");
 	const defaults = parser.filter(await getScientistWhere(), header, rows);
+	const economicOnly = rows.filter((row) => row[fieldIndex] === "経済学" && row[flagIndex] === "no");
+	assert(economicOnly.length > 0, "経済学専業の検証対象が空");
+	assert(economicOnly.every((row) => !defaults.includes(row)),
+		"経済学をオフにした既定で経済学専業が選ばれた");
+	const mathematicalEconomists = rows.filter((row) => row[fieldIndex].split("/").includes("経済学")
+		&& row[fieldIndex].split("/").includes("数学") && row[flagIndex] === "no");
+	assert(mathematicalEconomists.length > 0 && mathematicalEconomists.every((row) => defaults.includes(row)),
+		"数学がオンなのに数学も兼ねる経済学者が除外された");
+	await economics.check();
+	const withEconomics = parser.filter(await getScientistWhere(), header, rows);
+	assert(economicOnly.every((row) => withEconomics.includes(row)),
+		"経済学をオンにしても経済学専業が選べない");
+	await economics.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"経済学をオフに戻せない");
 	assert(defaults.length > 0 && defaults.every((row) => row[flagIndex] === "no"),
 		"既定の科学者リストに著名人博士が混入した");
 	const nobel = page.locator("#wordlist-facets .facet-group").filter({ hasText: "ノーベル賞" });
