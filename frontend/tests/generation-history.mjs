@@ -117,7 +117,7 @@ try {
 			for (let i = 0; i < 22; i++) {
 				const payload = structuredClone(fixture);
 				payload.wordlist.text = `単語リスト${i}`;
-				if (i === 21) {
+				if (i >= 20) {
 					for (const key of ["phrases", "tokensList", "unitsList", "results", "originalLines"]) {
 						payload[key] = Array.from({ length: 16 }, () => structuredClone(payload[key][0]));
 					}
@@ -152,14 +152,33 @@ try {
 				assert(copy.x > heading.x + heading.width && copy.y <= heading.y
 					&& copy.y + copy.height >= heading.y + heading.height, "copy must stay at the top right");
 				assert(await page.locator("#output-text").evaluate(el =>
-					el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth),
-					"long results must wrap and expand without an internal scrollbar");
+					el.scrollHeight > el.clientHeight && el.clientHeight <= 384 && el.scrollWidth <= el.clientWidth),
+					"long results must wrap inside a bounded scrollable block");
+				await page.locator("#output-text").focus();
+				await page.keyboard.press("End");
+				await page.waitForFunction(() => {
+					const el = document.getElementById("output-text");
+					return el.scrollTop >= el.scrollHeight - el.clientHeight - 1;
+				});
+				const block = await page.locator(".output-block").boundingBox();
+				const scrolledCopy = await page.locator("#btn-copy-result").boundingBox();
+				assert(scrolledCopy.y >= block.y && scrolledCopy.y < block.y + 16
+					&& scrolledCopy.x + scrolledCopy.width <= block.x + block.width,
+					"copy must stay inside the block's top right while the text scrolls");
 				if (engine === chromium && width === 390 && process.env.GENERATION_HISTORY_SCREENSHOTS) {
 					await mkdir(process.env.GENERATION_HISTORY_SCREENSHOTS, { recursive: true });
 					await page.locator("#output-field").screenshot({ path: `${process.env.GENERATION_HISTORY_SCREENSHOTS}/history-${scheme}.png` });
 				}
 			}
 		}
+		await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { window.historyCopied = text; } } }));
+		await page.getByRole("button", { name: "出力結果をコピー" }).click();
+		await page.waitForFunction(() => window.historyCopied);
+		assert.equal(await page.evaluate(() => window.historyCopied), await page.textContent("#output-text"),
+			"copy must include the entire result while scrolled to the bottom");
+		await page.selectOption("#history-select", "saved-20");
+		assert.equal(await page.locator("#output-text").evaluate(el => el.scrollTop), 0,
+			"switching between long results must start at the top");
 		await page.selectOption("#history-select", "saved-7");
 		assert.equal(await page.textContent("#output-text"), "清水\nしみず\n");
 		await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { window.historyCopied = text; } } }));
