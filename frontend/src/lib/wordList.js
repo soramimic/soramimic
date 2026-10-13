@@ -143,7 +143,7 @@ function WordList(textAnalyzer){
 	}
 
 	
-	async function loadDatabaseCsvText(text, query_str, maxUnits){
+	async function entriesTidy(text, query_str){
 		//console.log("loadDatabaseCsvText",text);
 		//let text = loadTextFileSync(path);
 		// 改行を含む \s を使うと、末尾カラムが空の行(行末が ",")が次行を飲み込む
@@ -215,30 +215,33 @@ function WordList(textAnalyzer){
 		//console.timeEnd("mecab")
 		pronunciations = pronunciations2;
 		//console.log("pronunciations",pronunciations);
+		const entries = [];
+		for(let i=0;i<filterred_df.length;i++){
+			const line = filterred_df[i];
+			if(pronunciations[i])entries.push({
+				id: line[h2i.id], original: line[h2i.original],
+				surface: line[h2i.surface], kana: pronunciations[i],
+			});
+			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
+		}
+		return entries;
+	}
+
+	async function loadDatabaseCsvText(text, query_str, maxUnits){
+		const entries = await entriesTidy(text, query_str);
 				
 		const resultdb = {}
-		for(let i=0;i<filterred_df.length;i++){
-			let line = filterred_df[i];
-			let obj = {}
-			//id, surface, original, pronunciationはある前提
-			for(let i=0;i<header.length;i++){
-				obj[header[i]]=line[i];
-			}
-			//if(!obj.pronunciation || /^NA$|^na$/.test(obj.pronunciation)){
-			//	obj.pronunciation = textAnalyzer.getYomi(obj.surface);
-			//}
-			//surfaceから読みを推測してもなお空であればスキップ
-			obj.pronunciation = pronunciations[i];
-			if(!obj.pronunciation) continue;
+		for(let i=0;i<entries.length;i++){
+			const obj = entries[i];
 			
 			// maxUnits を変種生成まで渡し、長い読みの直積を作る途中で枝刈りする。
-			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits, false);
+			const pvariations = textAnalyzer.yomiToVariation(obj.kana, maxUnits, false);
 			for(let p of pvariations){
 				if(maxUnits !== undefined && p.length > maxUnits) continue;
 				indexPronunciation(resultdb, {
 					"surface":obj.surface,
 					"pronunciation":p,
-					"kana":obj.pronunciation,
+					"kana":obj.kana,
 					"id":obj.id,
 					"original":obj.original,
 					"vcost":p.vcost||0 //単語側の変種コスト(#105)
@@ -383,6 +386,7 @@ function WordList(textAnalyzer){
 		//set: setWordList,
 		//setList: setList,
 		parseTidy: loadDatabaseCsvText,
+		entriesTidy,
 		parsePlain: loadDatabaseText,
 		// plain形式 → tidy CSV の正規化。parsePlain が内部で通しているのと同じ関数を
 		// そのまま公開しただけ(ロジック無改変)。自作リストのCSVを書き出しJSONへ

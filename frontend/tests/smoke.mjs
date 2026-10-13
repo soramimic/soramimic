@@ -4,7 +4,7 @@
 // 形態素解析はkuromoji.jsでブラウザ内完結(外部API通信なし)。
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { build } from "vite";
 import { chromium } from "playwright";
 import { Parser } from "../src/lib/wordList.js";
 import { buildXfMidi } from "../../tests/xfmidi-fixture.mjs";
@@ -412,7 +412,13 @@ try {
 	assert(!await economics.isChecked(), "分野の経済学が既定で選ばれている");
 	const config = await (await fetch(`http://localhost:${PORT}/conf/setting.json`)).json();
 	const scientist = config.wordlist.find((entry) => entry.value === "SCIENTIST");
-	const controlsSource = await readFile(new URL("../src/convertControls.js", import.meta.url), "utf8");
+	const controlsBundle = await build({
+		configFile: false, logLevel: "silent",
+		build: { lib: { entry: new URL("../src/convertControls.js", import.meta.url).pathname,
+			formats: ["es"] }, write: false, minify: false },
+	});
+	const controlsSource = [controlsBundle].flat().flatMap(result => result.output)
+		.find(chunk => chunk.type === "chunk").code;
 	const moduleUrl = `data:text/javascript;base64,${Buffer.from(controlsSource).toString("base64")}`;
 	const getScientistWhere = () => page.evaluate(async ({ moduleUrl, scientist }) => {
 		const { compileWhere } = await import(moduleUrl);
