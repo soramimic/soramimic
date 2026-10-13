@@ -2810,7 +2810,7 @@ function setupImportExport() {
 
 // ---- 起動 ----
 
-async function start() {
+async function start({ saveReceivedResult = false } = {}) {
 	const empty = $id("editor-empty");
 	setupImportExport();
 	setupReadingFixDialog();
@@ -2886,6 +2886,29 @@ async function start() {
 			syncOriginalLines();
 		}
 		saveData();
+	}
+	if (saveReceivedResult) {
+		try {
+			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "", { deduplicate: true });
+			data.generationHistoryId = entry.id;
+			saveData();
+			// Returning to the generation screen should select the received item,
+			// including when it reused an older matching result.
+			try {
+				let mainState;
+				try { mainState = JSON.parse(sessionStorage.getItem("soramimic-main")); } catch {}
+				if (!mainState || typeof mainState !== "object" || Array.isArray(mainState)) mainState = {};
+				mainState.historyId = entry.id;
+				delete mainState.unsavedResult;
+				delete mainState.pastResult;
+				delete mainState.lastConversion;
+				sessionStorage.setItem("soramimic-main", JSON.stringify(mainState));
+			} catch (error) { console.warn("生成画面の履歴選択を保存できませんでした:", error); }
+		} catch {
+			const status = $id("bridge-status");
+			status.hidden = false;
+			status.textContent = "ビデオの歌詞を読み込みましたが、過去の結果に保存できませんでした。「書き出し」でファイルに保存してください。";
+		}
 	}
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する
@@ -2977,12 +3000,13 @@ if (window.parent === window) {
 setupReplacementPanel();
 const initialization = (async () => {
 	const status = $id("bridge-status");
+	let received = false;
 	try {
 		if (new URL(location.href).searchParams.has("lyrics-transfer")) {
 			status.hidden = false;
 			status.textContent = "ビデオから歌詞を受け取っています…";
 		}
-		const received = await window.SoramimicBridge.receive(videoPeer, (payload) => {
+		received = await window.SoramimicBridge.receive(videoPeer, (payload) => {
 			const problem = validateEditorData(payload);
 			if (problem) throw new Error(problem);
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
@@ -2996,7 +3020,7 @@ const initialization = (async () => {
 		$id("editor-empty").hidden = false;
 		return;
 	}
-	await start();
+	await start({ saveReceivedResult: received });
 })();
 // The same-origin video host waits for completion before reading shared storage.
 window.soramimicVideoReview = {

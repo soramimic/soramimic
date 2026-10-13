@@ -13,6 +13,15 @@ export function generationHistoryPayload(data) {
 	return structuredClone(payload);
 }
 
+function contentSignature(payload) {
+	// Source diagnostics are derived locally and are not sent by Video.
+	const { wordlistSource, ...content } = payload;
+	return JSON.stringify(content, (_key, value) => {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+		return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
+	});
+}
+
 export function createGenerationHistoryRepository({
 	databaseName = GENERATION_HISTORY_DATABASE,
 	provider,
@@ -62,12 +71,11 @@ export function createGenerationHistoryRepository({
 				request.onsuccess = () => result(request.result.sort((a, b) => b.createdAt - a.createdAt));
 			});
 		},
-		async add(data, sourceText, { id = makeId() } = {}) {
+		async add(data, sourceText, { id = makeId(), deduplicate = false } = {}) {
 			const payload = generationHistoryPayload(data);
+			const signature = deduplicate ? contentSignature(payload) : null;
 			return transaction("readwrite", (store, result) => {
-				const existing = store.get(id);
-				existing.onsuccess = () => {
-					if (existing.result) { result(existing.result); return; }
+				const append = () => {
 					const newest = store.index("createdAt").openCursor(null, "prev");
 					newest.onsuccess = () => {
 						const createdAt = Math.max(now(), (newest.result?.value.createdAt || 0) + 1);
@@ -81,6 +89,19 @@ export function createGenerationHistoryRepository({
 							if (++count > GENERATION_HISTORY_LIMIT) cursor.result.delete();
 							cursor.result.continue();
 						};
+					};
+				};
+				const existing = store.get(id);
+				existing.onsuccess = () => {
+					if (existing.result) { result(existing.result); return; }
+					if (!deduplicate) { append(); return; }
+					// Scan and insert in one transaction so simultaneous receipts reuse one item.
+					const cursor = store.index("createdAt").openCursor(null, "prev");
+					cursor.onsuccess = () => {
+						if (!cursor.result) { append(); return; }
+						const entry = cursor.result.value;
+						if (contentSignature(entry.payload) === signature) { result(entry); return; }
+						cursor.result.continue();
 					};
 				};
 			});
