@@ -2,6 +2,7 @@
 import { zip } from "./utils.js";
 import { PronunciationSearch } from "./pronunciationSearch.js";
 import { createPriorityReward } from "./priorityWords.js";
+import { findPriorityPlans, priorityMetrics } from "./priorityPlacement.js";
 
 /*
 ======================================================================
@@ -596,6 +597,57 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	//  重みを上げると、その位置で音が合う候補が選ばれやすくなる。
 	//  省略・null・不正(長さ不一致/総和0以下)の行は重みなし=従来と完全同一の挙動
 	function generateFromTokens(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null){
+		if(parameter?.PRIORITY_STRATEGY === "placement" && parameter.PRIORITY_WORDS?.length){
+			return generateWithPriorityPlacement(tokens_list, wordlist, parameter, updateFunc,
+				endFunc, locksPerLine, weightsPerLine);
+		}
+		return generateFromTokensCore(tokens_list, wordlist, parameter, updateFunc, endFunc, locksPerLine, weightsPerLine);
+	}
+
+	function generateWithPriorityPlacement(tokens_list, wordlist, parameter, updateFunc, endFunc, locks, weights){
+		const controller = new AbortController();
+		let handle;
+		const finished = (async () => {
+			const param = assignDefaultParameter({ ...parameter, PRIORITY_WORDS: [], PRIORITY_STRATEGY: "score" });
+			const matrix = kanaSimilarity.getKanaSimilarity(param);
+			const unitsList = tokens_list.map(tokens => textAnalyzer.getYomiAndPhraseBreak(tokens));
+			const normalizedWeights = unitsList.map((units, line) => normalizeWeights(weights?.[line], units.length, `行${line}`));
+			const plans = await findPriorityPlans({ unitsList, wordlist, preferences: parameter.PRIORITY_WORDS,
+				locks: locks || [], param, signal: controller.signal,
+				scoreRange: (subset, target, line, start, end) => getSimilarWord(subset, target, matrix, 1,
+					param.VARIATION_COST, normalizedWeights[line]?.slice(start, end), 0, param.VOWEL_RATIO??0.8)[0] });
+			let best;
+			for(const plan of plans){
+				if(controller.signal.aborted)return;
+				const results = await new Promise(resolve => {
+					const abort = () => { handle.cancel(); resolve(null); };
+					const complete = results => { controller.signal.removeEventListener("abort", abort); resolve(results); };
+					const reserved = new Set(plan.locks.flat().filter(word => !word.filler).map(word => word.id));
+					handle = generateFromTokensCore(tokens_list, wordlist, param, null, complete, plan.locks, weights, reserved);
+					controller.signal.addEventListener("abort", abort, { once: true });
+				});
+				if(!results || controller.signal.aborted)return;
+				const metrics = priorityMetrics(results, parameter.PRIORITY_WORDS);
+				const score = results.flat().reduce((sum, word) => sum
+					+ (Number.isFinite(word.score) ? word.score : Number.isFinite(word.sim) ? word.sim : 0)
+					+ param.WORD_NUMBER_PENALTY, 0);
+				if(!best || metrics.fillerUnits < best.metrics.fillerUnits
+					|| (metrics.fillerUnits === best.metrics.fillerUnits && metrics.included.length > best.metrics.included.length)
+					|| (metrics.fillerUnits === best.metrics.fillerUnits && metrics.included.length === best.metrics.included.length && score < best.score)){
+					best = { results, metrics, score };
+				}
+			}
+			if(controller.signal.aborted || !best)return;
+			best.results.forEach((line, index) => updateFunc?.(line, index, unitsList));
+			endFunc?.(best.results, { priority: best.metrics, evaluatedPlans: plans.length });
+			return best;
+		})();
+		// Callers can handle async preparation errors without unhandled rejections.
+		finished.catch(() => {});
+		return { cancel: () => { controller.abort(); handle?.cancel(); }, finished };
+	}
+
+	function generateFromTokensCore(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null, reservedIds=null){
 		const param = assignDefaultParameter(parameter);
 		const kanaDist = kanaSimilarity.getKanaSimilarity(param);
 		const priorityReward = createPriorityReward(param.PRIORITY_WORDS);
@@ -644,7 +696,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 		};
 		console.log("tokens_list",tokens_list);
 
-		let used_words = [];
+		let used_words = reservedIds ? [...reservedIds] : [];
 		const results = [];
 		//cancel()で以降の行処理とendFuncを止める。出力自体は変えない追加API(#116)
 		let cancelled = false;

@@ -16,6 +16,7 @@ import {
 import { readCustomWordlistFile } from "./customWordlistFile.js";
 import { createLruCache } from "./lib/lruCache.js";
 import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
+import { createPriorityComparison } from "./priorityComparison.js";
 import { maximumVariationLength } from "./lib/kanaToSyllable.js";
 import {
 	createParamControls,
@@ -272,6 +273,7 @@ export async function startApp() {
 		presetArea: $id("preset-buttons"),
 		duplicateArea: duplicateButtons,
 		priorityArea: $id("priority-words"),
+		onPriorityCompare: () => priorityComparison.start(),
 		getPriorityContext: () => priorityContext(selectedWordlist),
 		getPriorityWords: createPriorityCatalogLoader(
 			async () => (await enginePromise).appFor(),
@@ -740,6 +742,39 @@ export async function startApp() {
 		}
 	});
 
+
+	async function prepareConversion(text, param = getParam()) {
+		const phrases = textToPhrases(text);
+		let entry = selectedWordlist;
+		const where = compileWhere(entry);
+		const engine = await enginePromise;
+		app = engine.appFor(param.VOWEL_RATIO);
+		if (customWordlistId(entry?.value)) entry = { ...entry, originalText: undefined,
+			csvText: originalTextToCsv(entry.originalText, app) };
+		const tokensList = await tokenizePhrases(phrases);
+		const maxUnits = tokensList.reduce((max, tokens) => Math.max(max,
+			maximumVariationLength(app.textAnalyzer.getYomiAndPhraseBreak(tokens).map(unit => unit.pronunciation))), 0);
+		const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
+		return { app, phrases, tokensList, db, entry, where, param, sourceText: text };
+	}
+
+	const priorityComparison = createPriorityComparison({
+		prepare: () => {
+			const text = inputText.value.trim();
+			if (!text || text.length > 10000) throw new Error("歌詞を1〜1万文字で入力してください");
+			const param = getParam();
+			if (!param.PRIORITY_WORDS.length) throw new Error("優先する単語を選んでください");
+			return prepareConversion(text, param);
+		},
+		onChoose: async ({ prepared, results, param }) => {
+			const gen = ++convertGen;
+			paramControls.setValues({ priorityStrategy: param.PRIORITY_STRATEGY });
+			lastConversion = { phrases: prepared.phrases, tokensList: prepared.tokensList, param,
+				wordlist: prepared.entry, where: prepared.where, sourceText: prepared.sourceText };
+			await setResult(results, gen);
+		},
+	});
+
 	async function getDatabase(entry, where, maxUnits) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
 		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
@@ -780,6 +815,7 @@ export async function startApp() {
 				duplicate: String(values.duplicate),
 				priorityWords: values.priorityWords,
 				priorityContext: values.priorityContext,
+				priorityStrategy: values.priorityStrategy,
 				historyId: selectedHistoryId,
 				unsavedResult: !selectedHistoryId ? editorPayload : undefined,
 				pastResult: !selectedHistoryId && !editorPayload ? pastResult : undefined,
@@ -1072,7 +1108,7 @@ export async function startApp() {
 				renderFacets(selectedWordlist);
 			}
 		}
-		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext });
+		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext, priorityStrategy: savedMain.priorityStrategy });
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
 			pastResult = savedMain.pastResult;
 			lastConversion = savedMain.lastConversion;
@@ -1122,30 +1158,8 @@ export async function startApp() {
 		// UI描画を挟んでから重い処理に入る
 		setTimeout(async () => {
 			try {
-				// 初回はエンジン(データ+辞書)のロード完了をここで待つ。
-				// appは「音の合わせ方」(vowelRatio)に応じたインスタンスを使う
-				const engine = await enginePromise;
-				app = engine.appFor(param.VOWEL_RATIO);
-				// ファセットのチェック状態は変換後も操作できるため、
-				// DB構築に実際使ったwhereをここで確定して編集画面へ引き継ぐ
-				let entry = selectedWordlist;
-				// 変換時の自作リストを正規化CSVとしてスナップショット化する。
-				// 変換後に保存内容を編集・削除しても、編集ツール側で同じ候補を再現できる。
-				if (customWordlistId(entry && entry.value)) {
-					entry = {
-						...entry,
-						originalText: undefined,
-						csvText: originalTextToCsv(entry.originalText, app),
-					};
-				}
-				const where = compileWhere(entry);
-				const tokensList = await tokenizePhrases(phrases);
-				// 長音を母音へ展開した長さも含めて、歌詞側の上限を求める。
-				const maxUnits = tokensList.reduce((max, tokens) =>
-					Math.max(max, maximumVariationLength(app.textAnalyzer
-						.getYomiAndPhraseBreak(tokens).map(u=>u.pronunciation))), 0);
 				progressText.textContent = "単語リストを準備中...";
-				const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
+				const { tokensList, db, entry, where } = await prepareConversion(text, param);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された
 				lastConversion = {
 					phrases, tokensList, param, wordlist: entry, where, sourceText: text,
@@ -1159,6 +1173,10 @@ export async function startApp() {
 					if (gen !== convertGen) return; // 中止済みの結果は捨てる
 					convertHandle = null;
 					setResult(result, gen).catch(error => { showGenerationError(error); resetConvertUi(); });
+				});
+				convertHandle.finished?.catch(error => {
+					if (gen !== convertGen) return;
+					showGenerationError(error); resetConvertUi();
 				});
 			} catch (err) {
 				if (gen !== convertGen) return;

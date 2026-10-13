@@ -1812,6 +1812,7 @@ function regenerate({ allUnlocked = false, line = null } = {}) {
 				} catch (error) { reject(error); }
 			},
 			input.locks, input.weights);
+		handle.finished?.catch(reject);
 	}).finally(() => {
 		clearTimeout(timeout);
 		regeneration = null;
@@ -2642,7 +2643,7 @@ async function setupConvert() {
 		return;
 	}
 	progress.textContent = `変換中... 0/${data.phrases.length}`;
-	app.soramimiMaker.generateFromTokens(
+	const generationHandle = app.soramimiMaker.generateFromTokens(
 		tokensList, db, data.param,
 		(result, i) => {
 			progress.textContent = `変換中... ${i + 1}/${data.phrases.length}`;
@@ -2663,6 +2664,10 @@ async function setupConvert() {
 			$id("btn-regenerate").disabled = false;
 		},
 		null, noteLengthWeights());
+	generationHandle.finished?.catch(error => {
+		progress.textContent = "変換に失敗しました: " + error.message;
+		setSetupBusy(false);
+	});
 }
 
 function setupSetupScreen() {

@@ -23,7 +23,7 @@ export function createPriorityCatalogLoader(getApp, getSelection) {
 	};
 }
 
-export function createPriorityWordControls({ container, getWords, getContext, onChange }) {
+export function createPriorityWordControls({ container, getWords, getContext, onChange, onCompare }) {
 	let selected = [], context = getContext(), request = 0, timer, active = -1, composing = false;
 	const label = document.createElement("label");
 	label.className = "field-label";
@@ -66,8 +66,26 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	help.id = `${container.id}-hint`;
 	help.textContent = "選択中のリストから、音が近い箇所で優先して使います。必ず含まれるとは限りません。";
 	input.setAttribute("aria-describedby", help.id);
+	const methodRow = document.createElement("div");
+	methodRow.className = "priority-method-row";
+	const method = document.createElement("select");
+	method.className = "input";
+	method.setAttribute("aria-label", "優先単語の使い方");
+	for (const [value, text] of [["score", "音の近さで優先"], ["placement", "先に配置して生成"]]) {
+		method.append(new Option(text, value));
+	}
+	method.addEventListener("change", onChange);
+	methodRow.append(method);
+	if (onCompare) {
+		const compare = document.createElement("button");
+		compare.type = "button";
+		compare.className = "btn";
+		compare.textContent = "両方式で比較";
+		compare.addEventListener("click", onCompare);
+		methodRow.append(compare);
+	}
 	row.append(input, scope);
-	container.append(label, row, tags, list, status, help);
+	container.append(label, row, tags, list, status, methodRow, help);
 
 	function hideResults() {
 		list.hidden = true;
@@ -102,6 +120,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			tags.append(tag);
 		}
 		tags.hidden = !selected.length;
+		methodRow.hidden = !selected.length;
 	}
 	function refresh() {
 		const next = getContext();
@@ -211,9 +230,10 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		refresh,
 		getValues: () => {
 			if (context !== getContext()) refresh();
-			return { priorityWords: normalizePriorityWords(selected), priorityContext: context };
+			return { priorityWords: normalizePriorityWords(selected), priorityContext: context, priorityStrategy: method.value };
 		},
 		setValues: values => {
+			if (values.priorityStrategy !== undefined) method.value = values.priorityStrategy === "placement" ? "placement" : "score";
 			if (values.priorityWords === undefined) return;
 			selected = normalizePriorityWords(values.priorityWords);
 			context = values.priorityContext ?? getContext();
