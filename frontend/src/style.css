@@ -391,8 +391,8 @@ body:has(#sample-picker[open]) {
 
 .output-header {
 	display: flex;
-	flex-wrap: wrap;
 	align-items: center;
+	justify-content: space-between;
 	gap: 0.55rem 0.9rem;
 	margin-bottom: 0.7rem;
 }
@@ -435,35 +435,50 @@ body:has(#sample-picker[open]) {
 	color: var(--text);
 }
 
-.output-toolbar {
-	display: flex;
-	flex: 1 1 18rem;
+.output-text {
+	margin-bottom: 1rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	line-height: 1.8;
+}
+
+.btn.output-copy {
+	display: inline-flex;
 	align-items: center;
-	gap: 0.6rem;
-	min-width: 0;
-}
-
-.output-format-control {
-	flex: 1;
-	min-width: 0;
-	min-height: 2.75rem;
-	font-size: 0.9rem;
-}
-
-.output-toolbar .btn {
+	justify-content: center;
 	flex: none;
-	min-height: 2.75rem;
-	white-space: nowrap;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border-color: transparent;
+	background: transparent;
+	color: var(--muted);
 }
 
-@media (max-width: 480px) {
-	.output-header {
-		display: block;
-	}
+.output-copy:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
 
-	.output-toolbar {
-		margin-top: .55rem;
-	}
+.output-copy svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.output-copy .copy-success-symbol,
+.output-copy .copy-error-symbol,
+.output-copy:is(.copy-success, .copy-error) .copy-symbol {
+	display: none;
+}
+
+.output-copy.copy-success .copy-success-symbol,
+.output-copy.copy-error .copy-error-symbol {
+	display: block;
 }
 
 #btn-copy-result.copy-success {
@@ -473,21 +488,11 @@ body:has(#sample-picker[open]) {
 	opacity: 1;
 }
 
-#btn-copy-result.copy-success::before {
-	content: "✓";
-	margin-right: 0.3rem;
-}
-
 #btn-copy-result.copy-error {
 	border-color: #dc2626;
 	background: #fef2f2;
 	color: #b91c1c;
 	opacity: 1;
-}
-
-#btn-copy-result.copy-error::before {
-	content: "!";
-	margin-right: 0.3rem;
 }
 
 .wordlist-facets:not(:empty) {

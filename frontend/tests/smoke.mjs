@@ -55,15 +55,9 @@ try {
 	if (initState !== "生成") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
-	const defaultFormat = await page.inputValue("#format-select");
-	if (defaultFormat !== "4") {
-		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
-	}
-	const formatNearOutput = await page.evaluate(() =>
-		document.getElementById("output-field").contains(document.getElementById("format-select")));
-	if (!formatNearOutput) {
-		throw new Error("出力形式が出力結果欄の中にない");
-	}
+	assert.equal(await page.locator("#format-select").count(), 0);
+	assert.equal(await page.locator("#output-text").evaluate(el =>
+		el.matches("input, textarea") || el.isContentEditable), false);
 
 	// ---- 名前付き自作リスト: 旧1件データの移行・複数保存・編集・削除 ----
 	await page.evaluate(() => {
@@ -311,7 +305,7 @@ try {
 	await page.goBack();
 	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 
-	const customOutput = await page.inputValue("#output-text");
+	const customOutput = await page.textContent("#output-text");
 	if (!customOutput.includes("林檎") || customOutput.includes("エラーが発生しました")) {
 		throw new Error("保存済み自作リストで変換できない: " + customOutput);
 	}
@@ -513,7 +507,7 @@ try {
 	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 	await page.click("#output-field > summary");
 
-	const output = await page.inputValue("#output-text");
+	const output = await page.textContent("#output-text");
 	console.log("--- 変換結果 ---");
 	console.log(output);
 
@@ -538,9 +532,8 @@ try {
 	if (copiedResult !== output) {
 		throw new Error("出力結果とコピー内容が一致しない");
 	}
-	if (await page.textContent("#btn-copy-result") !== "コピー") {
-		throw new Error("コピー後にボタン文言が変わった");
-	}
+	assert.equal(await page.getByRole("button", { name: "出力結果をコピー" }).count(), 1);
+	assert.equal(await page.locator("#btn-copy-result svg").count(), 1);
 	if (!await page.locator("#btn-copy-result").evaluate((el) => el.classList.contains("copy-success"))) {
 		throw new Error("コピー成功状態が表示されない");
 	}

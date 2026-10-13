@@ -25,6 +25,7 @@ import {
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
 const DATABASE_CACHE_LIMIT = 2;
+const RESULT_FORMAT = "4";
 
 // GA4カスタムイベント送信(本番以外・広告ブロック時はgtag未定義なので何もしない)
 function track(name, params) {
@@ -43,7 +44,6 @@ export async function startApp() {
 	const inputText = $id("input-text");
 	const outputField = $id("output-field");
 	const outputText = $id("output-text");
-	const formatSelect = $id("format-select");
 	const btnCopyResult = $id("btn-copy-result");
 	const copyResultStatus = $id("copy-result-status");
 	const duplicateButtons = $id("duplicate-buttons");
@@ -66,7 +66,6 @@ export async function startApp() {
 	}
 	if (savedMain) {
 		if (typeof savedMain.text === "string") inputText.value = savedMain.text;
-		if (savedMain.format) formatSelect.value = savedMain.format;
 	}
 
 	const lyricsFile = $id("lyrics-file");
@@ -200,7 +199,7 @@ export async function startApp() {
 
 	function getParam() {
 		return Object.assign(paramControls.getParam(), {
-			OUTPUT_FORMAT: formatSelect.value,
+			OUTPUT_FORMAT: RESULT_FORMAT,
 		});
 	}
 
@@ -805,7 +804,6 @@ export async function startApp() {
 			const values = paramControls.getValues();
 			sessionStorage.setItem(MAIN_STORAGE_KEY, JSON.stringify({
 				text: inputText.value,
-				format: formatSelect.value,
 				wordlistValue: selectedWordlist ? selectedWordlist.value : null,
 				// activeなプリセット名(手で詳細設定を触った=カスタムのときはnull)
 				preset: paramControls.activePresetName(),
@@ -890,8 +888,8 @@ export async function startApp() {
 		selectedHistoryId = entry?.id || null;
 		editorPayload = entry ? structuredClone(entry.payload) : null;
 		pastResult = editorPayload?.results || null;
-		outputText.value = pastResult?.length ? makeResultText(pastResult, formatSelect.value) : "";
-		btnCopyResult.disabled = !outputText.value;
+		outputText.textContent = pastResult?.length ? makeResultText(pastResult, RESULT_FORMAT) : "";
+		btnCopyResult.disabled = !outputText.textContent;
 		btnOpenEditor.hidden = !pastResult?.length;
 		outputField.hidden = !historyEntries.length && !editorPayload && historyStatus.hidden;
 		renderHistoryOptions();
@@ -920,7 +918,7 @@ export async function startApp() {
 		if (savedMain?.unsavedResult?.results?.length) {
 			editorPayload = savedMain.unsavedResult;
 			pastResult = editorPayload.results;
-			outputText.value = makeResultText(pastResult, formatSelect.value);
+			outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
 			btnOpenEditor.hidden = false;
 			btnCopyResult.disabled = false;
 		}
@@ -945,7 +943,7 @@ export async function startApp() {
 			if (savedMain?.unsavedResult?.results?.length) {
 				editorPayload = savedMain.unsavedResult;
 				pastResult = editorPayload.results;
-				outputText.value = makeResultText(pastResult, formatSelect.value);
+				outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
 				btnOpenEditor.hidden = false;
 				btnCopyResult.disabled = false;
 				showHistoryStatus("この結果は履歴に保存されていません。編集画面の「書き出し」で保存できます。");
@@ -1005,7 +1003,7 @@ export async function startApp() {
 			track("convert", {
 				text_length: convertMeta.textLength,
 				wordlist: convertMeta.wordlist,
-				output_format: formatSelect.value,
+				output_format: RESULT_FORMAT,
 				duration_ms: Date.now() - convertMeta.started,
 				success: result.length > 0,
 			});
@@ -1016,14 +1014,14 @@ export async function startApp() {
 		editorPayload = null;
 		outputField.hidden = false;
 		if (result.length === 0) {
-			outputText.value = "うまく変換できる単語を見つけられませんでした";
+			outputText.textContent = "うまく変換できる単語を見つけられませんでした";
 			btnOpenEditor.hidden = true;
 			outputField.open = true;
 		} else {
-			outputText.value = makeResultText(result, formatSelect.value);
+			outputText.textContent = makeResultText(result, RESULT_FORMAT);
 			btnOpenEditor.hidden = false;
 		}
-		btnCopyResult.disabled = outputText.value.length === 0;
+		btnCopyResult.disabled = outputText.textContent.length === 0;
 		if (result.length > 0) {
 			const conversion = lastConversion;
 			const payload = await makeEditorPayload(conversion, result);
@@ -1048,21 +1046,13 @@ export async function startApp() {
 		if (result.length > 0) openEditor().catch(showGenerationError);
 	}
 
-	formatSelect.addEventListener("change", () => {
-		if (pastResult && pastResult.length > 0) {
-			outputText.value = makeResultText(pastResult, formatSelect.value);
-			btnCopyResult.disabled = false;
-		}
-		saveMainState();
-	});
-
 	btnCopyResult.addEventListener("click", async () => {
-		if (!outputText.value) return;
+		if (!outputText.textContent) return;
 		btnCopyResult.disabled = true;
 		let message;
 		let state;
 		try {
-			await writeClipboard(outputText.value);
+			await writeClipboard(outputText.textContent);
 			message = "コピーしました";
 			state = "success";
 		} catch (err) {
@@ -1072,14 +1062,13 @@ export async function startApp() {
 		}
 		btnCopyResult.classList.add(`copy-${state}`);
 		copyResultStatus.textContent = message;
+		btnCopyResult.title = message;
 		setTimeout(() => {
 			btnCopyResult.classList.remove("copy-success", "copy-error");
-			btnCopyResult.disabled = outputText.value.length === 0;
+			btnCopyResult.disabled = outputText.textContent.length === 0;
 			copyResultStatus.textContent = "";
+			btnCopyResult.title = "出力結果をコピー";
 		}, 1500);
-	});
-	outputText.addEventListener("input", () => {
-		btnCopyResult.disabled = outputText.value.length === 0;
 	});
 
 	// 前回の変換結果の復元(単語リストの選択状態も戻す)
@@ -1113,7 +1102,7 @@ export async function startApp() {
 			pastResult = savedMain.pastResult;
 			lastConversion = savedMain.lastConversion;
 			outputField.hidden = false;
-			outputText.value = makeResultText(pastResult, formatSelect.value);
+			outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
 			btnCopyResult.disabled = false;
 			btnOpenEditor.hidden = false;
 		}
@@ -1152,7 +1141,7 @@ export async function startApp() {
 		btnCancel.hidden = false;
 		progress.hidden = false;
 		progressText.textContent = `0/${phrases.length}`;
-		outputText.value = "";
+		outputText.textContent = "";
 		btnCopyResult.disabled = true;
 
 		// UI描画を挟んでから重い処理に入る

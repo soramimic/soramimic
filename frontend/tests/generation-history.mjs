@@ -114,7 +114,18 @@ try {
 		await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository();
-			for (let i = 0; i < 22; i++) await repo.add({ ...fixture, wordlist: { ...fixture.wordlist, text: `単語リスト${i}` } }, `元歌詞${i}`, { id: `saved-${i}` });
+			for (let i = 0; i < 22; i++) {
+				const payload = structuredClone(fixture);
+				payload.wordlist.text = `単語リスト${i}`;
+				if (i === 21) {
+					for (const key of ["phrases", "tokensList", "unitsList", "results", "originalLines"]) {
+						payload[key] = Array.from({ length: 16 }, () => structuredClone(payload[key][0]));
+					}
+					payload.lyrics = payload.originalLines.join("\n");
+					payload.results[0][0].surface = "長い単語".repeat(30);
+				}
+				await repo.add(payload, `元歌詞${i}`, { id: `saved-${i}` });
+			}
 			await repo.close();
 		}, fixture);
 		await page.close();
@@ -132,10 +143,17 @@ try {
 				await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 				assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
 					`${engine.name()} ${scheme} at ${width}px must not overflow horizontally`);
-				for (const id of ["#history-select", "#history-delete", "#btn-open-editor"]) {
+				for (const id of ["#history-select", "#history-delete", "#btn-open-editor", "#btn-copy-result"]) {
 					const bounds = await page.locator(id).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
 				}
+				const heading = await page.locator("#output-heading").boundingBox();
+				const copy = await page.locator("#btn-copy-result").boundingBox();
+				assert(copy.x > heading.x + heading.width && copy.y <= heading.y
+					&& copy.y + copy.height >= heading.y + heading.height, "copy must stay at the top right");
+				assert(await page.locator("#output-text").evaluate(el =>
+					el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth),
+					"long results must wrap and expand without an internal scrollbar");
 				if (engine === chromium && width === 390 && process.env.GENERATION_HISTORY_SCREENSHOTS) {
 					await mkdir(process.env.GENERATION_HISTORY_SCREENSHOTS, { recursive: true });
 					await page.locator("#output-field").screenshot({ path: `${process.env.GENERATION_HISTORY_SCREENSHOTS}/history-${scheme}.png` });
@@ -143,11 +161,12 @@ try {
 			}
 		}
 		await page.selectOption("#history-select", "saved-7");
-		assert((await page.inputValue("#output-text")).includes("清水"));
+		assert.equal(await page.textContent("#output-text"), "清水\nしみず\n");
 		await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { window.historyCopied = text; } } }));
-		await page.click("#btn-copy-result");
+		await page.getByRole("button", { name: "出力結果をコピー" }).focus();
+		await page.keyboard.press("Enter");
 		await page.waitForFunction(() => window.historyCopied);
-		assert.equal(await page.evaluate(() => window.historyCopied), await page.inputValue("#output-text"));
+		assert.equal(await page.evaluate(() => window.historyCopied), await page.textContent("#output-text"));
 		await page.click("#btn-open-editor");
 		await page.waitForURL("**/editor.html");
 		await page.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
@@ -212,11 +231,11 @@ try {
 		await blocked.fill("#input-text", "青い空");
 		await blocked.click("#btn-convert");
 		await blocked.waitForFunction(() => document.getElementById("history-status").textContent.startsWith("この結果を履歴に保存できませんでした"));
-		const unsaved = await blocked.inputValue("#output-text");
+		const unsaved = await blocked.textContent("#output-text");
 		assert(unsaved && !blocked.url().endsWith("editor.html"));
 		await blocked.reload();
 		await blocked.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-		assert.equal(await blocked.inputValue("#output-text"), unsaved, "storage failure must not discard the current result");
+		assert.equal(await blocked.textContent("#output-text"), unsaved, "storage failure must not discard the current result");
 		assert(await blocked.locator("#btn-open-editor").isVisible());
 		await blockedContext.close();
 		assert.deepEqual(errors, []);
