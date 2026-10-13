@@ -55,6 +55,13 @@ const covered = await generate(["カ"], single, [preferred("0", "通常")], {}, 
 assert.equal(covered.diagnostics.priority.included.length, 1);
 assert.equal(covered.results[0].length, 1);
 
+const legacyLock = { ...lock };
+delete legacyLock.score; delete legacyLock.sim;
+const legacyHandle = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether(["カ", "カ"]), single,
+	{ ...base, PRIORITY_WORDS: [preferred("1", "指定")], PRIORITY_STRATEGY: "placement" },
+	null, null, [[legacyLock], []]);
+assert(Number.isFinite((await legacyHandle.finished).score), "legacy locks without scores must not poison placement-plan comparison");
+
 const weighted = await generate(["カカカカ"], db, prefs, {}, null, [[1, 1, 1, 1]]);
 assert.equal(weighted.diagnostics.priority.included.length, 1);
 const character = await wordList.parsePlain("全体,ハタケ\n一部,タ");
