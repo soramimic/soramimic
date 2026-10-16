@@ -407,6 +407,12 @@ body:has(#sample-picker[open]) {
 	background: var(--panel);
 }
 
+.history-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .6rem;
+}
+
 .history-list {
 	display: grid;
 	gap: 1rem;
@@ -479,7 +485,6 @@ body:has(#sample-picker[open]) {
 	min-height: 44px;
 }
 
-.history-hint,
 .history-status {
 	font-size: .85rem;
 	color: var(--muted);
@@ -525,12 +530,9 @@ body:has(#sample-picker[open]) {
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	width: 44px;
-	height: 44px;
-	padding: 0;
-	border-color: transparent;
-	background: transparent;
-	color: var(--muted);
+	gap: .45rem;
+	min-height: 44px;
+	padding: .55rem .75rem;
 }
 
 .output-copy:focus-visible {
