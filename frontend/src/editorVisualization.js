@@ -4,6 +4,7 @@ import { unitVowel, sameVowelAlignment } from "./editorVowelAlignment.js";
 
 const splitter = KanaToSyllable();
 const STORAGE_KEY = "soramimic-editor-visualization";
+const DISTANCE_THRESHOLD = 30;
 const kinds = ["vowel", "distance", "long", "nasal", "single", "filler"];
 const labels = { vowel: "母音不一致", distance: "類似度低", long: "長音2モーラ化", nasal: "ン・ッ変化", single: "1音節", filler: "未変換" };
 
@@ -91,14 +92,10 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 
 export function setupVisualization(getContext) {
 	const details = document.getElementById("editor-visualization");
-	const threshold = document.getElementById("visualization-threshold");
 	const inputs = Object.fromEntries(kinds.map((kind) => [kind, document.getElementById(`visualize-${kind}`)]));
 	try {
 		const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY));
 		for (const kind of kinds) inputs[kind].checked = saved?.[kind] === true;
-		if (Number.isFinite(saved?.threshold) && saved.threshold >= 0 && saved.threshold <= 100) {
-			threshold.value = saved.threshold;
-		}
 	} catch { /* Display preferences are optional. */ }
 	const records = new WeakMap();
 	let cache = new WeakMap(), previousApp, previousParam, matrix;
@@ -113,7 +110,6 @@ export function setupVisualization(getContext) {
 		}
 		const needDistance = details.open || inputs.distance.checked || inputs.long.checked || inputs.nasal.checked;
 		if (needDistance && context.app && !matrix) matrix = context.app.kanaSimilarity.getKanaSimilarity(context.param);
-		const limit = Math.max(0, Math.min(100, Number(threshold.value) || 0));
 		const counts = Object.fromEntries(kinds.map((kind) => [kind, 0]));
 		let highlighted = 0;
 		for (const chip of document.querySelectorAll("#editor-lines .review-word")) {
@@ -127,7 +123,7 @@ export function setupVisualization(getContext) {
 				cache.set(word, entry);
 			}
 			const diagnostics = entry.value;
-			const flags = { ...diagnostics, distance: diagnostics.distance !== undefined && diagnostics.distance > limit };
+			const flags = { ...diagnostics, distance: diagnostics.distance !== undefined && diagnostics.distance > DISTANCE_THRESHOLD };
 			const active = kinds.filter((kind) => flags[kind] && inputs[kind].checked);
 			for (const kind of kinds) if (flags[kind]) counts[kind]++;
 			if (active.length) highlighted++;
@@ -162,18 +158,16 @@ export function setupVisualization(getContext) {
 		}
 		const enabled = kinds.some((kind) => inputs[kind].checked);
 		document.getElementById("visualization-summary").textContent = enabled ? `・${highlighted}か所を強調` : "";
-		threshold.disabled = !inputs.distance.checked;
 	}
 	function save() {
 		try {
 			sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-				...Object.fromEntries(kinds.map((kind) => [kind, inputs[kind].checked])), threshold: Number(threshold.value),
+				...Object.fromEntries(kinds.map((kind) => [kind, inputs[kind].checked])),
 			}));
 		} catch { /* Editing data has priority over optional preferences. */ }
 		refresh();
 	}
 	for (const input of Object.values(inputs)) input.addEventListener("change", save);
-	threshold.addEventListener("input", save);
 	details.addEventListener("toggle", refresh);
 	return {
 		decorate(chip, word, target) {

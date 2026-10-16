@@ -48,7 +48,10 @@ try {
 	const errors = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto(base);
-	await page.evaluate((data) => sessionStorage.setItem("soramimic-editor", JSON.stringify(data)), seed);
+	await page.evaluate((data) => {
+		sessionStorage.setItem("soramimic-editor", JSON.stringify(data));
+		sessionStorage.setItem("soramimic-editor-visualization", JSON.stringify({ threshold: 100 }));
+	}, seed);
 	await page.goto(`${base}/editor.html`);
 	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
 	assert.equal(await page.locator(".visualization-badge").count(), 0);
@@ -69,10 +72,10 @@ try {
 	}
 	assert.equal(await page.locator("#visualization-summary").textContent(), "・4か所を強調");
 	assert.match(await page.locator(".review-word").filter({ hasText: "色" }).getAttribute("aria-label"), /母音: イアイ → オオウ/);
-	await page.fill("#visualization-threshold", "100");
+	await page.uncheck("#visualize-distance");
 	assert.equal(await page.locator(".visualization-distance").count(), 0);
-	await page.fill("#visualization-threshold", "30");
-	assert.equal(await page.locator(".visualization-distance").count(), 1);
+	await page.check("#visualize-distance");
+	assert.equal(await page.locator(".visualization-distance").count(), 1, "use the standard threshold even with an old saved numeric preference");
 	assert.equal(await page.evaluate(() => sessionStorage.getItem("soramimic-editor")), before, "display options must not change edits or history");
 	await page.reload();
 	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
@@ -154,7 +157,7 @@ try {
 	for (const line of [2, 3]) assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-long`).count(), 1);
 	for (const line of [4, 5]) assert.equal(await page.locator(`.review-line[data-line='${line}'] .visualization-long`).count(), 0);
 	assert.deepEqual(errors, []);
-	console.log("[ok] visualization E2E: combined highlights, threshold, persistence, mobile layout, corrections and undo");
+	console.log("[ok] visualization E2E: combined highlights, standard threshold, persistence, mobile layout, corrections and undo");
 } finally {
 	await browser?.close();
 	try { process.kill(-preview.pid, "SIGTERM"); } catch {}
