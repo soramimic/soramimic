@@ -75,7 +75,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	const help = document.createElement("p");
 	help.className = "field-note";
 	help.id = `${container.id}-hint`;
-	help.textContent = `最大${MAX_PRIORITY_WORDS}個まで指定できます。指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。追加した単語の「表記を選ぶ」から、候補にする表記をチェックできます。複数チェックした場合は、その中から音が合う表記を使います。表記は1つ以上選んでください。`;
+	help.textContent = `最大${MAX_PRIORITY_WORDS}個まで指定できます。指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。追加した単語の三角アイコンから、候補にする表記をチェックできます。複数チェックした場合は、その中から音が合う表記を使います。表記は1つ以上選んでください。`;
 	help.hidden = true;
 	info.setAttribute("aria-controls", help.id);
 	info.addEventListener("click", () => {
@@ -191,7 +191,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			title.className = "priority-tag-name";
 			title.textContent = word.scope === "word" ? word.original || name : chosenSurfaces(word).join(" / ");
 			const action = document.createElement("small");
-			action.textContent = "表記を選ぶ ▾";
+			action.className = "priority-tag-chevron";
+			action.setAttribute("aria-hidden", "true");
+			action.textContent = "▾";
 			toggle.append(title, action);
 			const panel = document.createElement("div");
 			panel.className = "priority-surfaces";

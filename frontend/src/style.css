@@ -930,7 +930,8 @@ textarea.input {
 	text-align: left;
 	min-width: 0;
 }
-.priority-tag-toggle small { font-size: 0.8rem; white-space: nowrap; }
+.priority-tag-chevron { font-size: 0.8rem; flex-shrink: 0; }
+.priority-tag-toggle[aria-expanded="true"] .priority-tag-chevron { transform: rotate(180deg); }
 .priority-tag .priority-tag-remove { align-self: start; font-size: 1.1rem; }
 .priority-tag:has(.priority-surfaces:not([hidden])) { width: 100%; }
 .priority-surfaces { grid-column: 1 / -1; padding: 0 0.65rem 0.5rem; }
