@@ -1,0 +1,92 @@
+name: legacy
+on:
+  pull_request:
+    paths:
+      - 'conf/legacy-release.json'
+      - 'frontend/legacy-transfer.html'
+      - 'frontend/src/legacy*.js'
+      - 'frontend/src/customWordlists.js'
+      - 'frontend/scripts/prepare-legacy.mjs'
+      - 'frontend/tests/legacy-transfer.mjs'
+      - '.github/scripts/ensure-legacy-project.mjs'
+      - '.github/workflows/legacy.yaml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: legacy-pages-${{ github.event.pull_request.number || 'deployment' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-legacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+          submodules: true
+      - name: Read frozen release
+        id: release
+        working-directory: tooling
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const {commit} = JSON.parse(fs.readFileSync("conf/legacy-release.json", "utf8"));
+            if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Expected a pinned commit");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit=${commit}\n`);
+          '
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.commit }}
+          submodules: true
+          path: frozen
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            tooling/frontend/package-lock.json
+            frozen/frontend/package-lock.json
+      - run: npm ci
+        working-directory: frozen/frontend
+      - run: npm run build
+        working-directory: frozen/frontend
+      - run: npm ci
+        working-directory: tooling/frontend
+      - name: Add list transfer and legacy notice
+        run: node tooling/frontend/scripts/prepare-legacy.mjs frozen/frontend/dist
+      - name: Verify frozen site and list transfer in browsers
+        working-directory: tooling/frontend
+        env:
+          LEGACY_DIST: ${{ github.workspace }}/frozen/frontend/dist
+        run: |
+          npx playwright install --with-deps chromium webkit
+          npm run build
+          node tests/legacy-transfer.mjs
+      - name: Ensure dedicated legacy project
+        if: github.event_name != 'pull_request'
+        run: node tooling/.github/scripts/ensure-legacy-project.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy frozen legacy
+        if: github.event_name != 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frozen/frontend
+          command: pages deploy dist --project-name soramimic-legacy --branch legacy
+      - name: Verify public legacy
+        if: github.event_name != 'pull_request'
+        run: |
+          curl --fail --retry 6 --retry-all-errors --retry-delay 5 https://soramimic-legacy.pages.dev/legacy-release.json -o legacy-live.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const actual = JSON.parse(fs.readFileSync("legacy-live.json", "utf8"));
+            const expected = JSON.parse(fs.readFileSync("tooling/conf/legacy-release.json", "utf8"));
+            if (actual.commit !== expected.commit) throw new Error("Frozen release mismatch");
+          '
+          echo 'Legacy: https://soramimic-legacy.pages.dev/' >> "$GITHUB_STEP_SUMMARY"

@@ -33,6 +33,8 @@ jobs:
         run: node tests/lru-cache.mjs
       - name: UIスモークテスト(ビルド+実ブラウザで変換導線を確認)
         run: npm run test:smoke
+      - name: 旧版への自作リスト引き継ぎ(Chromium・WebKit)
+        run: node tests/legacy-transfer.mjs
       - name: SNS共有メタデータテスト
         run: node tests/metadata.mjs
       - name: 配信アセットの列・サイズ検証
