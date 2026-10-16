@@ -139,6 +139,12 @@ try {
 		assert.equal(await capPage.locator(".priority-tag").count(), 6, "keep every previously saved word visible");
 		assert(await capInput.isDisabled());
 		assert((await capPage.locator(".priority-status").textContent()).includes("あと1個解除"));
+		await capPage.fill("#input-text", "カカカカカカ");
+		await capPage.click("#btn-convert");
+		await capPage.locator("#generation-error").waitFor({ state: "visible" });
+		assert((await capPage.locator("#generation-error").textContent()).includes("5個まで"));
+		assert(await capPage.locator("#btn-convert").isEnabled(), "an over-limit error leaves the form usable");
+		assert.equal(await capPage.locator(".priority-tag").count(), 6, "a failed conversion preserves every saved preference");
 		await capPage.getByRole("button", { name: "追加語6の優先指定を解除" }).click();
 		await capPage.getByRole("button", { name: "追加語5の優先指定を解除" }).click();
 		assert(await capInput.isEnabled(), "removing a word frees a slot");
