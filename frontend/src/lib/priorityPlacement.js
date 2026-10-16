@@ -35,8 +35,9 @@ const rankPlans = (a, b) => b.placements.length - a.placements.length || a.cost 
 // Find several complete assignments, keeping the user's existing locks intact.
 // Generation later evaluates the remaining gaps for a small set of alternatives.
 export async function findPriorityPlans({ unitsList, wordlist, preferences, locks = [], param,
-	scoreRange, signal }) {
+	scoreRange, signal, onProgress }) {
 	const requested = normalizePriorityWords(preferences);
+	onProgress?.({ preferenceIndex: 0, preferenceCount: requested.length, lineIndex: 0, lineCount: unitsList.length });
 	const fixed = locks.flatMap((words, line) => (words || []).map(word => ({ line, word })));
 	const groups = [];
 	let yielded = performance.now();
@@ -66,6 +67,8 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 						const span = { line, word: { period: [start, end] } };
 						if (fixed.some(item => overlaps(item, span))) continue;
 						if (performance.now() - yielded > 12) {
+							onProgress?.({ preferenceIndex: preference + 1, preferenceCount: requested.length,
+								lineIndex: line + 1, lineCount: unitsList.length });
 							await new Promise(resolve => setTimeout(resolve, 0));
 							yielded = performance.now();
 						}

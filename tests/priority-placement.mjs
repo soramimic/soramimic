@@ -8,19 +8,25 @@ const { wordList, textAnalyzer, soramimiMaker } = h.app;
 const base = { VOWEL_RATIO: 0.8, VARIATION_COST: 16, SAME_PHRASE_BREAK_REWARD: 0,
 	MID_PHRASE_BREAK_PENALTY: 20, WORD_NUMBER_PENALTY: 20, DUPLICATE: false };
 const preferred = (id, original, surface = original, scope = "word") => ({ id, original, surface, kana: "", scope });
-const generate = (phrases, db, preferences, extra = {}, locks = null, weights = null) => new Promise((resolve, reject) => {
+const generate = (phrases, db, preferences, extra = {}, locks = null, weights = null, onUpdate = null) => new Promise((resolve, reject) => {
 	const handle = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether(phrases), db,
 		{ ...base, ...extra, PRIORITY_WORDS: preferences },
-		null, (results, diagnostics) => resolve({ results, diagnostics }), locks, weights);
+		onUpdate, (results, diagnostics) => resolve({ results, diagnostics }), locks, weights);
 	handle.finished?.catch(reject);
 });
 
 const db = await wordList.parsePlain("通常語,カカカカ\n前半,カカ\n後半,カカ\n優先語,ササ");
 const prefs = [preferred("3", "優先語")];
 const ordinary = await generate(["カカカカ"], db, []);
-const placed = await generate(["カカカカ"], db, prefs);
+const placementProgress = [];
+const placed = await generate(["カカカカ"], db, prefs, {}, null, null,
+	(...args) => placementProgress.push(args[3]));
 assert.equal(priorityMetrics(ordinary.results, prefs).included.length, 0);
 assert.equal(priorityMetrics(placed.results, prefs).included.length, 1);
+assert(placementProgress.some(progress => progress?.phase === "priority-placement" && progress.stage === "searching"));
+assert(placementProgress.some(progress => progress?.phase === "priority-placement"
+	&& progress.stage === "evaluating" && progress.completedLines === 1));
+assert(placementProgress.some(progress => progress?.phase === "priority-placement" && progress.stage === "complete"));
 const legacy = await generate(["カカカカ"], db, prefs, { PRIORITY_STRATEGY: "score" });
 assert.deepEqual(legacy.results, placed.results, "legacy strategy settings cannot disable priority placement");
 assert.equal(placed.diagnostics.priority.fillerUnits, 0);

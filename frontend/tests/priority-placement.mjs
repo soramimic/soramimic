@@ -47,8 +47,17 @@ try {
 		await page.reload();
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.locator(".priority-tag").count(), 1, "legacy preferences survive reload");
+		await page.evaluate(() => {
+			const original = window.setTimeout.bind(window);
+			window.setTimeout = (callback, delay = 0, ...args) => original(callback, delay === 50 ? 500 : delay, ...args);
+		});
 		await page.fill("#input-text", "カカカカ");
 		await page.click("#btn-convert");
+		await page.waitForFunction(() => {
+			const status = document.getElementById("progress-text")?.textContent || "";
+			return status.includes("配置候補") || status.includes("配置案");
+		});
+		assert.notEqual(await page.textContent("#progress-text"), "単語リストを準備中...");
 		await page.waitForURL("**/editor.html");
 		await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
 		let data = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
