@@ -1,5 +1,6 @@
-// A soft preference: keep the phonetic distance intact for diagnostics, but
-// allow a preferred word to win over a slightly closer alternative.
+export const MAX_PRIORITY_WORDS = 5;
+
+// Candidate ranking keeps the phonetic distance intact for diagnostics.
 const PRIORITY_REWARD = 40;
 
 export function normalizePriorityWords(words) {

@@ -1,7 +1,7 @@
 // js/soramimic.js から移植(ロジック無改変、ESモジュール化のみ)
 import { zip } from "./utils.js";
 import { PronunciationSearch } from "./pronunciationSearch.js";
-import { createPriorityReward } from "./priorityWords.js";
+import { createPriorityReward, MAX_PRIORITY_WORDS, normalizePriorityWords } from "./priorityWords.js";
 import { findPriorityPlans, priorityMetrics } from "./priorityPlacement.js";
 
 /*
@@ -597,8 +597,12 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	//  重みを上げると、その位置で音が合う候補が選ばれやすくなる。
 	//  省略・null・不正(長さ不一致/総和0以下)の行は重みなし=従来と完全同一の挙動
 	function generateFromTokens(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null){
-		if(parameter?.PRIORITY_WORDS?.length){
-			return generateWithPriorityPlacement(tokens_list, wordlist, parameter, updateFunc,
+		const priorities = normalizePriorityWords(parameter?.PRIORITY_WORDS);
+		if(priorities.length > MAX_PRIORITY_WORDS){
+			throw new Error(`優先して含めたい単語は${MAX_PRIORITY_WORDS}個まで指定できます。`);
+		}
+		if(priorities.length){
+			return generateWithPriorityPlacement(tokens_list, wordlist, { ...parameter, PRIORITY_WORDS: priorities }, updateFunc,
 				endFunc, locksPerLine, weightsPerLine);
 		}
 		return generateFromTokensCore(tokens_list, wordlist, parameter, updateFunc, endFunc, locksPerLine, weightsPerLine);

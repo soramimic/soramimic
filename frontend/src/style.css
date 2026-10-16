@@ -789,6 +789,7 @@ textarea.input {
 }
 
 .priority-heading .field-label { margin: 0; }
+.priority-count { margin-left: auto; color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
 
 .priority-info {
 	width: 44px;
@@ -839,6 +840,7 @@ textarea.input {
 .priority-search-row .input {
 	min-height: 44px;
 }
+.priority-search-row .input:disabled { opacity: 0.6; cursor: not-allowed; }
 
 @media (max-width: 600px) {
 	.priority-search-row { grid-template-columns: minmax(0, 1fr); }

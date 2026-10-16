@@ -28,6 +28,14 @@ assert(placed.results.flat().some(word => word.priorityPlaced));
 assert(!placed.results.flat().some(word => word.locked), "automatic placement must not become a user lock");
 assert(placed.results.flat().find(word => word.priorityPlaced).sim > 0, "phonetic distance is not discounted");
 
+const capacityDb = await wordList.parsePlain("通常,カ\n指定1,キ\n指定2,ク\n指定3,ケ\n指定4,コ\n指定5,ヌ\n指定6,ム");
+const capacityPrefs = Array.from({ length: 6 }, (_, i) => preferred(String(i + 1), `指定${i + 1}`));
+assert.equal(priorityMetrics((await generate(Array(5).fill("カ"), capacityDb, capacityPrefs.slice(0, 5))).results,
+	capacityPrefs.slice(0, 5)).included.length, 5, "all five requested words can be placed");
+assert.throws(() => soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether(Array(6).fill("カ")),
+	capacityDb, { ...base, PRIORITY_WORDS: capacityPrefs }, null, () => {}), /5個まで/, "restored or imported parameters cannot bypass the limit");
+assert.equal(capacityPrefs.length, 6, "over-limit preferences are rejected without discarding saved words");
+
 const joint = await wordList.parseTidy("id,original,surface,pronunciation\n0,通常,通常,カキ\n1,A,全体A,カキ\n1,A,短縮A,カ\n2,B,B,キ\n", "");
 const jointPrefs = [preferred("1", "A", "全体A"), preferred("2", "B")];
 const jointResult = await generate(["カキ"], joint, jointPrefs);
