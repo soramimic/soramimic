@@ -137,16 +137,17 @@ try {
 	await roundtrip.locator("#editor-brand").click();
 	await roundtrip.waitForURL(editor + "/");
 	await roundtrip.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-	assert.equal(await roundtrip.inputValue("#history-select"), receivedId, "returning home must select the received item even when it is older");
+	assert.equal(await roundtrip.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-main")).historyId), receivedId,
+		"returning home must remember the received item even when it is older");
 	await roundtrip.close();
 	const reopened = await context.newPage();
 	await reopened.goto(editor + "/");
 	await reopened.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-	assert.equal(await reopened.locator("#history-select option").count(), 2, "received results must persist in a new tab");
+	assert.equal(await reopened.locator(".history-item").count(), 2, "received results must persist in a new tab");
 	await reopened.locator("#output-field > summary").click();
-	await reopened.selectOption("#history-select", receivedId);
-	await reopened.click("#btn-open-editor");
+	await reopened.locator(`.history-item[data-history-id="${receivedId}"] .history-edit`).click();
 	await reopened.waitForURL(editor + "/editor.html");
+	assert.equal(await reopened.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).generationHistoryId), receivedId);
 	assert.equal(await reopened.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), false);
 	await reopened.close();
 	assert.equal(await target.evaluate(() => SoramimicBridge.peer("video").href), video + "/");
