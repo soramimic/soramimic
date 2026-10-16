@@ -1,4 +1,4 @@
-export const GENERATION_HISTORY_LIMIT = 20;
+export const GENERATION_HISTORY_LIMIT = 50;
 export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 
 // 履歴とJSON書き出しに必要な編集データだけを保存する。

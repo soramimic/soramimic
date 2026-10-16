@@ -25,11 +25,11 @@ async function home(page) {
 	await page.goto(base);
 	await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 }
-async function outputBounds(page) {
-	return page.locator(".output-block").evaluate(block => ({
+async function outputBounds(card) {
+	return card.evaluate(block => ({
 		block: block.getBoundingClientRect().toJSON(),
-		heading: block.querySelector("#output-heading").getBoundingClientRect().toJSON(),
-		copy: block.querySelector("#btn-copy-result").getBoundingClientRect().toJSON(),
+		heading: block.querySelector("h3").getBoundingClientRect().toJSON(),
+		copy: block.querySelector(".output-copy").getBoundingClientRect().toJSON(),
 	}));
 }
 try {
@@ -49,7 +49,7 @@ try {
 		const storage = await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository({ databaseName: "history-capacity-test", now: () => 1000 });
-			await Promise.all(Array.from({ length: 25 }, (_, i) => repo.add({ ...fixture, lyrics: "あ".repeat(350000) }, `歌詞${i}`, { id: `capacity-${i}` })));
+			await Promise.all(Array.from({ length: 55 }, (_, i) => repo.add({ ...fixture, lyrics: "あ".repeat(350000) }, `歌詞${i}`, { id: `capacity-${i}` })));
 			const entries = await repo.list();
 			const before = entries.map(entry => entry.id);
 			const duplicate = await repo.add(fixture, "重複", { id: before[0] });
@@ -75,8 +75,8 @@ try {
 			return { before, size: JSON.stringify(entries).length, duplicateTime: duplicate.createdAt,
 				updated, rejected, afterFailure, resurrected };
 		}, fixture);
-		assert.deepEqual(storage.before, Array.from({ length: 20 }, (_, i) => `capacity-${24 - i}`));
-		assert(storage.size > 5 * 1024 * 1024, "twenty full snapshots must fit beyond small Web Storage capacity");
+		assert.deepEqual(storage.before, Array.from({ length: 50 }, (_, i) => `capacity-${54 - i}`));
+		assert(storage.size > 5 * 1024 * 1024, "fifty full snapshots must fit beyond small Web Storage capacity");
 		assert.equal(storage.updated.createdAt, storage.duplicateTime);
 		assert.equal(storage.updated.payload.results[0][0].locked, false);
 		assert.deepEqual(storage.updated.payload.unitsList, fixture.unitsList);
@@ -121,10 +121,10 @@ try {
 		await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository();
-			for (let i = 0; i < 22; i++) {
+			for (let i = 0; i < 52; i++) {
 				const payload = structuredClone(fixture);
 				payload.wordlist.text = `単語リスト${i}`;
-				if (i >= 20) {
+				if (i >= 50) {
 					for (const key of ["phrases", "tokensList", "unitsList", "results", "originalLines"]) {
 						payload[key] = Array.from({ length: 16 }, () => structuredClone(payload[key][0]));
 					}
@@ -140,9 +140,15 @@ try {
 		await page.goto(`${base}/about.html`);
 		assert.equal(await page.evaluate(() => sessionStorage.getItem("soramimic-main")), null);
 		await home(page);
-		assert.equal(await page.locator("#history-select option").count(), 20);
-		assert.equal(await page.inputValue("#history-select"), "saved-21");
+		const cardFor = id => page.locator(`.history-item[data-history-id="${id}"]`);
+		assert.equal(await page.locator(".history-item").count(), 50);
+		assert.equal(await page.locator(".history-item").first().getAttribute("data-history-id"), "saved-51");
+		assert.equal(await page.locator(".history-item").last().getAttribute("data-history-id"), "saved-2");
+		assert(await page.locator(".history-item .output-text").evaluateAll(nodes => nodes.every(node => !node.textContent)),
+			"full results must not be rendered before expansion");
+		assert.equal(await page.locator("#history-select, #history-delete").count(), 0);
 		await page.locator("#output-field > summary").click();
+		const newest = cardFor("saved-51");
 		for (const scheme of ["light", "dark"]) {
 			await page.emulateMedia({ colorScheme: scheme });
 			for (const width of [320, 390, 1200]) {
@@ -150,51 +156,54 @@ try {
 				await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 				assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
 					`${engine.name()} ${scheme} at ${width}px must not overflow horizontally`);
-				for (const id of ["#history-select", "#history-delete", "#btn-open-editor", "#btn-copy-result"]) {
-					const bounds = await page.locator(id).boundingBox();
-					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
+				for (const selector of [".history-edit", ".output-copy", ".history-full > summary"]) {
+					const bounds = await newest.locator(selector).boundingBox();
+					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, selector);
 				}
-				// Read related bounds in one frame, even while focus scrolls the page.
-				const { heading, copy } = await outputBounds(page);
-				assert(copy.x > heading.x + heading.width && copy.y <= heading.y
-					&& copy.y + copy.height >= heading.y + heading.height,
-					`copy must stay at the top right: ${JSON.stringify({ heading, copy })}`);
-				assert(await page.locator("#output-text").evaluate(el =>
+				const { heading, copy } = await outputBounds(newest);
+				assert(copy.x > heading.x + heading.width && copy.y <= heading.y,
+					"copy must stay beside the card heading");
+				assert(await newest.locator(".history-preview").evaluate(el => el.clientHeight <= 90),
+					"long results must have a compact preview");
+				await newest.locator("details").evaluate(el => { el.open = true; });
+				await newest.locator(".output-text").filter({ hasText: "長い単語" }).waitFor();
+				assert(await newest.locator(".output-text").evaluate(el =>
 					el.scrollHeight > el.clientHeight && el.clientHeight <= 384 && el.scrollWidth <= el.clientWidth),
-					"long results must wrap inside a bounded scrollable block");
-				await page.locator("#output-text").focus();
-				await page.locator("#output-text").evaluate(el => { el.scrollTop = 0; });
+					"expanded results must wrap inside a bounded scrollable block");
+				await newest.locator(".output-text").focus();
+				await newest.locator(".output-text").evaluate(el => { el.scrollTop = 0; });
 				await page.keyboard.press("End");
 				await page.waitForFunction(() => {
-					const el = document.getElementById("output-text");
+					const el = document.querySelector('.history-item[data-history-id="saved-51"] .output-text');
 					return el.scrollTop >= el.scrollHeight - el.clientHeight - 1;
 				});
-				const { block, copy: scrolledCopy } = await outputBounds(page);
-				assert(scrolledCopy.y >= block.y && scrolledCopy.y < block.y + 16
-					&& scrolledCopy.x + scrolledCopy.width <= block.x + block.width,
-					"copy must stay inside the block's top right while the text scrolls");
+				await newest.locator("details").evaluate(el => { el.open = false; });
 				if (engine === chromium && width === 390 && process.env.GENERATION_HISTORY_SCREENSHOTS) {
 					await mkdir(process.env.GENERATION_HISTORY_SCREENSHOTS, { recursive: true });
-					await page.locator("#output-field").screenshot({ path: `${process.env.GENERATION_HISTORY_SCREENSHOTS}/history-${scheme}.png` });
+					await page.locator("#output-field").evaluate(el => el.scrollIntoView({ block: "start" }));
+					await page.screenshot({ path: `${process.env.GENERATION_HISTORY_SCREENSHOTS}/history-${scheme}.png` });
 				}
 			}
 		}
 		await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { window.historyCopied = text; } } }));
-		await page.getByRole("button", { name: "出力結果をコピー" }).click();
+		await newest.locator(".output-copy").click();
 		await page.waitForFunction(() => window.historyCopied);
-		assert.equal(await page.evaluate(() => window.historyCopied), await page.textContent("#output-text"),
-			"copy must include the entire result while scrolled to the bottom");
-		await page.selectOption("#history-select", "saved-20");
-		assert.equal(await page.locator("#output-text").evaluate(el => el.scrollTop), 0,
-			"switching between long results must start at the top");
-		await page.selectOption("#history-select", "saved-7");
-		assert.equal(await page.textContent("#output-text"), "清水\nしみず\n");
-		await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(text) { window.historyCopied = text; } } }));
-		await page.getByRole("button", { name: "出力結果をコピー" }).focus();
+		assert.equal(await page.evaluate(() => window.historyCopied), await newest.locator(".output-text").textContent(),
+			"copy must include the entire result even when collapsed");
+		await cardFor("saved-50").locator("summary").click();
+		await cardFor("saved-50").locator(".output-text").filter({ hasText: "長い単語" }).waitFor();
+		assert.equal(await cardFor("saved-50").locator(".output-text").evaluate(el => el.scrollTop), 0,
+			"each result must start at the top when first expanded");
+		const seventh = cardFor("saved-7");
+		await seventh.locator("summary").click();
+		await seventh.locator(".output-text").filter({ hasText: "清水" }).waitFor();
+		assert.equal(await seventh.locator(".output-text").textContent(), "清水\nしみず\n");
+		await page.evaluate(() => { window.historyCopied = null; });
+		await seventh.locator(".output-copy").focus();
 		await page.keyboard.press("Enter");
 		await page.waitForFunction(() => window.historyCopied);
-		assert.equal(await page.evaluate(() => window.historyCopied), await page.textContent("#output-text"));
-		await page.click("#btn-open-editor");
+		assert.equal(await page.evaluate(() => window.historyCopied), await seventh.locator(".output-text").textContent());
+		await seventh.locator(".history-edit").click();
 		await page.waitForURL("**/editor.html");
 		await page.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).generationHistoryId), "saved-7");
@@ -208,12 +217,8 @@ try {
 		assert.equal(edited.payload.results[0][0].locked, false, "editor changes must update the same persistent result");
 		assert.deepEqual(edited.payload.unitsList, fixture.unitsList);
 		assert.equal(edited.payload.wordlist.csvText, fixture.wordlist.csvText);
-		assert.equal(await page.locator("#history-select option").count(), 20);
-		await page.locator("#output-field > summary").click();
-		page.once("dialog", dialog => dialog.accept());
-		await page.click("#history-delete");
-		await page.waitForFunction(() => document.getElementById("history-select").options.length === 19);
-		assert.equal(await page.locator('#history-select option[value="saved-7"]').count(), 0);
+		assert.equal(await page.locator(".history-item").count(), 50);
+		assert.equal(await cardFor("saved-7").count(), 1, "editing must preserve the same card");
 
 		await page.click("#wordlist-trigger");
 		await page.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
@@ -229,8 +234,8 @@ try {
 		await page.locator("#editor-brand").click();
 		await page.waitForURL(`${base}/`);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-		assert.equal(await page.locator("#history-select option").count(), 20);
-		assert.equal(await page.inputValue("#history-select"), generated.generationHistoryId);
+		assert.equal(await page.locator(".history-item").count(), 50);
+		assert.equal(await page.locator(".history-item").first().getAttribute("data-history-id"), generated.generationHistoryId);
 		await context.close();
 
 		const legacyContext = await contextFor(engine);
@@ -242,12 +247,12 @@ try {
 			lastConversion: { phrases: data.phrases, tokensList: data.tokensList, param: data.param, wordlist: data.wordlist, where: data.where },
 		})), generated);
 		await home(legacy);
-		assert.equal(await legacy.locator("#history-select option").count(), 1);
-		const migratedId = await legacy.inputValue("#history-select");
+		assert.equal(await legacy.locator(".history-item").count(), 1);
+		const migratedId = await legacy.locator(".history-item").first().getAttribute("data-history-id");
 		await legacy.reload();
 		await legacy.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-		assert.equal(await legacy.inputValue("#history-select"), migratedId);
-		assert.equal(await legacy.locator("#history-select option").count(), 1, "legacy result migrates only once");
+		assert.equal(await legacy.locator(".history-item").first().getAttribute("data-history-id"), migratedId);
+		assert.equal(await legacy.locator(".history-item").count(), 1, "legacy result migrates only once");
 		await legacyContext.close();
 
 		const blockedContext = await contextFor(engine);
@@ -266,7 +271,7 @@ try {
 		assert(await blocked.locator("#btn-open-editor").isVisible());
 		await blockedContext.close();
 		assert.deepEqual(errors, []);
-		console.log(`[ok] ${engine.name()}: 20 persistent results, full snapshots, copy/edit, eviction, migration and storage failure recovery`);
+		console.log(`[ok] ${engine.name()}: 50 persistent result cards with lazy full text, full snapshots, copy/edit, eviction, migration and storage failure recovery`);
 		await browser.close();
 		browser = null;
 	}

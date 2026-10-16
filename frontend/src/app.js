@@ -2,11 +2,11 @@
 import { fetchText, fetchJson } from "./api.js";
 import { validateEditorData } from "./editorData.js";
 import { createGenerationHistoryRepository } from "./generationHistory.js";
+import { bindResultCopy, createGenerationHistoryView } from "./generationHistoryView.js";
 import {
 	loadEngine, buildDatabase, unitsListFromTokens,
 } from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
-import { writeClipboard } from "./clipboard.js";
 import { createYomiApi, tokenizePhrasesWithYomiApi } from "./yomiApi.js";
 import { originalTextToCsv } from "./wordlistInput.js";
 import {
@@ -795,8 +795,15 @@ export async function startApp() {
 	let historyEntries = [];
 	let historyBusy = false;
 	const historyRepository = createGenerationHistoryRepository();
-	const historySelect = $id("history-select");
-	const historyDelete = $id("history-delete");
+	const currentResult = $id("current-result");
+	const historyView = createGenerationHistoryView({
+		container: $id("history-list"),
+		template: $id("history-card-template"),
+		onEdit: entry => {
+			selectHistoryEntry(entry);
+			openEditor().catch(showGenerationError);
+		},
+	});
 	const historyStatus = $id("history-status");
 
 	function saveMainState() {
@@ -867,20 +874,9 @@ export async function startApp() {
 		historyStatus.hidden = !message;
 		if (message) { outputField.hidden = false; outputField.open = true; }
 	}
-	function renderHistoryOptions() {
-		historySelect.replaceChildren();
-		if (!selectedHistoryId) historySelect.append(new Option("今回の結果（未保存）", ""));
-		for (const entry of historyEntries) {
-			const date = new Date(entry.createdAt).toLocaleString("ja-JP", {
-				year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
-			});
-			const firstLine = entry.payload.phrases?.find(line => line.trim()) || entry.sourceText || "";
-			const name = entry.payload.wordlist?.text || "単語リスト";
-			historySelect.append(new Option(`${date} · ${name} · ${firstLine.slice(0, 32)}`, entry.id));
-		}
-		historySelect.value = selectedHistoryId || "";
-		historySelect.disabled = historyBusy || historyEntries.length === 0;
-		historyDelete.disabled = historyBusy || !selectedHistoryId;
+	function renderHistory() {
+		historyView.render(historyEntries, historyBusy);
+		currentResult.hidden = Boolean(selectedHistoryId) || !outputText.textContent;
 		btnOpenEditor.disabled = historyBusy;
 		$id("history-count").textContent = historyEntries.length ? `（${historyEntries.length}件）` : "";
 	}
@@ -888,32 +884,14 @@ export async function startApp() {
 		selectedHistoryId = entry?.id || null;
 		editorPayload = entry ? structuredClone(entry.payload) : null;
 		pastResult = editorPayload?.results || null;
-		outputText.textContent = pastResult?.length ? makeResultText(pastResult, RESULT_FORMAT) : "";
+		outputText.textContent = "";
 		outputText.scrollTop = 0;
 		btnCopyResult.disabled = !outputText.textContent;
 		btnOpenEditor.hidden = !pastResult?.length;
 		outputField.hidden = !historyEntries.length && !editorPayload && historyStatus.hidden;
-		renderHistoryOptions();
+		renderHistory();
 		saveMainState();
 	}
-	historySelect.addEventListener("change", () => {
-		const entry = historyEntries.find(item => item.id === historySelect.value);
-		if (entry) selectHistoryEntry(entry);
-	});
-	historyDelete.addEventListener("click", async () => {
-		const id = selectedHistoryId;
-		if (!id || !confirm("選択した生成結果を履歴から削除しますか？")) return;
-		historyDelete.disabled = true;
-		try {
-			await historyRepository.remove(id);
-			historyEntries = await historyRepository.list();
-			showHistoryStatus("");
-			selectHistoryEntry(historyEntries[0]);
-		} catch {
-			showHistoryStatus("生成結果を削除できませんでした。もう一度お試しください。");
-			renderHistoryOptions();
-		}
-	});
 
 	async function initializeHistory() {
 		if (savedMain?.unsavedResult?.results?.length) {
@@ -937,7 +915,7 @@ export async function startApp() {
 				} catch {
 					editorPayload = payload;
 					showHistoryStatus("この結果を履歴に保存できませんでした。編集画面の「書き出し」で保存できます。");
-					renderHistoryOptions();
+					renderHistory();
 				}
 				return;
 			}
@@ -948,14 +926,14 @@ export async function startApp() {
 				btnOpenEditor.hidden = false;
 				btnCopyResult.disabled = false;
 				showHistoryStatus("この結果は履歴に保存されていません。編集画面の「書き出し」で保存できます。");
-				renderHistoryOptions();
+				renderHistory();
 				return;
 			}
 			const entry = historyEntries.find(item => item.id === savedMain?.historyId) || historyEntries[0];
 			selectHistoryEntry(entry);
 		} catch {
 			showHistoryStatus("過去の生成結果を読み込めませんでした。再読み込みしてお試しください。");
-			renderHistoryOptions();
+			renderHistory();
 		}
 	}
 
@@ -979,7 +957,7 @@ export async function startApp() {
 			if (control !== btnCancel) control.disabled = busy;
 		}
 		if (!busy) updateConvertLabel();
-		renderHistoryOptions();
+		renderHistory();
 	}
 
 	btnCancel.addEventListener("click", () => {
@@ -1047,30 +1025,8 @@ export async function startApp() {
 		if (result.length > 0) openEditor().catch(showGenerationError);
 	}
 
-	btnCopyResult.addEventListener("click", async () => {
-		if (!outputText.textContent) return;
-		btnCopyResult.disabled = true;
-		let message;
-		let state;
-		try {
-			await writeClipboard(outputText.textContent);
-			message = "コピーしました";
-			state = "success";
-		} catch (err) {
-			console.error(err);
-			message = "コピーに失敗しました";
-			state = "error";
-		}
-		btnCopyResult.classList.add(`copy-${state}`);
-		copyResultStatus.textContent = message;
-		btnCopyResult.title = message;
-		setTimeout(() => {
-			btnCopyResult.classList.remove("copy-success", "copy-error");
-			btnCopyResult.disabled = outputText.textContent.length === 0;
-			copyResultStatus.textContent = "";
-			btnCopyResult.title = "出力結果をコピー";
-		}, 1500);
-	});
+	bindResultCopy(btnCopyResult, copyResultStatus, () => outputText.textContent,
+		() => historyBusy || !outputText.textContent);
 
 	// 前回の変換結果の復元(単語リストの選択状態も戻す)
 	if (savedMain) {
