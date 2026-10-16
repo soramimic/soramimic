@@ -111,18 +111,14 @@ try {
 	await menuAction(page, "#btn-settings");
 	assert(await page.getByRole("heading", { name: "設定", exact: true }).isVisible());
 	assert(await page.locator(".review-menu-body").isHidden(), "opening settings must dismiss the menu");
-	for (const selector of ["#editor-wordlist", "#editor-preset-buttons"]) {
+	for (const selector of ["#editor-wordlist", "#editor-priority-words", "#editor-preset-buttons", "#editor-duplicate-buttons"]) {
 		assert(await page.locator(selector).isVisible(), `${selector} settings retained`);
 	}
-	for (const selector of ["#editor-param-area", "#editor-duplicate-buttons"]) {
-		assert(await page.locator(selector).isHidden(), `${selector} starts collapsed`);
-	}
+	assert(await page.locator("#editor-param-area").isHidden(), "sound settings start collapsed");
 	await screenshot("settings");
-	await page.locator("#editor-advanced-settings > summary").focus();
+	await page.locator("#editor-sound > summary").focus();
 	await page.keyboard.press("Enter");
-	for (const selector of ["#editor-param-area", "#editor-duplicate-buttons"]) {
-		assert(await page.locator(selector).isVisible(), `${selector} expands with the keyboard`);
-	}
+	assert(await page.locator("#editor-param-area").isVisible(), "sound settings expand with the keyboard");
 	await screenshot("settings-expanded");
 	await page.click("#btn-settings-close");
 	assert(await page.locator(".review-menu-toggle").evaluate((button) => button === document.activeElement),

@@ -378,10 +378,10 @@ try {
 	const wordnum = await editor.$$eval("#editor-param-area input[type=range]",
 		(els) => Number(els[2].value));
 	assert(wordnum === 6, "タッチでプリセットが適用されない: " + wordnum);
-	const advanced = editor.locator("#editor-advanced-settings > summary");
-	await advanced.scrollIntoViewIfNeeded();
-	await advanced.tap();
-	assert(await editor.locator("#editor-param-area").isVisible(), "詳細設定をタップで開けない");
+	const sound = editor.locator("#editor-sound > summary");
+	await sound.scrollIntoViewIfNeeded();
+	await sound.tap();
+	assert(await editor.locator("#editor-param-area").isVisible(), "音の合わせ方をタップで開けない");
 
 	// ×のタップで閉じられること(Esc の使えないスマホでの主な閉じ方)
 	const close = await editor.locator("#btn-settings-close").boundingBox();

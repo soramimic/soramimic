@@ -55,7 +55,6 @@ try {
 		assert(data.results.flat().some(word => word.surface === "優先語" && word.priorityPlaced));
 		assert(!data.results.flat().some(word => word.locked));
 		await menuAction(page, "#btn-settings");
-		await page.click("#editor-advanced-settings > summary");
 		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).count(), 0);
 		assert.equal(await page.getByRole("button", { name: "両方式で比較" }).count(), 0);
 		await page.click("#btn-settings-close");

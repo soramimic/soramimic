@@ -81,7 +81,6 @@ try {
 		assert.equal(data.param.PRIORITY_WORDS[0].scope, "surface");
 		assert.equal(data.results[0][0].surface, "近い表記", "tag affects actual generation");
 		await menuAction(page, "#btn-settings");
-		await page.click("#editor-advanced-settings > summary");
 		assert.equal(await page.locator(".priority-tag").count(), 1, "editor retains tag");
 		await page.getByRole("button", { name: "近い表記の優先指定を解除" }).click();
 		await idle(page);
