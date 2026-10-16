@@ -200,21 +200,15 @@
           <button id="btn-display-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
         <div class="editor-settings-body">
-          <section class="editor-display-section" aria-labelledby="editor-display-detail-title">
-            <h3 id="editor-display-detail-title" class="field-label">操作ボタン</h3>
+          <section class="editor-display-section" aria-label="編集画面に表示する項目">
             <div class="btn-group editor-display-presets" role="group" aria-label="編集画面の表示プリセット">
               <button type="button" class="btn" data-display-preset="default" aria-pressed="true">デフォルト</button>
               <button type="button" class="btn" data-display-preset="expert" aria-pressed="false">玄人</button>
             </div>
-            <div class="editor-display-options" role="group" aria-label="編集画面に表示する操作">
+            <div class="editor-display-options" role="group" aria-label="操作ボタンと読みの表示">
               <label><input id="display-wordClear" type="checkbox" />単語のクリア（×）</label>
               <label><input id="display-wordLock" type="checkbox" />単語の固定／解除</label>
               <label><input id="display-lineLock" type="checkbox" />行の固定／解除</label>
-            </div>
-          </section>
-          <section class="editor-display-section" aria-labelledby="editor-display-reading-title">
-            <h3 id="editor-display-reading-title" class="field-label">読み</h3>
-            <div class="editor-display-options" role="group" aria-label="編集画面に表示する読み">
               <label><input id="display-originalReading" type="checkbox" checked />元歌詞の読み</label>
               <label><input id="display-parodyReading" type="checkbox" />替え歌の読み</label>
             </div>
