@@ -25,6 +25,7 @@ export function createPriorityCatalogLoader(getApp, getSelection) {
 
 export function createPriorityWordControls({ container, getWords, getContext, onChange }) {
 	let selected = [], context = getContext(), request = 0, timer, active = -1, composing = false, expanded;
+	let searchDismissal = null;
 	const label = document.createElement("label");
 	label.className = "field-label";
 	label.textContent = "優先して含めたい単語";
@@ -92,6 +93,13 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		input.setAttribute("aria-expanded", "false");
 		input.removeAttribute("aria-activedescendant");
 		active = -1;
+	}
+	function dismissSearch(reason = "outside") {
+		searchDismissal = reason;
+		++request;
+		clearTimeout(timer);
+		hideResults();
+		resetStatus();
 	}
 	function resetStatus() {
 		status.textContent = selected.length > MAX_PRIORITY_WORDS
@@ -190,11 +198,10 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			const title = document.createElement("span");
 			title.className = "priority-tag-name";
 			title.textContent = word.scope === "word" ? word.original || name : chosenSurfaces(word).join(" / ");
-			const action = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-			action.classList.add("priority-tag-chevron");
-			action.setAttribute("viewBox", "0 0 12 8");
+			const action = document.createElement("small");
+			action.className = "priority-tag-chevron";
 			action.setAttribute("aria-hidden", "true");
-			action.innerHTML = '<path d="M0 0h12L6 8z"/>';
+			action.textContent = "▾";
 			toggle.append(title, action);
 			const panel = document.createElement("div");
 			panel.className = "priority-surfaces";
@@ -260,7 +267,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		const revision = ++request;
 		hideResults();
 		resetStatus();
-		if (input.disabled || !normalizeWordSearch(input.value) || composing) return;
+		if (searchDismissal || input.disabled || !normalizeWordSearch(input.value) || composing) return;
 		timer = setTimeout(() => search(revision), 180);
 	}
 	async function search(revision) {
@@ -309,14 +316,24 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			if (revision === request) status.textContent = "候補を読み込めませんでした。もう一度検索してください。";
 		}
 	}
-	input.addEventListener("input", scheduleSearch);
-	input.addEventListener("focus", refresh);
+	input.addEventListener("input", event => {
+		if (searchDismissal === "escape") searchDismissal = null;
+		composing = event.isComposing === true;
+		scheduleSearch();
+	});
+	input.addEventListener("focus", () => { searchDismissal = null; refresh(); });
+	input.addEventListener("pointerdown", () => {
+		if (searchDismissal) { searchDismissal = null; refresh(); }
+	});
 	input.addEventListener("compositionstart", () => { composing = true; scheduleSearch(); });
 	input.addEventListener("compositionend", () => { composing = false; scheduleSearch(); });
+	input.addEventListener("blur", () => {
+		if (composing) { composing = false; scheduleSearch(); }
+	});
 	input.addEventListener("keydown", event => {
 		if (composing || event.isComposing || event.keyCode === 229) return;
 		if (event.key === "Escape") {
-			event.preventDefault(); event.stopPropagation(); ++request; clearTimeout(timer); hideResults(); resetStatus();
+			event.preventDefault(); event.stopPropagation(); dismissSearch("escape");
 		} else if (!list.hidden && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
 			event.preventDefault();
 			const options = [...list.children];
@@ -329,11 +346,10 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			if (!list.hidden) list.children[Math.max(0, active)]?.click();
 		}
 	});
-	container.addEventListener("focusout", event => {
-		if (!container.contains(event.relatedTarget)) {
-			++request; clearTimeout(timer); hideResults(); resetStatus();
-		}
-	});
+	// Closing the software keyboard may blur the input while the search stays in use.
+	const dismissOutside = event => { if (!container.contains(event.target)) dismissSearch(); };
+	container.ownerDocument.addEventListener("pointerdown", dismissOutside, true);
+	container.ownerDocument.addEventListener("focusin", dismissOutside, true);
 	hideResults(); renderTags();
 	return {
 		refresh,
