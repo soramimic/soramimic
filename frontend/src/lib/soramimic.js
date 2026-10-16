@@ -597,7 +597,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 	//  重みを上げると、その位置で音が合う候補が選ばれやすくなる。
 	//  省略・null・不正(長さ不一致/総和0以下)の行は重みなし=従来と完全同一の挙動
 	function generateFromTokens(tokens_list, wordlist, parameter, updateFunc,endFunc, locksPerLine=null, weightsPerLine=null){
-		if(parameter?.PRIORITY_STRATEGY === "placement" && parameter.PRIORITY_WORDS?.length){
+		if(parameter?.PRIORITY_WORDS?.length){
 			return generateWithPriorityPlacement(tokens_list, wordlist, parameter, updateFunc,
 				endFunc, locksPerLine, weightsPerLine);
 		}
@@ -608,7 +608,7 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 		const controller = new AbortController();
 		let handle;
 		const finished = (async () => {
-			const param = assignDefaultParameter({ ...parameter, PRIORITY_WORDS: [], PRIORITY_STRATEGY: "score" });
+			const param = assignDefaultParameter({ ...parameter, PRIORITY_WORDS: [] });
 			const matrix = kanaSimilarity.getKanaSimilarity(param);
 			const unitsList = tokens_list.map(tokens => textAnalyzer.getYomiAndPhraseBreak(tokens));
 			const normalizedWeights = unitsList.map((units, line) => normalizeWeights(weights?.[line], units.length, `行${line}`));

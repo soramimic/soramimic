@@ -16,7 +16,6 @@ import {
 import { readCustomWordlistFile } from "./customWordlistFile.js";
 import { createLruCache } from "./lib/lruCache.js";
 import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
-import { createPriorityComparison } from "./priorityComparison.js";
 import { maximumVariationLength } from "./lib/kanaToSyllable.js";
 import {
 	createParamControls,
@@ -272,7 +271,6 @@ export async function startApp() {
 		presetArea: $id("preset-buttons"),
 		duplicateArea: duplicateButtons,
 		priorityArea: $id("priority-words"),
-		onPriorityCompare: () => priorityComparison.start(),
 		getPriorityContext: () => priorityContext(selectedWordlist),
 		getPriorityWords: createPriorityCatalogLoader(
 			async () => (await enginePromise).appFor(),
@@ -757,23 +755,6 @@ export async function startApp() {
 		return { app, phrases, tokensList, db, entry, where, param, sourceText: text };
 	}
 
-	const priorityComparison = createPriorityComparison({
-		prepare: () => {
-			const text = inputText.value.trim();
-			if (!text || text.length > 10000) throw new Error("歌詞を1〜1万文字で入力してください");
-			const param = getParam();
-			if (!param.PRIORITY_WORDS.length) throw new Error("優先する単語を選んでください");
-			return prepareConversion(text, param);
-		},
-		onChoose: async ({ prepared, results, param }) => {
-			const gen = ++convertGen;
-			paramControls.setValues({ priorityStrategy: param.PRIORITY_STRATEGY });
-			lastConversion = { phrases: prepared.phrases, tokensList: prepared.tokensList, param,
-				wordlist: prepared.entry, where: prepared.where, sourceText: prepared.sourceText };
-			await setResult(results, gen);
-		},
-	});
-
 	async function getDatabase(entry, where, maxUnits) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
 		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
@@ -813,7 +794,6 @@ export async function startApp() {
 				duplicate: String(values.duplicate),
 				priorityWords: values.priorityWords,
 				priorityContext: values.priorityContext,
-				priorityStrategy: values.priorityStrategy,
 				historyId: selectedHistoryId,
 				unsavedResult: !selectedHistoryId ? editorPayload : undefined,
 				pastResult: !selectedHistoryId && !editorPayload ? pastResult : undefined,
@@ -1098,7 +1078,7 @@ export async function startApp() {
 				renderFacets(selectedWordlist);
 			}
 		}
-		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext, priorityStrategy: savedMain.priorityStrategy });
+		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext });
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
 			pastResult = savedMain.pastResult;
 			lastConversion = savedMain.lastConversion;

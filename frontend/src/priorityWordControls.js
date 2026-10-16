@@ -23,7 +23,7 @@ export function createPriorityCatalogLoader(getApp, getSelection) {
 	};
 }
 
-export function createPriorityWordControls({ container, getWords, getContext, onChange, onCompare }) {
+export function createPriorityWordControls({ container, getWords, getContext, onChange }) {
 	let selected = [], context = getContext(), request = 0, timer, active = -1, composing = false;
 	const label = document.createElement("label");
 	label.className = "field-label";
@@ -80,7 +80,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	const help = document.createElement("p");
 	help.className = "field-note";
 	help.id = `${container.id}-hint`;
-	help.textContent = "選択中のリストから、音が近い箇所で優先して使います。必ず含まれるとは限りません。";
+	help.textContent = "指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。";
 	help.hidden = true;
 	info.setAttribute("aria-controls", help.id);
 	info.addEventListener("click", () => {
@@ -88,32 +88,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		info.setAttribute("aria-expanded", String(!help.hidden));
 	});
 	input.setAttribute("aria-describedby", help.id);
-	const methodRow = document.createElement("div");
-	methodRow.className = "priority-method-row";
-	const method = document.createElement("select");
-	method.className = "input";
-	method.setAttribute("aria-label", "優先単語の使い方");
-	for (const [value, text] of [["score", "音の近さで優先"], ["placement", "先に配置して生成"]]) {
-		method.append(new Option(text, value));
-	}
-	function syncMethodHelp() {
-		help.textContent = method.value === "placement"
-			? "指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない語は比較結果に表示します。"
-			: "選択中のリストから、音が近い箇所で優先して使います。必ず含まれるとは限りません。";
-	}
-	method.addEventListener("change", () => { syncMethodHelp(); onChange(); });
-	methodRow.append(method);
-	if (onCompare) {
-		const compare = document.createElement("button");
-		compare.type = "button";
-		compare.className = "btn";
-		compare.textContent = "両方式で比較";
-		compare.addEventListener("click", onCompare);
-		methodRow.append(compare);
-	}
 	field.append(icon, input);
 	row.append(field, scope);
-	container.append(heading, row, tags, list, status, methodRow, help);
+	container.append(heading, row, tags, list, status, help);
 
 	function hideResults() {
 		list.hidden = true;
@@ -148,7 +125,6 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			tags.append(tag);
 		}
 		tags.hidden = !selected.length;
-		methodRow.hidden = !selected.length;
 	}
 	function refresh() {
 		const next = getContext();
@@ -258,11 +234,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		refresh,
 		getValues: () => {
 			if (context !== getContext()) refresh();
-			return { priorityWords: normalizePriorityWords(selected), priorityContext: context, priorityStrategy: method.value };
+			return { priorityWords: normalizePriorityWords(selected), priorityContext: context };
 		},
 		setValues: values => {
-			if (values.priorityStrategy !== undefined) method.value = values.priorityStrategy === "placement" ? "placement" : "score";
-			syncMethodHelp();
 			if (values.priorityWords === undefined) return;
 			selected = normalizePriorityWords(values.priorityWords);
 			context = values.priorityContext ?? getContext();
