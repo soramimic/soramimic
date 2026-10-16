@@ -305,7 +305,8 @@ try {
 	await page.goBack();
 	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 
-	const customOutput = await page.textContent("#output-text");
+	const latestResult = page.locator(".history-item").first();
+	const customOutput = await latestResult.locator(".history-preview").textContent();
 	if (!customOutput.includes("林檎") || customOutput.includes("エラーが発生しました")) {
 		throw new Error("保存済み自作リストで変換できない: " + customOutput);
 	}
@@ -506,8 +507,10 @@ try {
 	await page.goBack();
 	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 	await page.click("#output-field > summary");
+	await latestResult.locator(".history-full > summary").click();
+	await page.waitForFunction(() => document.querySelector(".history-item .output-text").textContent);
 
-	const output = await page.textContent("#output-text");
+	const output = await latestResult.locator(".output-text").textContent();
 	console.log("--- 変換結果 ---");
 	console.log(output);
 
@@ -526,18 +529,18 @@ try {
 			return Promise.resolve();
 		};
 	});
-	await page.click("#btn-copy-result");
+	await latestResult.locator(".output-copy").click();
 	await page.waitForFunction(() => window.__copiedResult !== null, { timeout: 10000 });
 	const copiedResult = await page.evaluate(() => window.__copiedResult);
 	if (copiedResult !== output) {
 		throw new Error("出力結果とコピー内容が一致しない");
 	}
-	assert.equal(await page.getByRole("button", { name: "出力結果をコピー" }).count(), 1);
-	assert.equal(await page.locator("#btn-copy-result svg").count(), 1);
-	if (!await page.locator("#btn-copy-result").evaluate((el) => el.classList.contains("copy-success"))) {
+	assert.equal(await page.getByRole("button", { name: "出力結果をコピー" }).count(), await page.locator(".history-item").count());
+	assert.equal(await latestResult.locator(".output-copy svg").count(), 1);
+	if (!await latestResult.locator(".output-copy").evaluate((el) => el.classList.contains("copy-success"))) {
 		throw new Error("コピー成功状態が表示されない");
 	}
-	if (await page.textContent("#copy-result-status") !== "コピーしました") {
+	if (await latestResult.locator("[role=status]").textContent() !== "コピーしました") {
 		throw new Error("コピー成功が読み上げ通知されない");
 	}
 
