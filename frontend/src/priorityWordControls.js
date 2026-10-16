@@ -1,5 +1,5 @@
 import { normalizeWordSearch } from "./editorWordlistSearch.js";
-import { normalizePriorityWords, priorityKey } from "./lib/priorityWords.js";
+import { MAX_PRIORITY_WORDS, normalizePriorityWords, priorityKey } from "./lib/priorityWords.js";
 import { loadWordlistEntries } from "./appCore.js";
 
 export function priorityContext(entry) {
@@ -36,7 +36,11 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	info.textContent = "ⓘ";
 	info.setAttribute("aria-label", "優先単語の説明");
 	info.setAttribute("aria-expanded", "false");
-	heading.append(label, info);
+	const count = document.createElement("span");
+	count.className = "priority-count";
+	count.setAttribute("aria-label", "優先単語の数");
+	count.setAttribute("role", "status");
+	heading.append(label, count, info);
 	const row = document.createElement("div");
 	row.className = "priority-search-row";
 	const field = document.createElement("div");
@@ -58,8 +62,8 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	label.htmlFor = input.id;
 	const scope = document.createElement("select");
 	scope.className = "input priority-scope";
-	scope.setAttribute("aria-label", "優先する範囲");
-	for (const [value, text] of [["word", "単語全体"], ["surface", "選んだ表記"]]) {
+	scope.setAttribute("aria-label", "使う表記");
+	for (const [value, text] of [["word", "別の表記も使う"], ["surface", "この表記だけ使う"]]) {
 		const option = document.createElement("option");
 		option.value = value;
 		option.textContent = text;
@@ -80,7 +84,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	const help = document.createElement("p");
 	help.className = "field-note";
 	help.id = `${container.id}-hint`;
-	help.textContent = "指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。";
+	help.textContent = `最大${MAX_PRIORITY_WORDS}個まで指定できます。指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。「別の表記も使う」はリスト内の別名・略称も対象にします（例：大谷翔平・大谷）。「この表記だけ使う」は選んだ表記だけを使います。`;
 	help.hidden = true;
 	info.setAttribute("aria-controls", help.id);
 	info.addEventListener("click", () => {
@@ -98,7 +102,17 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		input.removeAttribute("aria-activedescendant");
 		active = -1;
 	}
+	function resetStatus() {
+		status.textContent = selected.length > MAX_PRIORITY_WORDS
+			? `${MAX_PRIORITY_WORDS}個まで指定できます。あと${selected.length - MAX_PRIORITY_WORDS}個解除してください。`
+			: selected.length === MAX_PRIORITY_WORDS
+				? `上限の${MAX_PRIORITY_WORDS}個です。追加するには1個解除してください。` : "";
+	}
 	function renderTags() {
+		count.textContent = `${selected.length} / ${MAX_PRIORITY_WORDS}個`;
+		input.disabled = scope.disabled = selected.length >= MAX_PRIORITY_WORDS;
+		if (input.disabled) { ++request; clearTimeout(timer); hideResults(); }
+		resetStatus();
 		tags.replaceChildren();
 		for (const word of selected) {
 			const tag = document.createElement("span");
@@ -108,7 +122,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			if (word.scope === "surface") {
 				const detail = document.createElement("small");
 				detail.textContent = word.original && word.original !== word.surface
-					? `${word.original}・表記のみ` : "表記のみ";
+					? `${word.original}・この表記だけ` : "この表記だけ";
 				tag.append(detail);
 			}
 			const remove = document.createElement("button");
@@ -137,13 +151,14 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	}
 	function choose(word) {
 		if (context !== getContext()) { refresh(); return; }
+		if (selected.length >= MAX_PRIORITY_WORDS) { resetStatus(); return; }
 		if (word.scope === "word") selected = selected.filter(value => value.id !== word.id || value.original !== word.original);
 		selected = normalizePriorityWords([...selected, word]);
 		input.value = "";
 		++request;
 		clearTimeout(timer);
 		hideResults();
-		status.textContent = "";
+		resetStatus();
 		renderTags();
 		onChange();
 		input.focus();
@@ -152,8 +167,8 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		clearTimeout(timer);
 		const revision = ++request;
 		hideResults();
-		status.textContent = "";
-		if (!normalizeWordSearch(input.value) || composing) return;
+		resetStatus();
+		if (input.disabled || !normalizeWordSearch(input.value) || composing) return;
 		timer = setTimeout(() => search(revision), 180);
 	}
 	async function search(revision) {
@@ -211,7 +226,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	input.addEventListener("keydown", event => {
 		if (composing || event.isComposing || event.keyCode === 229) return;
 		if (event.key === "Escape") {
-			event.preventDefault(); event.stopPropagation(); ++request; clearTimeout(timer); hideResults(); status.textContent = "";
+			event.preventDefault(); event.stopPropagation(); ++request; clearTimeout(timer); hideResults(); resetStatus();
 		} else if (!list.hidden && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
 			event.preventDefault();
 			const options = [...list.children];
@@ -226,7 +241,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	});
 	container.addEventListener("focusout", event => {
 		if (!container.contains(event.relatedTarget)) {
-			++request; clearTimeout(timer); hideResults(); status.textContent = "";
+			++request; clearTimeout(timer); hideResults(); resetStatus();
 		}
 	});
 	hideResults(); renderTags();
