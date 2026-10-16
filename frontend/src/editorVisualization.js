@@ -4,9 +4,8 @@ import { unitVowel, sameVowelAlignment } from "./editorVowelAlignment.js";
 
 const splitter = KanaToSyllable();
 const STORAGE_KEY = "soramimic-editor-visualization";
-const DISTANCE_THRESHOLD = 30;
-const kinds = ["vowel", "distance", "long", "nasal", "single", "filler"];
-const labels = { vowel: "母音不一致", distance: "類似度低", long: "長音2モーラ化", nasal: "ン・ッ変化", single: "1音節", filler: "未変換" };
+const kinds = ["vowel", "long", "nasal", "single", "filler"];
+const labels = { vowel: "母音不一致", long: "長音2モーラ化", nasal: "ン・ッ変化", single: "1音節", filler: "未変換" };
 
 function syllables(kana) {
 	if (typeof kana !== "string") return [];
@@ -108,7 +107,7 @@ export function setupVisualization(getContext) {
 			previousApp = context.app;
 			previousParam = paramKey;
 		}
-		const needDistance = dialog.open || inputs.distance.checked || inputs.long.checked || inputs.nasal.checked;
+		const needDistance = dialog.open || inputs.long.checked || inputs.nasal.checked;
 		if (needDistance && context.app && !matrix) matrix = context.app.kanaSimilarity.getKanaSimilarity(context.param);
 		const counts = Object.fromEntries(kinds.map((kind) => [kind, 0]));
 		let highlighted = 0;
@@ -123,16 +122,13 @@ export function setupVisualization(getContext) {
 				cache.set(word, entry);
 			}
 			const diagnostics = entry.value;
-			const flags = { ...diagnostics, distance: diagnostics.distance !== undefined && diagnostics.distance > DISTANCE_THRESHOLD };
-			const active = kinds.filter((kind) => flags[kind] && inputs[kind].checked);
-			for (const kind of kinds) if (flags[kind]) counts[kind]++;
+			const active = kinds.filter((kind) => diagnostics[kind] && inputs[kind].checked);
+			for (const kind of kinds) if (diagnostics[kind]) counts[kind]++;
 			if (active.length) highlighted++;
 			chip.classList.toggle("visualization-hit", !!active.length);
 			chip.querySelector(".visualization-badges")?.remove();
 			const descriptions = active.map((kind) => kind === "vowel"
 				? `母音: ${diagnostics.sourceVowels || "なし"} → ${diagnostics.wordVowels || "なし"}`
-				: kind === "distance" ? Number.isFinite(diagnostics.distance)
-					? `音の距離: ${diagnostics.distance.toFixed(1)} / 音` : diagnostics.lengthMismatch ? "読みの長さが合いません" : "音の距離を比較できません"
 				: labels[kind]);
 			if (active.length) {
 				const badges = document.createElement("span");
@@ -141,8 +137,7 @@ export function setupVisualization(getContext) {
 				active.forEach((kind, index) => {
 					const badge = document.createElement("span");
 					badge.className = `visualization-badge visualization-${kind}`;
-					badge.textContent = kind === "distance" && !Number.isFinite(diagnostics.distance)
-						? diagnostics.lengthMismatch ? "長さ不一致" : "比較不可" : labels[kind];
+					badge.textContent = labels[kind];
 					badge.title = descriptions[index];
 					badges.append(badge);
 				});
@@ -154,7 +149,7 @@ export function setupVisualization(getContext) {
 			else chip.removeAttribute("aria-label");
 		}
 		for (const kind of kinds) {
-			document.getElementById(`visualization-count-${kind}`).textContent = ["distance", "long", "nasal"].includes(kind) && !context.app ? "準備中" : `${counts[kind]}か所`;
+			document.getElementById(`visualization-count-${kind}`).textContent = ["long", "nasal"].includes(kind) && !context.app ? "準備中" : `${counts[kind]}か所`;
 		}
 		const enabled = kinds.some((kind) => inputs[kind].checked);
 		document.getElementById("visualization-summary").textContent = enabled ? `・${highlighted}か所` : "";
