@@ -200,6 +200,18 @@
           <button id="btn-display-settings-close" class="dialog-close" type="button" aria-label="閉じる">×</button>
         </div>
         <div class="editor-settings-body">
+          <section class="editor-display-section" aria-labelledby="editor-display-detail-title">
+            <h3 id="editor-display-detail-title" class="field-label">編集画面の操作</h3>
+            <div class="btn-group editor-display-presets" role="group" aria-label="編集操作の詳細度">
+              <button type="button" class="btn" data-display-preset="default" aria-pressed="true">デフォルト</button>
+              <button type="button" class="btn" data-display-preset="expert" aria-pressed="false">玄人</button>
+            </div>
+            <div class="editor-display-options" role="group" aria-label="編集画面に表示する操作">
+              <label><input id="display-wordClear" type="checkbox" />単語のクリア（×）</label>
+              <label><input id="display-wordLock" type="checkbox" />単語の固定／解除</label>
+              <label><input id="display-lineLock" type="checkbox" />行の固定／解除</label>
+            </div>
+          </section>
           <section id="editor-visualization" class="editor-visualization" aria-labelledby="visualization-title">
             <h3 id="visualization-title" class="field-label">可視化 <span id="visualization-summary" role="status" aria-live="polite"></span></h3>
             <div class="visualization-options" role="group" aria-label="強調する箇所">
