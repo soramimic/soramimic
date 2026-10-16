@@ -28,7 +28,7 @@ async function home(page) {
 async function outputBounds(card) {
 	return card.evaluate(block => ({
 		block: block.getBoundingClientRect().toJSON(),
-		lyrics: block.querySelector(".history-full").getBoundingClientRect().toJSON(),
+		heading: block.querySelector("h3").getBoundingClientRect().toJSON(),
 		copy: block.querySelector(".output-copy").getBoundingClientRect().toJSON(),
 	}));
 }
@@ -160,9 +160,9 @@ try {
 					const bounds = await newest.locator(selector).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, selector);
 				}
-				const { lyrics, copy } = await outputBounds(newest);
-				assert(copy.y >= lyrics.y + lyrics.height - 1,
-					"the lyric copy action must follow the lyrics rather than the title");
+				const { heading, copy } = await outputBounds(newest);
+				assert(copy.x > heading.x + heading.width && copy.y <= heading.y,
+					"copy must stay beside the card heading");
 				assert(await newest.locator(".history-preview").evaluate(el => el.clientHeight <= 90),
 					"long results must have a compact preview");
 				await newest.locator("details").evaluate(el => { el.open = true; });
