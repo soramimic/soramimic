@@ -37,6 +37,10 @@ try {
 	const errors = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto(`${base}/editor.html`);
+	// Existing display choices predate the reading switches.
+	await page.evaluate(() => localStorage.setItem("soramimic-editor-display", JSON.stringify({
+		wordClear: false, wordLock: false, lineLock: false,
+	})));
 	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	const row = (line = 0) => page.locator(`.review-line[data-line="${line}"]`);
@@ -54,11 +58,28 @@ try {
 			await closeDisplay();
 		}
 		assert.equal(await page.locator(".inline-edit-action").count(), 0, "default keeps the existing compact overview");
+		assert.equal(await page.locator(".review-reading").count(), 3, "source readings default to visible, including legacy preferences");
+		assert.equal(await page.locator(".review-word-reading").count(), 0, "parody readings default to hidden");
 		const initial = await state();
 		await openDisplay();
 		assert.equal(await page.locator('[data-display-preset="default"]').getAttribute("aria-pressed"), "true");
+		assert(await page.isChecked("#display-originalReading"));
+		assert(!(await page.isChecked("#display-parodyReading")));
+		await page.uncheck("#display-originalReading");
+		assert.equal(await page.locator(".review-reading").count(), 0);
+		assert.equal(await row().locator(".review-original").textContent(), phrases[0], "hiding the reading preserves the source lyrics");
+		await page.check("#display-parodyReading");
+		assert.equal(await page.locator(".review-word-reading").count(), 3);
+		assert.deepEqual(await row().locator(".review-word-reading").allTextContents(), ["かた", "ひかり"]);
+		assert.equal(await row(2).locator(".review-word-reading").count(), 0, "unassigned text gets no duplicate reading");
+		assert.equal(await page.locator(".review-reading").count(), 0, "the reading switches are independent");
+		await page.click('[data-display-preset="default"]');
+		assert.equal(await page.locator(".review-reading").count(), 3);
+		assert.equal(await page.locator(".review-word-reading").count(), 0);
 		await page.click('[data-display-preset="expert"]');
-		assert.equal(await page.locator(".editor-display-options input:checked").count(), 3);
+		assert.equal(await page.locator(".editor-display-options input:checked").count(), 5);
+		assert.equal(await page.locator(".review-reading").count(), 3);
+		assert.equal(await page.locator(".review-word-reading").count(), 3);
 		assert.equal(await page.locator(".word-quick-clear").count(), 3);
 		assert.equal(await page.locator(".word-quick-lock").count(), 3);
 		assert.equal(await page.locator(".line-quick-lock").count(), 3, "blank rows have no actions");
@@ -73,6 +94,7 @@ try {
 		assert.equal(await page.locator(".line-quick-lock").count(), 3);
 		await page.uncheck("#display-lineLock");
 		assert.equal(await page.locator(".inline-edit-action").count(), 0);
+		await page.uncheck("#display-parodyReading");
 		assert.equal(await page.locator('[data-display-preset="default"]').getAttribute("aria-pressed"), "true");
 		await page.click('[data-display-preset="expert"]');
 		await closeDisplay();
@@ -145,12 +167,16 @@ try {
 		const beforePreferences = await state();
 		await openDisplay();
 		await page.uncheck("#display-wordLock");
+		await page.uncheck("#display-originalReading");
+		await page.check("#display-parodyReading");
 		await closeDisplay();
 		await page.reload();
 		await ready();
 		assert.equal(await page.locator(".word-quick-lock").count(), 0);
 		assert.equal(await page.locator(".word-quick-clear").count(), 3);
 		assert.equal(await page.locator(".line-quick-lock").count(), 3);
+		assert.equal(await page.locator(".review-reading").count(), 0, "hidden source readings stay hidden after reload");
+		assert.equal(await page.locator(".review-word-reading").count(), 3, "parody readings stay visible after reload");
 		assert.deepEqual((await state()).results, beforePreferences.results);
 		assert.deepEqual((await state()).history, beforePreferences.history);
 	}
@@ -162,8 +188,10 @@ try {
 	await next.waitForSelector(".word-quick-clear");
 	assert.equal(await next.locator(".word-quick-lock").count(), 0);
 	assert.equal(await next.locator(".line-quick-lock").count(), 3);
+	assert.equal(await next.locator(".review-reading").count(), 0);
+	assert.equal(await next.locator(".review-word-reading").count(), 3);
 	assert.deepEqual(errors, []);
-	console.log(`[ok] editor display (${browserType.name()}): presets, individual choices, persistent overview actions, per-word clear/lock, row lock/unlock, regeneration, undo/redo, review and responsive layout`);
+	console.log(`[ok] editor display (${browserType.name()}): presets, independent source/parody readings, legacy preferences, persistent overview actions, per-word clear/lock, row lock/unlock, regeneration, undo/redo, review and responsive layout`);
 } finally {
 	await browser?.close();
 	try { process.kill(-server.pid, "SIGTERM"); } catch {}
