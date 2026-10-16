@@ -18,8 +18,13 @@ export async function ensureLegacyDomain({ account, token, request = fetch }) {
 	const domains = await api(`${project}/domains`);
 	let domain = domains.find(domain => domain.name === hostname);
 	if (!domain) domain = await api(`${project}/domains`, { method: "POST", body: JSON.stringify({ name: hostname }) });
-	if (!domain.zone_tag) throw new Error("Legacy domain must belong to the existing Cloudflare zone");
-	const recordsPath = `/zones/${encodeURIComponent(domain.zone_tag)}/dns_records`;
+	let zone = domain.zone_tag;
+	if (!zone) {
+		const zones = await api(`/zones?name=soramimic.com&account.id=${encodeURIComponent(account)}`);
+		if (zones.length !== 1) throw new Error("Expected the existing soramimic.com Cloudflare zone");
+		zone = zones[0].id;
+	}
+	const recordsPath = `/zones/${encodeURIComponent(zone)}/dns_records`;
 	const records = await api(`${recordsPath}?name=${hostname}`);
 	if (records.some(record => record.type !== "CNAME" || record.content.replace(/\.$/, "") !== target)) {
 		throw new Error("Legacy hostname has conflicting DNS records; no DNS records were changed");

@@ -12,7 +12,12 @@ on:
       - '.github/scripts/ensure-legacy-domain.mjs'
       - 'tests/legacy-domain.mjs'
       - '.github/workflows/legacy.yaml'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      domain_only:
+        description: 'Configure the legacy domain without rebuilding the frozen site'
+        type: boolean
+        default: false
 
 concurrency:
   group: legacy-pages-${{ github.event.pull_request.number || 'deployment' }}
@@ -22,7 +27,21 @@ permissions:
   contents: read
 
 jobs:
+  configure-domain:
+    if: github.event_name == 'workflow_dispatch' && inputs.domain_only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/legacy-domain.mjs
+      - run: node .github/scripts/ensure-legacy-domain.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   deploy-legacy:
+    if: inputs.domain_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

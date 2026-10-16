@@ -23,6 +23,8 @@ await check([{ result: [] }, { result: domain }, { result: [] }, { result: recor
 	{ name: hostname }, { ...record, proxied: true, ttl: 1 },
 ]);
 await check([{ result: [domain] }, { result: [record] }], []);
+await check([{ result: [{ ...domain, zone_tag: undefined }] }, { result: [{ id: "zone" }] }, { result: [record] }], []);
+await check([{ result: [{ ...domain, zone_tag: undefined }] }, { result: [] }], [], /existing soramimic.com/);
 await check([{ result: [domain] }, { result: [{ ...record, content: "other.example" }] }], [], /conflicting DNS/);
 await check([{ result: [domain] }, { result: [{ type: "A", content: "192.0.2.1" }] }], [], /conflicting DNS/);
 await check([{ result: [domain] }, { error: 403 }], [], /HTTP 403/);
