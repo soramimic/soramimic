@@ -25,6 +25,13 @@ for (const duplicate of [false, true]) {
 }
 assert.equal((await generate(["カ"], [surface], {}, [[1]]))[0][0].surface, "近い表記", "weighted path honors preferences");
 assert.equal((await generate(["カ"], [{ ...surface, original: "unrelated" }]))[0][0].id, "0", "stale identities must not match");
+const alternatives = { ...surface, scope: "surfaces", surfaces: ["近い表記", "別表記"] };
+assert.equal((await generate(["カ"], [alternatives]))[0][0].surface, "別表記", "choose the best checked spelling");
+assert.equal((await generate(["カ"], [{ ...alternatives, surfaces: ["近い表記"] }]))[0][0].surface,
+	"近い表記", "unchecked spellings are excluded from placement");
+const alternativeResult = await generate(["カ", "カ"], [alternatives]);
+assert.equal(alternativeResult.flat().filter(word => word.id === "1").length, 1,
+	"multiple checked spellings do not allow duplicate words");
 const far = { id: "2", original: "遠い語", surface: "遠い語", kana: "キ", scope: "word" };
 assert.equal((await generate(["カ"], [far]))[0][0].id, "2", "explicit preferences take priority over phonetic similarity");
 const filtered = await wordList.parseTidy(csv, "type=full");
@@ -35,6 +42,8 @@ const units = textAnalyzer.yomiToSyllable("カ");
 const candidates = soramimiMaker.getCandidates(db, units, { ...param, PRIORITY_WORDS: [surface] }, 3);
 assert.equal(candidates[0].surface, "近い表記");
 assert(candidates[0].sim > 0);
+assert.equal(soramimiMaker.getCandidates(db, units, { ...param, PRIORITY_WORDS: [alternatives] }, 3)[0].surface,
+	"別表記", "candidate ranking also accepts checked spellings");
 const many = await wordList.parseTidy("id,original,surface,pronunciation\n"
 	+ Array.from({ length: 10 }, (_, i) => `${i},通常${i},通常${i},カ`).join("\n")
 	+ "\np,指定語,近い表記,サ\n", "");
@@ -52,4 +61,6 @@ assert.deepEqual(catalog.map(word => [word.id, word.surface, word.kana]),
 	[["0", "通常", "カ"], ["1", "近い表記", "サ"], ["1", "近い表記", "サー"]]);
 assert(catalog.every(word => word.pronunciation === undefined), "search catalog does not expand pronunciation variants");
 assert.deepEqual(normalizePriorityWords([null, {}, preferred, preferred, surface]), [preferred, surface]);
+assert.deepEqual(normalizePriorityWords([{ ...alternatives, surfaces: ["近い表記", null, "近い表記", "別表記"] }]), [alternatives]);
+assert.deepEqual(normalizePriorityWords([{ ...alternatives, surfaces: [] }])[0].surfaces, [surface.surface]);
 print("[ok] priority words: word/surface scope, placement, raw distance, duplicates, filters, weights, locks, candidate search and unexpanded catalog");

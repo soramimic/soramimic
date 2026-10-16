@@ -1,13 +1,10 @@
-import { normalizePriorityWords } from "./priorityWords.js";
+import { normalizePriorityWords, matchesPriorityWord } from "./priorityWords.js";
 import { syllableVariations } from "./kanaToSyllable.js";
 
 const BEAM_SIZE = 32;
 const CANDIDATES_PER_WORD = 16;
 
-export function matchesPriority(word, preferred) {
-	return !word.filler && String(word.id) === preferred.id && word.original === preferred.original
-		&& (preferred.scope === "word" || word.surface === preferred.surface);
-}
+export const matchesPriority = matchesPriorityWord;
 
 export function priorityMetrics(results, preferences) {
 	const words = results.flat();
