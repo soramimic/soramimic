@@ -618,21 +618,12 @@ html.editor-free-input-open .editor-toolbar {
 }
 
 /* 最後の項目の余白が二重にならないようにする(.field の margin-bottom) */
-.editor-settings-body > .field:last-child,
-.editor-advanced-settings > .field:last-child {
+.editor-settings-body > .field:last-child {
 	margin-bottom: 0;
 }
 
-.editor-advanced-settings > summary {
-	cursor: pointer;
-	min-height: 44px;
-	padding: .6rem 0;
-	font-weight: 600;
-	color: var(--muted);
-}
-
-.editor-advanced-settings[open] > summary {
-	margin-bottom: .6rem;
+#editor-sound .param-item:first-child > .field-label {
+	display: none;
 }
 
 /* 適用中の自作リストを開き直す導線。入力本体は専用モーダルに分離する */

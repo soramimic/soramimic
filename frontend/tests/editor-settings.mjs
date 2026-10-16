@@ -130,7 +130,7 @@ try {
 	await editor.waitForSelector("#editor-param-area input[type=range]", { state: "attached", timeout: 10000 });
 	assert(await editor.isVisible("#editor-preset-buttons"), "プリセットは最初から表示する");
 	assert(!await editor.isVisible("#editor-param-area"), "詳細パラメータは最初は閉じる");
-	assert(!await editor.isVisible("#editor-duplicate-buttons"), "単語重複も詳細設定に含める");
+	assert(await editor.isVisible("#editor-duplicate-buttons"), "単語重複は最初から表示する");
 
 	// Escで閉じ、三点メニューから開き直せる(生成画面のダイアログと同じ操作)
 	await editor.keyboard.press("Escape");
@@ -193,7 +193,6 @@ try {
 	assert(await activePreset(editor) === "バランス", "プリセット表示が戻らない");
 
 	// ---- 単語重複の切り替え ----
-	await editor.click("#editor-advanced-settings > summary");
 	await editor.click("#editor-duplicate-buttons button[data-value='true']");
 	await waitIdle(editor);
 	assert((await readData(editor)).param.DUPLICATE === true,
@@ -269,8 +268,6 @@ try {
 	await editor.waitForFunction(
 		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 	await openSettings(editor);
-	assert(!await editor.isVisible("#editor-note-length-field"), "ノート長設定も最初は閉じる");
-	await editor.click("#editor-advanced-settings > summary");
 	assert(await editor.isVisible("#editor-note-length-field"),
 		"生重みがあるのにノート長設定が表示されない");
 	assert(await editor.inputValue("#editor-note-length-alpha") === "0.25",
