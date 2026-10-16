@@ -1350,3 +1350,21 @@ dialog h2 {
 		--danger: #fca5a5;
 	}
 }
+
+.legacy-link {
+	margin-left: auto;
+	padding: .5rem;
+	min-height: 44px;
+	flex: 0 0 auto;
+	border: 0;
+	background: transparent;
+	color: var(--muted);
+	font: inherit;
+	font-size: .85rem;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.legacy-link:disabled { cursor: wait; opacity: .65; }
+.legacy-status { max-width: 720px; margin: .5rem auto; padding: 0 1rem; font-size: .85rem; }
+body:has(#tab-home) .site-header .brand { flex-shrink: 1; min-width: 0; }

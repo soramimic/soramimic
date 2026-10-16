@@ -47,6 +47,7 @@ export default defineConfig({
 	build: {
 		rollupOptions: {
 			input: {
+				legacyTransfer: fileURLToPath(new URL("./legacy-transfer.html", import.meta.url)),
 				main: fileURLToPath(new URL("./index.html", import.meta.url)),
 				about: fileURLToPath(new URL("./about.html", import.meta.url)),
 				editor: fileURLToPath(new URL("./editor.html", import.meta.url)),
