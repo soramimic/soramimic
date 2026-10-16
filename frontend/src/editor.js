@@ -399,6 +399,13 @@ function renderLine(line) {
 	const original = row.querySelector(".review-original");
 	const heading = document.createElement("div");
 	heading.className = "review-line-heading";
+	const source = document.createElement("div");
+	source.className = "review-source";
+	const reading = document.createElement("p");
+	reading.className = "review-reading";
+	reading.setAttribute("aria-label", "元歌詞の読み");
+	reading.textContent = rangeKana(line, 0, unitsOf(line).length).replace(/[ァ-ヶ]/g,
+		(char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
 	const regenerateButton = document.createElement("button");
 	regenerateButton.type = "button";
 	regenerateButton.className = "btn btn-ghost line-regenerate";
@@ -408,7 +415,8 @@ function renderLine(line) {
 	regenerateButton.disabled = !db || settingsUpdating || !!regeneration;
 	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
 	original.replaceWith(heading);
-	heading.append(original, regenerateButton);
+	source.append(original, reading);
+	heading.append(source, regenerateButton);
 	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
 	return row;
 }

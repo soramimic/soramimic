@@ -447,6 +447,9 @@ try {
 	const afterCorrection = await state();
 	assert.equal(afterCorrection.tokensList[0][0].pronunciation, "コトーゲ");
 	assert.equal(await page.locator('[data-line="0"] .review-original').textContent(), source);
+	const sourceReading = page.locator('[data-line="0"] .review-reading');
+	assert.match(await sourceReading.textContent(), /^ことーげ/,
+		"the displayed hiragana reading follows source reading corrections");
 	const correctedHighlights = await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents();
 	assert(correctedHighlights.some((text) => text.startsWith("負わ")));
 	assert(correctedHighlights.every((text) => text.length < source.length), "reading edit must not highlight the whole line");
@@ -455,9 +458,11 @@ try {
 	await ready();
 	await searchDone();
 	assert.equal((await state()).tokensList[0][0].pronunciation, "オワ");
+	assert.match(await sourceReading.textContent(), /^おわ/, "undo restores the displayed reading");
 	await page.click("#btn-redo");
 	await ready();
 	await searchDone();
+	assert.match(await sourceReading.textContent(), /^ことーげ/, "redo restores the corrected reading");
 	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);
 	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, visual viewport resizing/panning, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
