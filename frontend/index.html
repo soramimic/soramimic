@@ -115,22 +115,19 @@
               <div class="output-block">
                 <div class="output-header">
                   <h2 id="output-heading">出力結果</h2>
+                  <button id="btn-copy-result" class="btn output-copy" type="button"
+                    aria-label="歌詞をコピー" title="歌詞をコピー" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <g class="copy-symbol"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></g>
+                      <path class="copy-success-symbol" d="m5 12 4 4L19 6" />
+                      <path class="copy-error-symbol" d="M12 5v9m0 4v1" />
+                    </svg>
+                  </button>
+                  <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
                 </div>
                 <div id="output-text" class="output-text" role="region" aria-labelledby="output-heading" tabindex="0"></div>
               </div>
-              <div class="history-actions">
-                <button id="btn-copy-result" class="btn output-copy" type="button"
-                  aria-label="歌詞をコピー" title="歌詞をコピー" disabled>
-                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <g class="copy-symbol"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></g>
-                    <path class="copy-success-symbol" d="m5 12 4 4L19 6" />
-                    <path class="copy-error-symbol" d="M12 5v9m0 4v1" />
-                  </svg>
-                  <span>歌詞をコピー</span>
-                </button>
-                <span id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></span>
-                <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
-              </div>
+              <button id="btn-open-editor" class="btn" hidden>編集ツールで開く</button>
             </div>
             <div id="history-list" class="history-list"></div>
           </details>
@@ -144,6 +141,14 @@
         <article class="history-item">
           <div class="output-header">
             <h3></h3>
+            <button class="btn output-copy" type="button" aria-label="歌詞をコピー" title="歌詞をコピー">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <g class="copy-symbol"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></g>
+                <path class="copy-success-symbol" d="m5 12 4 4L19 6" />
+                <path class="copy-error-symbol" d="M12 5v9m0 4v1" />
+              </svg>
+            </button>
+            <span class="visually-hidden" role="status" aria-live="polite"></span>
           </div>
           <div class="history-body">
             <p class="history-meta"><span class="history-wordlist"></span> · <time></time></p>
@@ -152,18 +157,7 @@
               <summary>全文を表示</summary>
               <div class="output-text" role="region" aria-label="出力結果の全文" tabindex="0"></div>
             </details>
-            <div class="history-actions">
-              <button class="btn output-copy" type="button" aria-label="歌詞をコピー" title="歌詞をコピー">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <g class="copy-symbol"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></g>
-                  <path class="copy-success-symbol" d="m5 12 4 4L19 6" />
-                  <path class="copy-error-symbol" d="M12 5v9m0 4v1" />
-                </svg>
-                <span>歌詞をコピー</span>
-              </button>
-              <span class="visually-hidden" role="status" aria-live="polite"></span>
-              <button class="btn history-edit" type="button">編集ツールで開く</button>
-            </div>
+            <button class="btn history-edit" type="button">編集ツールで開く</button>
           </div>
         </article>
       </template>
