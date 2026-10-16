@@ -45,6 +45,8 @@ jobs:
         run: node tests/editor-layout.mjs
       - name: 編集画面の可視化・判定・修正後の更新
         run: node tests/editor-diagnostics.mjs && node tests/editor-visualization.mjs
+      - name: 編集操作の表示設定・単語と行の固定解除(Chromium・WebKit)
+        run: node tests/editor-display.mjs && DISPLAY_BROWSER=webkit node tests/editor-display.mjs
       - name: 選択した単語の詳細情報
         run: node tests/editor-word-details.mjs
       - name: 編集画面の逆引き検索・行単位の再生成

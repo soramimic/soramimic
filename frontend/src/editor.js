@@ -7,6 +7,7 @@ import "./editor.css";
 import "./appBridge.js";
 import { validateEditorData } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
+import { setupEditorDisplay } from "./editorDisplay.js";
 import "./editorVisualization.css";
 import { createGenerationHistoryRepository } from "./generationHistory.js";
 import {
@@ -54,6 +55,7 @@ const ORIGINAL_FILE_MAX = 10 * 1024 * 1024;
 
 let data = null;
 let visualization = null;
+let editorDisplay = {};
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
 let app = null;
 let mecab = null;
@@ -394,6 +396,10 @@ function renderLine(line) {
 			chip.classList.add("reverse-current");
 			chip.setAttribute("aria-current", "true");
 		}
+	}, {
+		clear: editorDisplay.wordClear ? (line, word) => clearAssignment(line, ...word.period) : null,
+		lock: editorDisplay.wordLock ? toggleLock : null,
+		busy: settingsUpdating || !!regeneration,
 	});
 	if (!unitsOf(line).length) return row;
 	const original = row.querySelector(".review-original");
@@ -416,7 +422,28 @@ function renderLine(line) {
 	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
 	original.replaceWith(heading);
 	source.append(original, reading);
-	heading.append(source, regenerateButton);
+	heading.append(source);
+	if (editorDisplay.lineLock) {
+		const words = (data.results[line] || []).filter((word) => !word.filler);
+		const locked = words.length > 0 && words.every((word) => word.locked);
+		const lock = document.createElement("button");
+		lock.type = "button";
+		lock.className = "btn btn-ghost line-quick-lock inline-edit-action";
+		lock.disabled = !words.length || settingsUpdating || !!regeneration;
+		lock.dataset.empty = String(!words.length);
+		lock.setAttribute("aria-pressed", String(locked));
+		lock.title = locked ? `${line + 1}行目の固定をすべて解除` : `${line + 1}行目の単語をすべて固定`;
+		lock.setAttribute("aria-label", lock.title);
+		lock.append(makeLockIcon(locked));
+		lock.addEventListener("click", () => {
+			toggleLineLock(line);
+			document.querySelector(`.review-line[data-line="${line}"] .line-quick-lock`)?.focus({ preventScroll: true });
+		});
+		const actions = document.createElement("div");
+		actions.className = "review-line-actions";
+		actions.append(lock, regenerateButton);
+		heading.append(actions);
+	} else heading.append(regenerateButton);
 	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
 	return row;
 }
@@ -439,6 +466,9 @@ function renderAll() {
 function syncLineActions() {
 	for (const button of document.querySelectorAll(".line-regenerate")) {
 		button.disabled = !db || settingsUpdating || !!regeneration;
+	}
+	for (const button of document.querySelectorAll(".inline-edit-action")) {
+		button.disabled = button.dataset.empty === "true" || settingsUpdating || !!regeneration;
 	}
 	$id("reverse-word").disabled = !app || settingsUpdating || !!regeneration;
 	$id("reverse-clear").disabled = $id("reverse-word").disabled;
@@ -552,12 +582,26 @@ function scheduleReverseSearch(composing = false) {
 }
 
 function toggleLock(line, word) {
+	if (settingsUpdating || regeneration) return;
 	pushHistory();
 	markDirty(line);
 	word.locked = !word.locked;
 	saveData();
 	rerenderLine(line);
 	renderPanel(); // パネルの固定ボタン表示も追従させる
+}
+
+function toggleLineLock(line) {
+	if (settingsUpdating || regeneration) return;
+	const words = (data.results[line] || []).filter((word) => !word.filler);
+	if (!words.length) return;
+	const locked = !words.every((word) => word.locked);
+	pushHistory();
+	markDirty(line);
+	for (const word of words) word.locked = locked;
+	saveData();
+	rerenderLine(line);
+	renderPanel();
 }
 
 // ---- 選択 ----
@@ -756,6 +800,11 @@ function confirmAssignment(word, conflicts) {
 function clearSelectionAssignment() {
 	if (!selection) return;
 	const { line, start, end } = selection;
+	clearAssignment(line, start, end);
+}
+
+function clearAssignment(line, start, end) {
+	if (settingsUpdating || regeneration) return;
 	const words = data.results[line] || [];
 	if (!words.some((word) => !word.filler && word.period[0] < end && start < word.period[1])) return;
 	pushHistory();
@@ -2867,6 +2916,7 @@ async function start({ saveReceivedResult = false } = {}) {
 	{
 		setupReviewToolbar(isVideoReview(data), scrollToReverseMatch);
 		visualization = setupVisualization(() => ({ app, param: data.param }));
+		editorDisplay = setupEditorDisplay(renderAll);
 		const panel = $id("editor-panel");
 		panel.addEventListener("cancel", (event) => {
 			event.preventDefault();

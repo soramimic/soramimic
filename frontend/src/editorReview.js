@@ -164,7 +164,7 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 	});
 }
 
-export function renderReviewLine(data, line, selection, choose, lockIcon, decorate) {
+export function renderReviewLine(data, line, selection, choose, lockIcon, decorate, actions = {}) {
 	const row = element("div", "editor-line review-line");
 	row.dataset.line = String(line);
 	if (!data.unitsList[line]?.length) {
@@ -187,14 +187,48 @@ export function renderReviewLine(data, line, selection, choose, lockIcon, decora
 		if (word.filler) {
 			chip.setAttribute("aria-label", `未対応、${word.surface}。候補を選ぶ`);
 		} else if (word.locked) {
-			chip.append(lockIcon(true));
+			if (!actions.lock) chip.append(lockIcon(true));
 			chip.setAttribute("aria-label", `${word.surface}、固定中。候補を選ぶ`);
 		}
 		chip.setAttribute("aria-pressed", String(selection?.line === line
 			&& selection.start === word.period[0] && selection.end === word.period[1]));
 		decorate?.(chip, word);
 		chip.addEventListener("click", () => choose(line, word));
-		words.append(chip);
+		if (word.filler || (!actions.clear && !actions.lock)) {
+			words.append(chip);
+			continue;
+		}
+		const item = element("div", "review-word-item");
+		const controls = element("div", "word-quick-actions");
+		controls.setAttribute("role", "group");
+		controls.setAttribute("aria-label", `${word.surface}の操作`);
+		const addAction = (className, label, content, callback) => {
+			const button = element("button", `btn btn-ghost inline-edit-action ${className}`);
+			button.type = "button";
+			button.dataset.start = String(word.period[0]);
+			button.disabled = !!actions.busy;
+			button.title = label;
+			button.setAttribute("aria-label", label);
+			button.append(content);
+			button.addEventListener("click", () => {
+				callback(line, word);
+				const updated = document.querySelector(`.review-line[data-line="${line}"]`);
+				const target = updated?.querySelector(`.${className}[data-start="${word.period[0]}"]`)
+					|| [...(updated?.querySelectorAll(".review-word") || [])].find((chip) =>
+						Number(chip.dataset.start) <= word.period[0] && word.period[0] < Number(chip.dataset.end));
+				target?.focus({ preventScroll: true });
+			});
+			controls.append(button);
+			return button;
+		};
+		if (actions.lock) {
+			const button = addAction("word-quick-lock", word.locked
+				? `${word.surface}の固定を解除` : `${word.surface}を固定`, lockIcon(!!word.locked), actions.lock);
+			button.setAttribute("aria-pressed", String(!!word.locked));
+		}
+		if (actions.clear) addAction("word-quick-clear", `${word.surface}の割り当てをクリア`, "×", actions.clear);
+		item.append(chip, controls);
+		words.append(item);
 	}
 	row.append(words);
 	return row;
