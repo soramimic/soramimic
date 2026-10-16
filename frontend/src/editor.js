@@ -389,6 +389,14 @@ function renderLine(line) {
 	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
+		if (editorDisplay.parodyReading && !word.filler && word.kana) {
+			const reading = document.createElement("span");
+			reading.className = "review-word-reading";
+			reading.setAttribute("aria-label", "替え歌の読み");
+			reading.textContent = word.kana.replace(/[ァ-ヶ]/g,
+				(char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+			chip.append(reading);
+		}
 		visualization?.decorate(chip, word, unitsOf(line).slice(...word.period).map((unit) => unit.pronunciation));
 		chip.classList.toggle("reverse-word-match", matches.some((match) =>
 			word.period[0] < match.end && match.start < word.period[1]));
@@ -421,7 +429,8 @@ function renderLine(line) {
 	regenerateButton.disabled = !db || settingsUpdating || !!regeneration;
 	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
 	original.replaceWith(heading);
-	source.append(original, reading);
+	source.append(original);
+	if (editorDisplay.originalReading) source.append(reading);
 	heading.append(source);
 	if (editorDisplay.lineLock) {
 		const words = (data.results[line] || []).filter((word) => !word.filler);
