@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { chromium, webkit } from "playwright";
-import { importTransferredLists, LEGACY_ORIGIN, TRANSFER_CHANNEL } from "../src/legacyTransfer.js";
+import { importTransferredLists, LEGACY_ORIGIN, LEGACY_ORIGINS, TRANSFER_CHANNEL } from "../src/legacyTransfer.js";
 
 const currentDist = resolve("dist");
 const legacyDist = process.env.LEGACY_DIST ? resolve(process.env.LEGACY_DIST) : currentDist;
@@ -28,29 +28,29 @@ for (const engine of [chromium, webkit]) {
 			await context.route("**/*", async route => {
 				const url = new URL(route.request().url());
 				requests.push(url.href);
-				if (![sourceOrigin, LEGACY_ORIGIN].includes(url.origin)) return route.abort();
-				const root = url.origin === LEGACY_ORIGIN ? legacyDist : currentDist;
+				if (url.origin !== sourceOrigin && !LEGACY_ORIGINS.has(url.origin)) return route.abort();
+				const root = LEGACY_ORIGINS.has(url.origin) ? legacyDist : currentDist;
 				const file = resolve(root, "." + (url.pathname === "/" ? "/index.html" : url.pathname));
 				if (!file.startsWith(root + "/")) return route.abort();
 				try { await route.fulfill({ body: await readFile(file), contentType: mime[extname(file)] || "application/octet-stream" }); }
 				catch { await route.fulfill({ status: 404, body: "not found" }); }
 			});
-			await context.addInitScript(({ sourceOrigin, legacyOrigin, source, target, key, quota, single }) => {
+			await context.addInitScript(({ sourceOrigin, legacyOrigins, source, target, key, quota, single }) => {
 				if (!sessionStorage.getItem("seeded")) {
 					if (location.origin === sourceOrigin) {
 						if (single !== null) localStorage.setItem("originalWordlist", single);
 						else localStorage.setItem(key, JSON.stringify({ version: 1, lists: source }));
-					} else if (location.origin === legacyOrigin && localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ version: 1, lists: target }));
+					} else if (legacyOrigins.includes(location.origin) && localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ version: 1, lists: target }));
 					sessionStorage.setItem("seeded", "1");
 				}
-				if (quota && location.origin === legacyOrigin) {
+				if (quota && legacyOrigins.includes(location.origin)) {
 					const set = Storage.prototype.setItem;
 					Storage.prototype.setItem = function (name, value) {
 						if (name === key) throw new DOMException("full", "QuotaExceededError");
 						return set.call(this, name, value);
 					};
 				}
-			}, { sourceOrigin, legacyOrigin: LEGACY_ORIGIN, source, target, key, quota, single });
+			}, { sourceOrigin, legacyOrigins: [...LEGACY_ORIGINS], source, target, key, quota, single });
 			const page = await context.newPage();
 			await page.goto(sourceOrigin);
 			await page.locator("#btn-legacy").waitFor();
@@ -143,6 +143,25 @@ for (const engine of [chromium, webkit]) {
 		await target.waitForFunction(() => document.getElementById("transfer-status").textContent.includes("確認できません"));
 		assert.equal(await target.evaluate(key => localStorage.getItem(key), key), state([]));
 		await run.context.close();
-		console.log(`${engine.name()}: legacy transfer, conflict preservation, repeat copies, errors and sender validation passed`);
+		// Previously deployed senders still target the original Pages hostname.
+		run = await open({ target: [] });
+		const oldOrigin = "https://soramimic-legacy.pages.dev";
+		const oldOpened = run.context.waitForEvent("page");
+		await run.page.evaluate(({ oldOrigin, TRANSFER_CHANNEL, incoming }) => {
+			const nonce = crypto.randomUUID();
+			const receive = event => {
+				if (event.source === destination && event.origin === oldOrigin && event.data?.nonce === nonce && event.data.type === "ready") {
+					destination.postMessage({ channel: TRANSFER_CHANNEL, nonce, type: "lists", lists: incoming }, oldOrigin);
+					window.removeEventListener("message", receive);
+				}
+			};
+			window.addEventListener("message", receive);
+			const destination = window.open(`${oldOrigin}/legacy-transfer.html#nonce=${nonce}&from=${encodeURIComponent(location.origin)}`);
+		}, { oldOrigin, TRANSFER_CHANNEL, incoming });
+		target = await oldOpened;
+		await target.waitForURL(oldOrigin + "/");
+		assert.deepEqual(await target.evaluate(key => JSON.parse(localStorage.getItem(key)).lists, key), incoming);
+		await run.context.close();
+		console.log(`${engine.name()}: custom-domain and previous-URL transfer, conflict preservation, repeat copies, errors and sender validation passed`);
 	} finally { await browser.close(); }
 }

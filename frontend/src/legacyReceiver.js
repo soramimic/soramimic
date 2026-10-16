@@ -1,4 +1,4 @@
-import { LEGACY_ORIGIN, SOURCE_ORIGINS, TRANSFER_CHANNEL, TRANSFER_TIMEOUT, importTransferredLists } from "./legacyTransfer.js";
+import { LEGACY_ORIGINS, SOURCE_ORIGINS, TRANSFER_CHANNEL, TRANSFER_TIMEOUT, importTransferredLists } from "./legacyTransfer.js";
 
 const status = document.getElementById("transfer-status");
 const parameters = new URLSearchParams(location.hash.slice(1));
@@ -7,7 +7,7 @@ const sourceOrigin = parameters.get("from");
 const source = window.opener;
 history.replaceState(null, "", location.pathname);
 
-if (location.origin !== LEGACY_ORIGIN || !source || !SOURCE_ORIGINS.has(sourceOrigin)
+if (!LEGACY_ORIGINS.has(location.origin) || !source || !SOURCE_ORIGINS.has(sourceOrigin)
 	|| !/^[a-f0-9-]{36}$/.test(nonce || "")) {
 	status.textContent = "自作リストを引き継ぐには、新版の「旧版を使う」ボタンから開いてください。";
 } else {
