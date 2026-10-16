@@ -9,7 +9,6 @@
 .visualization-badges { display: flex; flex-wrap: wrap; gap: .2rem; margin-top: .2rem; }
 .visualization-badge { border-radius: 4px; padding: .05rem .25rem; font-size: .65rem; font-weight: 500; line-height: 1.5; color: var(--text); }
 .visualization-vowel { background: color-mix(in srgb, #e87058 28%, var(--panel)); }
-.visualization-distance { background: color-mix(in srgb, #e4ad34 30%, var(--panel)); }
 .visualization-long { background: color-mix(in srgb, #aa7bdd 28%, var(--panel)); }
 .visualization-nasal { background: color-mix(in srgb, #59ad97 28%, var(--panel)); }
 .visualization-single { background: color-mix(in srgb, #719be8 28%, var(--panel)); }

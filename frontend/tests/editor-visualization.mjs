@@ -53,11 +53,11 @@ try {
 	await page.goto(base);
 	await page.evaluate((data) => {
 		sessionStorage.setItem("soramimic-editor", JSON.stringify(data));
-		sessionStorage.setItem("soramimic-editor-visualization", JSON.stringify({ threshold: 100 }));
+		sessionStorage.setItem("soramimic-editor-visualization", JSON.stringify({ distance: true, threshold: 0 }));
 	}, seed);
 	await page.goto(`${base}/editor.html`);
 	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
-	assert.equal(await page.locator(".visualization-badge").count(), 0);
+	assert.equal(await page.locator(".visualization-badge").count(), 0, "old distance preferences must not highlight words");
 	const before = await page.evaluate(() => sessionStorage.getItem("soramimic-editor"));
 	assert.equal(await page.locator("#editor-toolbar #editor-visualization").count(), 0,
 		"display settings must not occupy a toolbar row");
@@ -88,26 +88,26 @@ try {
 	await page.waitForFunction(() => document.getElementById("visualization-count-long").textContent === "4か所");
 	assert.equal(await page.locator("#visualization-count-long").textContent(), "4か所");
 	assert.equal(await page.locator("#visualization-count-nasal").textContent(), "1か所");
-	for (const [kind, count] of [["vowel", 1], ["distance", 1], ["single", 2], ["filler", 1]]) {
+	for (const [kind, count] of [["vowel", 1], ["single", 2], ["filler", 1]]) {
 		assert.equal(await page.locator(`#visualization-count-${kind}`).textContent(), `${count}か所`);
 		await page.check(`#visualize-${kind}`);
 	}
 	assert.equal(await page.locator(".visualization-hit").count(), 4, "overlapping criteria count each word once");
-	assert.equal(await page.locator(".visualization-badge").count(), 5);
+	assert.equal(await page.locator(".visualization-badge").count(), 4);
 	for (const surface of ["ジョイ", "チカノーバー", "ドブジャンスキー", "サツケバー"]) {
 		assert.equal(await page.locator(".review-word").filter({ hasText: surface }).locator(".visualization-vowel").count(), 0,
 			`${surface} must not be marked when its aligned vowels agree`);
 	}
 	assert.equal(await page.locator("#visualization-summary").textContent(), "・4か所");
 	assert.match(await page.locator(".review-word").filter({ hasText: "色" }).getAttribute("aria-label"), /母音: イアイ → オオウ/);
-	await page.uncheck("#visualize-distance");
-	assert.equal(await page.locator(".visualization-distance").count(), 0);
-	await page.check("#visualize-distance");
-	assert.equal(await page.locator(".visualization-distance").count(), 1, "use the standard threshold even with an old saved numeric preference");
+	await page.uncheck("#visualize-vowel");
+	assert.equal(await page.locator(".visualization-vowel").count(), 0);
+	await page.check("#visualize-vowel");
+	assert.equal(await page.locator(".visualization-vowel").count(), 1);
 	assert.equal(await page.evaluate(() => sessionStorage.getItem("soramimic-editor")), before, "display options must not change edits or history");
 	await page.reload();
 	await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
-	assert.equal(await page.locator(".visualization-badge").count(), 5, "preferences survive reload without needing to open the options");
+	assert.equal(await page.locator(".visualization-badge").count(), 4, "preferences survive reload without needing to open the options");
 	await menuAction(page, "#btn-display-settings");
 	assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "mobile controls must fit");
 	if (process.env.VISUALIZATION_SCREENSHOT) {
@@ -136,13 +136,11 @@ try {
 	await page.locator(".panel-free-apply").click();
 	await page.locator(".panel-close").click();
 	assert.equal(await page.locator(".visualization-vowel").count(), 0);
-	assert.equal(await page.locator(".visualization-distance").count(), 0);
 	assert.equal(await page.locator("#visualization-count-vowel").textContent(), "0か所");
 	await page.locator("#btn-undo").click();
 	assert.equal(await page.locator(".visualization-vowel").count(), 1);
-	assert.equal(await page.locator(".visualization-distance").count(), 1);
 	await menuAction(page, "#btn-display-settings");
-	for (const kind of ["vowel", "distance", "single", "filler"]) await page.uncheck(`#visualize-${kind}`);
+	for (const kind of ["vowel", "single", "filler"]) await page.uncheck(`#visualize-${kind}`);
 	assert.equal(await page.locator(".visualization-badge").count(), 0);
 	assert.equal(await page.locator(".visualization-hit").count(), 0);
 	await page.check("#visualize-long");
@@ -212,7 +210,7 @@ try {
 	assert(await page.locator("#btn-settings").isHidden(), "review keeps generation controls concealed");
 	await page.click("#btn-display-settings-close");
 	assert.deepEqual(errors, []);
-	console.log("[ok] visualization E2E: combined highlights, standard threshold, persistence, mobile layout, corrections and undo");
+	console.log("[ok] visualization E2E: combined highlights, legacy preferences, persistence, mobile layout, corrections and undo");
 } finally {
 	await browser?.close();
 	try { process.kill(-preview.pid, "SIGTERM"); } catch {}
