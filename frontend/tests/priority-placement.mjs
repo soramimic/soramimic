@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
-import { menuAction } from "./editor-ui.mjs";
+import { menuAction, regenerateAll } from "./editor-ui.mjs";
 
 const base = "http://localhost:4796";
 const server = spawn("npx", ["vite", "preview", "--port", "4796", "--strictPort"], { stdio: "ignore", detached: true });
@@ -23,49 +24,59 @@ try {
 		await page.goto(base);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.click("#generation-advanced > summary");
-		assert(await page.getByLabel("優先単語の使い方", { exact: true }).isHidden());
 		await page.fill("#priority-words-search", "ささ");
 		await page.locator("#priority-words-results [role=option]").first().click();
-		await page.fill("#input-text", "カカカカ");
-		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).inputValue(), "score");
-		await page.getByRole("button", { name: "両方式で比較" }).click();
-		const dialog = page.getByRole("dialog", { name: "優先単語の使い方を比較" });
-		await dialog.getByText("両方式の生成が完了しました。", { exact: true }).waitFor();
-		const soft = dialog.locator('[data-strategy="score"]');
-		const placed = dialog.locator('[data-strategy="placement"]');
-		assert((await soft.locator(".priority-comparison-stat").textContent()).includes("優先語 0/1語"));
-		assert((await placed.locator(".priority-comparison-stat").textContent()).includes("優先語 1/1語"));
-		assert.equal(await soft.locator(".priority-comparison-word").first().textContent(), "通常語");
-		assert.equal(await placed.locator(".priority-comparison-word.preferred").textContent(), "優先語");
+		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).count(), 0);
+		assert.equal(await page.getByRole("button", { name: "両方式で比較" }).count(), 0);
+		assert(await page.locator("#priority-words-hint").isHidden());
 		for (const width of [320, 390, 1200]) {
 			await page.setViewportSize({ width, height: 844 });
 			assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-			const bounds = await dialog.boundingBox();
-			assert(bounds.x >= 0 && bounds.x + bounds.width <= width);
 		}
-		await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
-		assert(await page.locator("#output-field").isHidden(), "comparison must not change the current result/history");
-		await page.getByRole("button", { name: "両方式で比較" }).click();
-		await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
-		await page.getByLabel("優先単語の使い方", { exact: true }).selectOption("placement");
+		await page.setViewportSize({ width: 390, height: 844 });
+		if (process.env.PRIORITY_SCREENSHOTS && engine === chromium) {
+			await mkdir(process.env.PRIORITY_SCREENSHOTS, { recursive: true });
+			await page.locator("#priority-words").scrollIntoViewIfNeeded();
+			await page.screenshot({ path: `${process.env.PRIORITY_SCREENSHOTS}/placement-only-mobile.png`, animations: "disabled" });
+		}
+		await page.evaluate(() => {
+			const saved = JSON.parse(sessionStorage.getItem("soramimic-main"));
+			saved.priorityStrategy = "score";
+			sessionStorage.setItem("soramimic-main", JSON.stringify(saved));
+		});
 		await page.reload();
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
-		await page.click("#generation-advanced > summary");
-		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).inputValue(), "placement", "strategy survives reload");
-		await page.getByRole("button", { name: "両方式で比較" }).click();
-		await dialog.getByText("両方式の生成が完了しました。", { exact: true }).waitFor();
-		await placed.getByRole("button", { name: "この結果を編集する" }).click();
+		assert.equal(await page.locator(".priority-tag").count(), 1, "legacy preferences survive reload");
+		await page.fill("#input-text", "カカカカ");
+		await page.click("#btn-convert");
 		await page.waitForURL("**/editor.html");
 		await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
-		const data = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
-		assert.equal(data.param.PRIORITY_STRATEGY, "placement");
-		assert(data.results.flat().some(word => word.surface === "優先語"));
+		let data = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+		assert(data.results.flat().some(word => word.surface === "優先語" && word.priorityPlaced));
 		assert(!data.results.flat().some(word => word.locked));
 		await menuAction(page, "#btn-settings");
 		await page.click("#editor-advanced-settings > summary");
-		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).inputValue(), "placement");
+		assert.equal(await page.getByLabel("優先単語の使い方", { exact: true }).count(), 0);
+		assert.equal(await page.getByRole("button", { name: "両方式で比較" }).count(), 0);
+		await page.click("#btn-settings-close");
+		await page.evaluate(() => {
+			const saved = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+			saved.param.PRIORITY_STRATEGY = "score";
+			saved.results = [[{ id: "0", original: "通常語", surface: "通常語", kana: "カカカカ",
+				period: [0, 4], original_surface: "カカカカ", originalkana: "カカカカ", sim: 0, score: 0 }]];
+			saved.history = []; saved.future = [];
+			sessionStorage.setItem("soramimic-editor", JSON.stringify(saved));
+		});
+		await page.reload();
+		await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled);
+		assert.equal(await page.locator(".review-word").first().textContent(), "通常語", "loading a legacy result preserves the lyrics");
+		await regenerateAll(page);
+		await page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled
+			&& document.getElementById("regen-progress").hidden);
+		data = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+		assert(data.results.flat().some(word => word.surface === "優先語" && word.priorityPlaced), "legacy editor parameters cannot restore the retired strategy");
 		assert.deepEqual(errors, []);
-		console.log(`[ok] ${engine.name()}: same-input comparison, metrics, cancellation, responsive dialog, persistent strategy and selected result editing`);
+		console.log(`[ok] ${engine.name()}: automatic priority placement, simple controls, legacy main/editor settings, regeneration and responsive layout`);
 		await browser.close(); browser = null;
 	}
 } finally {

@@ -90,7 +90,6 @@ export function paramFromValues(values) {
 		WORD_NUMBER_PENALTY: v.wordnum * 10,
 		DUPLICATE: v.duplicate === true || v.duplicate === "true",
 		PRIORITY_WORDS: normalizePriorityWords(v.priorityWords),
-		PRIORITY_STRATEGY: v.priorityStrategy === "placement" ? "placement" : "score",
 	};
 }
 
@@ -106,7 +105,6 @@ export function valuesFromParam(param) {
 		wordnum: clamp(Math.round(num(p.WORD_NUMBER_PENALTY, DEFAULT_VALUES.wordnum * 10) / 10), 0, 6),
 		duplicate: p.DUPLICATE === true,
 		priorityWords: normalizePriorityWords(p.PRIORITY_WORDS),
-		priorityStrategy: p.PRIORITY_STRATEGY === "placement" ? "placement" : "score",
 	};
 }
 
@@ -115,12 +113,11 @@ export function valuesFromParam(param) {
 // - duplicateArea が空なら「あり/なし」ボタンをここで作る(HTMLに置いてあればそれを使う)
 // - priorityArea は省略可。指定時は検索用 getPriorityWords / getPriorityContext を渡す
 // - onChange(kind, detail) の kind は "preset" | "param" | "duplicate" | "priority"
-export function createParamControls({ paramArea, presetArea, duplicateArea, priorityArea, getPriorityWords, getPriorityContext, onPriorityCompare, values, onChange, collapseSound = false }) {
+export function createParamControls({ paramArea, presetArea, duplicateArea, priorityArea, getPriorityWords, getPriorityContext, values, onChange, collapseSound = false }) {
 	const notify = (kind, detail) => { if (onChange) onChange(kind, detail); };
 	const priority = priorityArea ? createPriorityWordControls({
 		container: priorityArea, getWords: getPriorityWords, getContext: getPriorityContext,
 		onChange: () => notify("priority"),
-		onCompare: onPriorityCompare,
 	}) : null;
 
 	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
