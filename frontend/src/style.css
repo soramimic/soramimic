@@ -835,7 +835,7 @@ textarea.input {
 
 .priority-search-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 0.5rem;
 }
 
@@ -889,21 +889,10 @@ textarea.input {
 	min-width: 0;
 }
 
-.priority-search-row .priority-scope {
-	width: auto;
-	flex: 0 0 auto;
-	max-width: 100%;
-}
-
 .priority-search-row .input {
 	min-height: 44px;
 }
 .priority-search-row .input:disabled { opacity: 0.6; cursor: not-allowed; }
-
-@media (max-width: 600px) {
-	.priority-search-row { grid-template-columns: minmax(0, 1fr); }
-	.priority-search-row .priority-scope { justify-self: end; }
-}
 
 .priority-tags {
 	display: flex;
@@ -913,32 +902,54 @@ textarea.input {
 }
 
 .priority-tag {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 44px;
 	max-width: 100%;
-	padding-left: 0.6rem;
 	border: 1px solid var(--border);
 	border-radius: 1rem;
 	background: var(--bg);
 	overflow-wrap: anywhere;
 }
 
-.priority-tag small, .priority-results small {
-	color: var(--muted);
-}
+.priority-tag small, .priority-results small { color: var(--muted); }
 
 .priority-tag button {
-	flex-shrink: 0;
 	min-width: 44px;
 	min-height: 44px;
 	border: 0;
 	border-radius: 1rem;
 	background: transparent;
 	color: var(--text);
-	font-size: 1.1rem;
+	font: inherit;
 	cursor: pointer;
 }
+
+.priority-tag-toggle {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem 0.75rem;
+	padding: 0.5rem 0.65rem;
+	text-align: left;
+	min-width: 0;
+}
+.priority-tag-toggle small { font-size: 0.8rem; white-space: nowrap; }
+.priority-tag .priority-tag-remove { align-self: start; font-size: 1.1rem; }
+.priority-tag:has(.priority-surfaces:not([hidden])) { width: 100%; }
+.priority-surfaces { grid-column: 1 / -1; padding: 0 0.65rem 0.5rem; }
+.priority-surfaces[hidden] { display: none; }
+.priority-surfaces fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.priority-surfaces legend { font-size: 0.8rem; color: var(--muted); padding: 0; }
+.priority-surfaces label {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	min-height: 44px;
+	cursor: pointer;
+}
+.priority-surfaces input { width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--accent); }
+.priority-surfaces input:disabled { opacity: 1; }
 
 .priority-results {
 	max-height: 240px;

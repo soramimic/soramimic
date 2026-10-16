@@ -33,8 +33,13 @@ try {
 		const options = page.locator("#priority-words-results [role=option]");
 		await input.fill("さ");
 		await options.first().waitFor();
-		assert.equal(await options.count(), 1, "word scope deduplicates readings and surfaces");
-		assert((await options.first().textContent()).startsWith("指定語"));
+		assert.equal(await options.count(), 1, "search deduplicates readings of the same surface");
+		assert((await options.first().textContent()).startsWith("近い表記"));
+		await input.fill("指定語");
+		await page.waitForFunction(() => document.querySelectorAll("#priority-words-results [role=option]").length === 2);
+		assert.equal(await options.count(), 2, "different spellings of the same word remain distinct search results");
+		await input.fill("さ");
+		await page.waitForFunction(() => document.querySelectorAll("#priority-words-results [role=option]").length === 1);
 		await input.evaluate(el => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
 		await input.press("Enter");
 		assert.equal(await page.locator(".priority-tag").count(), 0, "IME confirmation does not add a tag");
@@ -44,14 +49,27 @@ try {
 		assert.equal(await options.first().getAttribute("aria-selected"), "true");
 		await input.press("Enter");
 		assert.equal(await page.locator(".priority-tag").count(), 1);
-		assert((await page.locator(".priority-tag").textContent()).startsWith("指定語"));
+		assert((await page.locator(".priority-tag").textContent()).startsWith("近い表記"));
+		assert.equal(await page.locator(".priority-scope").count(), 0, "no upfront scope selector");
+		const near = page.getByRole("checkbox", { name: "近い表記", exact: true });
+		const alternate = page.getByRole("checkbox", { name: "別表記", exact: true });
+		await near.waitFor();
+		assert(await near.isChecked());
+		assert(await near.isDisabled(), "at least one spelling remains selected");
+		assert(!await alternate.isChecked(), "only the chosen surface is initially selected");
+		await alternate.check();
+		assert(await near.isEnabled());
+		assert((await page.locator(".priority-count").textContent()).includes("1 / 5"), "aliases share one slot");
+		await near.uncheck();
+		assert(await alternate.isDisabled());
+		await near.check();
+		await alternate.uncheck();
 		await input.fill("サ");
 		await page.getByText("候補がありません", { exact: true }).waitFor();
-		await page.getByRole("button", { name: "指定語の優先指定を解除" }).click();
-		await page.getByLabel("使う表記").selectOption("surface");
+		await page.getByRole("button", { name: "近い表記の優先指定を解除" }).click();
 		await input.fill("ｻ");
 		await options.first().waitFor();
-		assert.equal(await options.count(), 1, "surface scope deduplicates multiple readings");
+		assert.equal(await options.count(), 1, "surface search deduplicates multiple readings");
 		assert((await options.first().textContent()).startsWith("近い表記"));
 		await options.first().click();
 		await input.fill("なまえ");
@@ -62,7 +80,7 @@ try {
 			for (const width of [320, 390, 1200]) {
 				await page.setViewportSize({ width, height: 844 });
 				assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-				for (const selector of ["#priority-words-search", ".priority-scope", ".priority-tag button"]) {
+				for (const selector of ["#priority-words-search", ".priority-tag-toggle", ".priority-tag-remove", ".priority-surfaces label:first-of-type"]) {
 					const bounds = await page.locator(selector).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, selector);
 				}
@@ -72,17 +90,27 @@ try {
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.click("#generation-advanced > summary");
 		assert.equal(await page.locator(".priority-tag").count(), 1, "selection survives reload");
-		assert((await page.locator(".priority-tag").textContent()).includes("この表記だけ"));
+		await page.getByRole("button", { name: "近い表記の候補にする表記" }).click();
+		assert(await near.isChecked(), "checked spelling survives reload");
+		assert(!await alternate.isChecked());
 		await page.fill("#input-text", "カ");
 		await page.click("#btn-convert");
 		await page.waitForURL("**/editor.html");
 		await page.waitForSelector(".review-word");
 		await idle(page);
 		let data = await readData(page);
-		assert.equal(data.param.PRIORITY_WORDS[0].scope, "surface");
+		assert.deepEqual(data.param.PRIORITY_WORDS[0].surfaces, ["近い表記"]);
 		assert.equal(data.results[0][0].surface, "近い表記", "tag affects actual generation");
 		await menuAction(page, "#btn-settings");
 		assert.equal(await page.locator(".priority-tag").count(), 1, "editor retains tag");
+		await page.getByRole("button", { name: "近い表記の候補にする表記" }).click();
+		const editorAlternate = page.getByRole("checkbox", { name: "別表記", exact: true });
+		await editorAlternate.check();
+		await idle(page);
+		assert.deepEqual((await readData(page)).param.PRIORITY_WORDS[0].surfaces, ["近い表記", "別表記"]);
+		assert(await editorAlternate.evaluate(el => el === document.activeElement), "saving a checkbox change preserves focus");
+		await editorAlternate.uncheck();
+		await idle(page);
 		await page.getByRole("button", { name: "近い表記の優先指定を解除" }).click();
 		await idle(page);
 		data = await readData(page);
@@ -107,7 +135,7 @@ try {
 		await page.goto(base);
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		await page.click("#generation-advanced > summary");
-		await input.fill("さ");
+		await input.fill("き");
 		await options.first().waitFor();
 		await input.press("Escape");
 		assert(await page.locator("#priority-words-results").isHidden());
@@ -150,9 +178,40 @@ try {
 		await capInput.fill("む");
 		await capPage.locator("#priority-words-results [role=option]").first().click();
 		assert.equal(await capPage.locator(".priority-tag").count(), 5);
+		await capPage.evaluate(() => {
+			const saved = JSON.parse(sessionStorage.getItem("soramimic-main"));
+			const word = { id: "1", original: "指定語", surface: "近い表記", kana: "サ" };
+			saved.priorityWords = [{ ...word, scope: "surface" }, { ...word, surface: "別表記", scope: "surface" }];
+			sessionStorage.setItem("soramimic-main", JSON.stringify(saved));
+		});
+		await capPage.reload();
+		await capPage.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		await capPage.click("#generation-advanced > summary");
+		assert.equal(await capPage.locator(".priority-tag").count(), 1, "legacy exact spellings of one word share a tag");
+		await capPage.locator(".priority-tag-toggle").click();
+		assert(await capPage.getByRole("checkbox", { name: "近い表記", exact: true }).isChecked());
+		assert(await capPage.getByRole("checkbox", { name: "別表記", exact: true }).isChecked());
+		await capPage.getByRole("checkbox", { name: "近い表記", exact: true }).uncheck();
+		await capPage.reload();
+		await capPage.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		await capPage.click("#generation-advanced > summary");
+		await capPage.locator(".priority-tag-toggle").click();
+		assert(!await capPage.getByRole("checkbox", { name: "近い表記", exact: true }).isChecked());
+		assert(await capPage.getByRole("checkbox", { name: "別表記", exact: true }).isChecked());
+		await capPage.evaluate(() => {
+			const saved = JSON.parse(sessionStorage.getItem("soramimic-main"));
+			saved.priorityWords = [{ id: "1", original: "指定語", surface: "近い表記", kana: "サ", scope: "word" }];
+			sessionStorage.setItem("soramimic-main", JSON.stringify(saved));
+		});
+		await capPage.reload();
+		await capPage.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		await capPage.click("#generation-advanced > summary");
+		await capPage.locator(".priority-tag-toggle").click();
+		assert(await capPage.getByRole("checkbox", { name: "近い表記", exact: true }).isChecked(), "legacy all-spellings setting checks every eligible spelling");
+		assert(await capPage.getByRole("checkbox", { name: "別表記", exact: true }).isChecked());
 		await capPage.close();
 		assert.deepEqual(errors, []);
-		console.log(`[ok] ${engine.name()}: priority search, IME, keyboard, scope, tags, filters, layout, persistence, generation, editor undo and list changes`);
+		console.log(`[ok] ${engine.name()}: priority search, IME, keyboard, spelling checkboxes, tags, filters, layout, persistence, generation, editor undo and list changes`);
 		await browser.close(); browser = null;
 	}
 } finally {

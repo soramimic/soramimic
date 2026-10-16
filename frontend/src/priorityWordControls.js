@@ -24,7 +24,7 @@ export function createPriorityCatalogLoader(getApp, getSelection) {
 }
 
 export function createPriorityWordControls({ container, getWords, getContext, onChange }) {
-	let selected = [], context = getContext(), request = 0, timer, active = -1, composing = false;
+	let selected = [], context = getContext(), request = 0, timer, active = -1, composing = false, expanded;
 	const label = document.createElement("label");
 	label.className = "field-label";
 	label.textContent = "優先して含めたい単語";
@@ -60,15 +60,6 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	input.setAttribute("aria-autocomplete", "list");
 	input.setAttribute("aria-expanded", "false");
 	label.htmlFor = input.id;
-	const scope = document.createElement("select");
-	scope.className = "input priority-scope";
-	scope.setAttribute("aria-label", "使う表記");
-	for (const [value, text] of [["word", "別の表記も使う"], ["surface", "この表記だけ使う"]]) {
-		const option = document.createElement("option");
-		option.value = value;
-		option.textContent = text;
-		scope.append(option);
-	}
 	const tags = document.createElement("div");
 	tags.className = "priority-tags";
 	tags.setAttribute("aria-label", "優先する単語");
@@ -84,7 +75,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	const help = document.createElement("p");
 	help.className = "field-note";
 	help.id = `${container.id}-hint`;
-	help.textContent = `最大${MAX_PRIORITY_WORDS}個まで指定できます。指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。「別の表記も使う」はリスト内の別名・略称も対象にします（例：大谷翔平・大谷）。「この表記だけ使う」は選んだ表記だけを使います。`;
+	help.textContent = `最大${MAX_PRIORITY_WORDS}個まで指定できます。指定した語を先に配置し、残りを生成します。音が離れていても指定を優先します。長さや固定区間の制約で入らない場合があります。追加した単語の「表記を選ぶ」から、候補にする表記をチェックできます。複数チェックした場合は、その中から音が合う表記を使います。表記は1つ以上選んでください。`;
 	help.hidden = true;
 	info.setAttribute("aria-controls", help.id);
 	info.addEventListener("click", () => {
@@ -93,7 +84,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	});
 	input.setAttribute("aria-describedby", help.id);
 	field.append(icon, input);
-	row.append(field, scope);
+	row.append(field);
 	container.append(heading, row, tags, list, status, help);
 
 	function hideResults() {
@@ -108,35 +99,129 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			: selected.length === MAX_PRIORITY_WORDS
 				? `上限の${MAX_PRIORITY_WORDS}個です。追加するには1個解除してください。` : "";
 	}
+	const panelCatalogs = new WeakMap();
+	const identity = word => JSON.stringify([word.id, word.original]);
+	const chosenSurfaces = word => word.scope === "surfaces" ? word.surfaces : [word.surface];
+	// Older saves may contain several exact spellings of the same word.
+	function groupWords(words) {
+		const groups = new Map();
+		for (const word of normalizePriorityWords(words)) {
+			const key = identity(word), previous = groups.get(key);
+			if (previous?.scope === "word") continue;
+			if (!previous || word.scope === "word") groups.set(key, word);
+			else groups.set(key, { ...previous, scope: "surfaces",
+				surfaces: [...new Set([...chosenSurfaces(previous), ...chosenSurfaces(word)])] });
+		}
+		return [...groups.values()];
+	}
+	function updateTagName(word, tag) {
+		tag.querySelector(".priority-tag-name").textContent = word.scope === "word"
+			? word.original || word.surface : chosenSurfaces(word).join(" / ");
+	}
+	async function renderChoices(word, panel) {
+		const catalogContext = getContext();
+		let catalog;
+		try {
+			catalog = getWords();
+			if (panelCatalogs.get(panel) === catalog) return;
+			panelCatalogs.set(panel, catalog);
+			panel.textContent = "表記を読み込み中…";
+			const words = await catalog;
+			if (!panel.isConnected || panelCatalogs.get(panel) !== catalog
+				|| context !== catalogContext || getContext() !== catalogContext) return;
+			const available = [...new Set(words.filter(value => value.id === word.id && value.original === word.original).map(value => value.surface))];
+			const checked = word.scope === "word" ? available : chosenSurfaces(word);
+			const surfaces = [...new Set([...checked, ...available])];
+			const fieldset = document.createElement("fieldset");
+			const legend = document.createElement("legend");
+			legend.textContent = "候補にする表記";
+			fieldset.append(legend);
+			for (const surface of surfaces) {
+				const label = document.createElement("label");
+				const checkbox = document.createElement("input");
+				checkbox.type = "checkbox";
+				checkbox.checked = checked.includes(surface);
+				label.append(checkbox, document.createTextNode(surface));
+				if (!available.includes(surface)) {
+					const note = document.createElement("small");
+					note.textContent = "現在のリスト・絞り込みでは対象外";
+					label.append(note);
+				}
+				checkbox.addEventListener("change", () => {
+					const surfaces = [...fieldset.querySelectorAll("input:checked")].map(input => input.value);
+					// At least one spelling belongs to each tag; use × to remove it.
+					if (!surfaces.length) { checkbox.checked = true; return; }
+					selected = selected.map(value => identity(value) === identity(word)
+						? { ...value, scope: "surfaces", surfaces } : value);
+					updateLastChoice();
+					updateTagName(selected.find(value => identity(value) === identity(word)), panel.parentElement);
+					onChange();
+				});
+				checkbox.value = surface;
+				fieldset.append(label);
+			}
+			function updateLastChoice() {
+				const inputs = [...fieldset.querySelectorAll("input")];
+				const checked = inputs.filter(input => input.checked);
+				for (const input of inputs) input.disabled = checked.length === 1 && input.checked;
+			}
+			updateLastChoice();
+			panel.replaceChildren(fieldset);
+		} catch {
+			if (panelCatalogs.get(panel) !== catalog) return;
+			panelCatalogs.delete(panel);
+			if (panel.isConnected) panel.textContent = "表記を読み込めませんでした。閉じてからもう一度開いてください。";
+		}
+	}
 	function renderTags() {
 		count.textContent = `${selected.length} / ${MAX_PRIORITY_WORDS}個`;
-		input.disabled = scope.disabled = selected.length >= MAX_PRIORITY_WORDS;
+		input.disabled = selected.length >= MAX_PRIORITY_WORDS;
 		if (input.disabled) { ++request; clearTimeout(timer); hideResults(); }
 		resetStatus();
 		tags.replaceChildren();
 		for (const word of selected) {
-			const tag = document.createElement("span");
+			const tag = document.createElement("div");
 			tag.className = "priority-tag";
-			const name = word.scope === "surface" ? word.surface : word.original || word.surface;
-			tag.append(document.createTextNode(name));
-			if (word.scope === "surface") {
-				const detail = document.createElement("small");
-				detail.textContent = word.original && word.original !== word.surface
-					? `${word.original}・この表記だけ` : "この表記だけ";
-				tag.append(detail);
-			}
+			const name = word.surface;
+			const toggle = document.createElement("button");
+			toggle.type = "button";
+			toggle.className = "priority-tag-toggle";
+			toggle.setAttribute("aria-label", `${name}の候補にする表記`);
+			const title = document.createElement("span");
+			title.className = "priority-tag-name";
+			title.textContent = word.scope === "word" ? word.original || name : chosenSurfaces(word).join(" / ");
+			const action = document.createElement("small");
+			action.textContent = "表記を選ぶ ▾";
+			toggle.append(title, action);
+			const panel = document.createElement("div");
+			panel.className = "priority-surfaces";
+			panel.id = `${container.id}-surfaces-${tags.children.length}`;
+			panel.hidden = expanded !== identity(word);
+			toggle.setAttribute("aria-controls", panel.id);
+			toggle.setAttribute("aria-expanded", String(!panel.hidden));
+			toggle.addEventListener("click", () => {
+				const open = panel.hidden;
+				expanded = open ? identity(word) : undefined;
+				for (const other of tags.querySelectorAll(".priority-surfaces")) other.hidden = true;
+				for (const other of tags.querySelectorAll(".priority-tag-toggle")) other.setAttribute("aria-expanded", "false");
+				panel.hidden = !open;
+				toggle.setAttribute("aria-expanded", String(open));
+				if (open) renderChoices(selected.find(value => identity(value) === identity(word)), panel);
+			});
 			const remove = document.createElement("button");
 			remove.type = "button";
+			remove.className = "priority-tag-remove";
 			remove.textContent = "×";
 			remove.setAttribute("aria-label", `${name}の優先指定を解除`);
 			remove.addEventListener("click", () => {
-				selected = selected.filter(value => priorityKey(value) !== priorityKey(word));
+				selected = selected.filter(value => identity(value) !== identity(word));
 				renderTags();
 				onChange();
 				scheduleSearch();
 			});
-			tag.append(remove);
+			tag.append(toggle, remove, panel);
 			tags.append(tag);
+			if (!panel.hidden) renderChoices(word, panel);
 		}
 		tags.hidden = !selected.length;
 	}
@@ -145,15 +230,19 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		if (context !== next) {
 			context = next;
 			selected = [];
+			expanded = undefined;
 			renderTags();
+		} else if (expanded) {
+			const panel = tags.querySelector(".priority-surfaces:not([hidden])");
+			if (panel) renderChoices(selected.find(word => identity(word) === expanded), panel);
 		}
 		scheduleSearch();
 	}
 	function choose(word) {
 		if (context !== getContext()) { refresh(); return; }
 		if (selected.length >= MAX_PRIORITY_WORDS) { resetStatus(); return; }
-		if (word.scope === "word") selected = selected.filter(value => value.id !== word.id || value.original !== word.original);
-		selected = normalizePriorityWords([...selected, word]);
+		selected = groupWords([...selected, { ...word, scope: "surfaces", surfaces: [word.surface] }]);
+		expanded = identity(word);
 		input.value = "";
 		++request;
 		clearTimeout(timer);
@@ -182,10 +271,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			let processed = 0;
 			for (const word of words) {
 				if ([word.kana, word.original, word.surface].some(value => normalizeWordSearch(value).includes(query))) {
-					const value = { ...word, scope: scope.value };
+					const value = { ...word, scope: "surface" };
 					const key = priorityKey(value);
-					const alreadySelected = selected.some(item => priorityKey(item) === key
-						|| (item.scope === "word" && item.id === word.id && item.original === word.original));
+					const alreadySelected = selected.some(item => item.id === word.id && item.original === word.original);
 					if (!alreadySelected && !matches.has(key)) matches.set(key, value);
 				}
 				if (++processed % 5000 === 0) {
@@ -202,9 +290,9 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 				button.setAttribute("role", "option");
 				button.setAttribute("aria-selected", "false");
 				const name = document.createElement("span");
-				name.textContent = word.scope === "word" ? word.original || word.surface : word.surface;
+				name.textContent = word.surface;
 				const reading = document.createElement("small");
-				const detail = word.scope === "word" ? word.surface : word.original;
+				const detail = word.original;
 				reading.textContent = [detail !== name.textContent ? detail : "", word.kana].filter(Boolean).join(" · ");
 				button.append(name, reading);
 				button.addEventListener("click", () => choose(word));
@@ -222,7 +310,6 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 	input.addEventListener("focus", refresh);
 	input.addEventListener("compositionstart", () => { composing = true; scheduleSearch(); });
 	input.addEventListener("compositionend", () => { composing = false; scheduleSearch(); });
-	scope.addEventListener("change", scheduleSearch);
 	input.addEventListener("keydown", event => {
 		if (composing || event.isComposing || event.keyCode === 229) return;
 		if (event.key === "Escape") {
@@ -253,7 +340,7 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 		},
 		setValues: values => {
 			if (values.priorityWords === undefined) return;
-			selected = normalizePriorityWords(values.priorityWords);
+			selected = groupWords(values.priorityWords);
 			context = values.priorityContext ?? getContext();
 			renderTags();
 			refresh();
