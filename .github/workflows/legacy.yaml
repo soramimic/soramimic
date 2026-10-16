@@ -1,15 +1,5 @@
 name: legacy
 on:
-  push:
-    branches: [dev]
-    paths:
-      - 'conf/legacy-release.json'
-      - 'frontend/legacy-transfer.html'
-      - 'frontend/src/legacy*.js'
-      - 'frontend/src/customWordlists.js'
-      - 'frontend/scripts/prepare-legacy.mjs'
-      - '.github/scripts/ensure-legacy-project.mjs'
-      - '.github/workflows/legacy.yaml'
   pull_request:
     paths:
       - 'conf/legacy-release.json'
