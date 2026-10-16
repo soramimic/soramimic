@@ -93,9 +93,12 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 		format.append(formatLabel, select);
 		copy.append(document.querySelector('label[for="copy-format"]'), format, document.getElementById("btn-copy"));
 		body.append(copy);
-		for (const button of body.querySelectorAll("button")) {
-			button.addEventListener("click", () => { setOpen(false); });
-		}
+	}
+	const displaySettings = document.getElementById("btn-display-settings");
+	if (review) body.prepend(displaySettings);
+	else body.querySelector("#btn-settings").after(displaySettings);
+	for (const button of body.querySelectorAll("button")) {
+		button.addEventListener("click", () => { setOpen(false); });
 	}
 	document.addEventListener("click", (event) => {
 		if (!menu.contains(event.target)) setOpen(false);
@@ -113,7 +116,6 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 	status.append(document.getElementById("regen-progress"), document.getElementById("settings-progress"));
 	document.body.append(status);
 	toolbar.append(actions);
-	toolbar.append(document.getElementById("editor-visualization"));
 	toolbar.append(document.getElementById("reverse-search"));
 	// Keep everything above the lyrics together while search hits scroll past.
 	const header = document.querySelector(".site-header");

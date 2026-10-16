@@ -91,7 +91,7 @@ export function wordDiagnostics(word, target, app = null, param = {}, matrix = n
 }
 
 export function setupVisualization(getContext) {
-	const details = document.getElementById("editor-visualization");
+	const dialog = document.getElementById("editor-display-settings");
 	const inputs = Object.fromEntries(kinds.map((kind) => [kind, document.getElementById(`visualize-${kind}`)]));
 	try {
 		const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY));
@@ -108,7 +108,7 @@ export function setupVisualization(getContext) {
 			previousApp = context.app;
 			previousParam = paramKey;
 		}
-		const needDistance = details.open || inputs.distance.checked || inputs.long.checked || inputs.nasal.checked;
+		const needDistance = dialog.open || inputs.distance.checked || inputs.long.checked || inputs.nasal.checked;
 		if (needDistance && context.app && !matrix) matrix = context.app.kanaSimilarity.getKanaSimilarity(context.param);
 		const counts = Object.fromEntries(kinds.map((kind) => [kind, 0]));
 		let highlighted = 0;
@@ -157,7 +157,7 @@ export function setupVisualization(getContext) {
 			document.getElementById(`visualization-count-${kind}`).textContent = ["distance", "long", "nasal"].includes(kind) && !context.app ? "準備中" : `${counts[kind]}か所`;
 		}
 		const enabled = kinds.some((kind) => inputs[kind].checked);
-		document.getElementById("visualization-summary").textContent = enabled ? `・${highlighted}か所を強調` : "";
+		document.getElementById("visualization-summary").textContent = enabled ? `・${highlighted}か所` : "";
 	}
 	function save() {
 		try {
@@ -168,7 +168,18 @@ export function setupVisualization(getContext) {
 		refresh();
 	}
 	for (const input of Object.values(inputs)) input.addEventListener("change", save);
-	details.addEventListener("toggle", refresh);
+	document.getElementById("btn-display-settings").addEventListener("click", () => {
+		dialog.showModal();
+		refresh();
+	});
+	document.getElementById("btn-display-settings-close").addEventListener("click", () => dialog.close());
+	dialog.addEventListener("close", refresh);
+	dialog.addEventListener("click", (event) => {
+		if (event.target !== dialog) return;
+		const bounds = dialog.getBoundingClientRect();
+		if (event.clientX < bounds.left || event.clientX > bounds.right
+			|| event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+	});
 	return {
 		decorate(chip, word, target) {
 			records.set(chip, { word, target, title: chip.title, aria: chip.getAttribute("aria-label") });

@@ -84,7 +84,7 @@ try {
 			await page.keyboard.press("Enter");
 			assert(await first.evaluate((word) => word === document.activeElement), "return focus to the selected word");
 			await page.locator(".review-menu-toggle").click();
-			assert(await page.getByRole("button", { name: "設定", exact: true }).isVisible());
+			assert(await page.getByRole("button", { name: "生成設定", exact: true }).isVisible());
 			assert(await page.locator("#copy-format").isVisible());
 			const fileButtons = await Promise.all(["#btn-import", "#btn-export"].map((id) => page.locator(id).boundingBox()));
 			assert.equal(fileButtons[0].y, fileButtons[1].y, "file actions should share a row");
@@ -109,7 +109,7 @@ try {
 	await page.setViewportSize({ width: 390, height: 740 });
 	await page.emulateMedia({ colorScheme: "dark" });
 	await menuAction(page, "#btn-settings");
-	assert(await page.getByRole("heading", { name: "設定", exact: true }).isVisible());
+	assert(await page.getByRole("heading", { name: "生成設定", exact: true }).isVisible());
 	assert(await page.locator(".review-menu-body").isHidden(), "opening settings must dismiss the menu");
 	for (const selector of ["#editor-wordlist", "#editor-priority-words", "#editor-preset-buttons", "#editor-duplicate-buttons"]) {
 		assert(await page.locator(selector).isVisible(), `${selector} settings retained`);

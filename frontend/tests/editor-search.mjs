@@ -351,7 +351,7 @@ try {
 			visualViewport.dispatchEvent(new Event("resize"));
 		});
 		await page.waitForFunction(() => document.querySelector(".review-tools").getBoundingClientRect().height > 0);
-		assert(await page.locator("#editor-visualization").isVisible(), "the full toolbar returns when the keyboard closes");
+		assert(await page.locator(".review-tools").isVisible(), "the full toolbar returns when the keyboard closes");
 		assert.deepEqual(await state(), beforeNavigation, "navigation changes no lyrics, locks, selection history or saved state");
 		await page.fill("#reverse-word", "カ".repeat(40));
 		await page.waitForFunction(() => document.getElementById("reverse-status").textContent.includes("範囲がありません"));
