@@ -83,7 +83,7 @@
 .editor-menu-action { display: flex; align-items: center; gap: .55rem; min-height: 44px; }
 .editor-action-icon { flex: none; width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .editor-menu-chevron { margin-left: auto; color: var(--muted); }
-.review-menu-body #btn-settings { background: transparent; color: var(--text); }
+.review-menu-body :is(#btn-settings, #btn-display-settings) { background: transparent; color: var(--text); }
 .editor-file-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; border-top: 1px solid var(--border); padding-top: .5rem; }
 .editor-file-actions .btn { justify-content: center; padding-inline: .45rem; color: var(--text); font-size: .9rem; }
 .editor-copy-options { display: grid; gap: .5rem; border-top: 1px solid var(--border); padding-top: .6rem; }
