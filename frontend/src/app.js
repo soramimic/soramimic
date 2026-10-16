@@ -1091,8 +1091,23 @@ export async function startApp() {
 					phrases, tokensList, param, wordlist: entry, where, sourceText: text,
 				};
 				btnConvert.textContent = "生成中...";
-				const updateFunc = (result, i) => {
+				progressText.textContent = "候補を生成中...";
+				const updateFunc = (result, i, _tokens, progressInfo) => {
 					if (gen !== convertGen) return;
+					if (progressInfo?.phase === "priority-placement") {
+						if (progressInfo.stage === "searching") {
+							const preference = progressInfo.preferenceIndex > 0
+								? `優先語 ${progressInfo.preferenceIndex}/${progressInfo.preferenceCount} の` : "優先語の";
+							const line = progressInfo.lineIndex > 0 && progressInfo.lineCount > 1
+								? ` (${progressInfo.lineIndex}/${progressInfo.lineCount}行)` : "";
+							progressText.textContent = `${preference}配置候補を探索中...${line}`;
+						} else if (progressInfo.stage === "evaluating") {
+							progressText.textContent = `配置案 ${progressInfo.planIndex}/${progressInfo.planCount} を評価中 (${progressInfo.completedLines}/${progressInfo.lineCount}行)`;
+						} else {
+							progressText.textContent = `${progressInfo.completedLines}/${progressInfo.lineCount}`;
+						}
+						return;
+					}
 					progressText.textContent = `${i + 1}/${phrases.length}`;
 				};
 				convertHandle = app.soramimiMaker.generateFromTokens(tokensList, db, param, updateFunc, (result) => {
