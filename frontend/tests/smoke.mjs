@@ -535,7 +535,7 @@ try {
 	if (copiedResult !== output) {
 		throw new Error("出力結果とコピー内容が一致しない");
 	}
-	assert.equal(await page.getByRole("button", { name: "出力結果をコピー" }).count(), await page.locator(".history-item").count());
+	assert.equal(await page.getByRole("button", { name: "歌詞をコピー" }).count(), await page.locator(".history-item").count());
 	assert.equal(await latestResult.locator(".output-copy svg").count(), 1);
 	if (!await latestResult.locator(".output-copy").evaluate((el) => el.classList.contains("copy-success"))) {
 		throw new Error("コピー成功状態が表示されない");

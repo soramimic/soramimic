@@ -25,7 +25,7 @@ export function bindResultCopy(button, status, getText, isDisabled = () => false
 		setTimeout(() => {
 			copying = false;
 			button.classList.remove("copy-success", "copy-error");
-			button.title = "出力結果をコピー";
+			button.title = "歌詞をコピー";
 			status.textContent = "";
 			refresh();
 		}, 1500);
