@@ -190,10 +190,11 @@ export function createPriorityWordControls({ container, getWords, getContext, on
 			const title = document.createElement("span");
 			title.className = "priority-tag-name";
 			title.textContent = word.scope === "word" ? word.original || name : chosenSurfaces(word).join(" / ");
-			const action = document.createElement("small");
-			action.className = "priority-tag-chevron";
+			const action = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+			action.classList.add("priority-tag-chevron");
+			action.setAttribute("viewBox", "0 0 12 8");
 			action.setAttribute("aria-hidden", "true");
-			action.textContent = "▾";
+			action.innerHTML = '<path d="M0 0h12L6 8z"/>';
 			toggle.append(title, action);
 			const panel = document.createElement("div");
 			panel.className = "priority-surfaces";
