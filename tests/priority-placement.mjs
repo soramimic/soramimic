@@ -25,7 +25,7 @@ assert.equal(priorityMetrics(ordinary.results, prefs).included.length, 0);
 assert.equal(priorityMetrics(placed.results, prefs).included.length, 1);
 assert(placementProgress.some(progress => progress?.phase === "priority-placement" && progress.stage === "searching"));
 assert(placementProgress.some(progress => progress?.phase === "priority-placement"
-	&& progress.stage === "evaluating" && progress.completedLines === 1));
+	&& progress.stage === "generating" && progress.completedLines === 1));
 assert(placementProgress.some(progress => progress?.phase === "priority-placement" && progress.stage === "complete"));
 const legacy = await generate(["カカカカ"], db, prefs, { PRIORITY_STRATEGY: "score" });
 assert.deepEqual(legacy.results, placed.results, "legacy strategy settings cannot disable priority placement");
@@ -33,6 +33,40 @@ assert.equal(placed.diagnostics.priority.fillerUnits, 0);
 assert(placed.results.flat().some(word => word.priorityPlaced));
 assert(!placed.results.flat().some(word => word.locked), "automatic placement must not become a user lock");
 assert(placed.results.flat().find(word => word.priorityPlaced).sim > 0, "phonetic distance is not discounted");
+
+// Count actual line preparation as well as progress: planning prepares every line,
+// and the remainder generator must prepare each line only once more.
+const longPhrases = Array(45).fill("カカカカ");
+const originalUnits = textAnalyzer.getYomiAndPhraseBreak;
+let preparedLines = 0;
+textAnalyzer.getYomiAndPhraseBreak = (...args) => { preparedLines++; return originalUnits(...args); };
+const longProgress = [];
+let longResult;
+try {
+	longResult = await generate(longPhrases, db, prefs, {}, null, null,
+		(...args) => longProgress.push(args[3]));
+} finally {
+	textAnalyzer.getYomiAndPhraseBreak = originalUnits;
+}
+assert.equal(preparedLines, longPhrases.length * 2, "prepare lines for one placement search and one remainder pass");
+assert.equal(longResult.diagnostics.evaluatedPlans, 1, "generate the remainder for only the chosen placement");
+assert.deepEqual(longProgress.filter(info => info.stage === "generating").map(info => info.completedLines),
+	Array.from({ length: 46 }, (_, i) => i), "remainder generation advances through all 45 lines exactly once");
+assert.equal(longResult.results.length, 45);
+assert.equal(priorityMetrics(longResult.results, prefs).included.length, 1);
+
+const positionDb = await wordList.parsePlain("通常,カカ\n指定,ササ");
+const positionPrefs = [preferred("1", "指定")];
+const position = await generate(["カカ", "ササ"], positionDb, positionPrefs);
+assert(!position.results[0].some(word => word.id === "1"), "reserve the priority ID until its best position");
+assert.equal(position.results[1][0].surface, "指定");
+assert.equal(position.results[1][0].sim, 0, "choose the closest sound before generating other words");
+const unavailable = await generate(["カカ"], positionDb, [preferred("missing", "対象外")]);
+assert.equal(unavailable.diagnostics.evaluatedPlans, 1);
+assert.equal(unavailable.diagnostics.priority.missing.length, 1);
+assert.equal(unavailable.results[0][0].surface, "通常", "missing preferences still generate the remaining lyrics once");
+const duplicate = await generate(["ササ", "ササ"], positionDb, positionPrefs, { DUPLICATE: true });
+assert(duplicate.results.every(line => line[0].surface === "指定"), "duplicate mode permits reuse after placement");
 
 const capacityDb = await wordList.parsePlain("通常,カ\n指定1,キ\n指定2,ク\n指定3,ケ\n指定4,コ\n指定5,ヌ\n指定6,ム");
 const capacityPrefs = Array.from({ length: 6 }, (_, i) => preferred(String(i + 1), `指定${i + 1}`));
@@ -80,7 +114,7 @@ delete legacyLock.score; delete legacyLock.sim;
 const legacyHandle = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether(["カ", "カ"]), single,
 	{ ...base, PRIORITY_WORDS: [preferred("1", "指定")], PRIORITY_STRATEGY: "placement" },
 	null, null, [[legacyLock], []]);
-assert(Number.isFinite((await legacyHandle.finished).score), "legacy locks without scores must not poison placement-plan comparison");
+assert(Number.isFinite((await legacyHandle.finished).score), "legacy locks without scores keep a finite result score");
 
 const weighted = await generate(["カカカカ"], db, prefs, {}, null, [[1, 1, 1, 1]]);
 assert.equal(weighted.diagnostics.priority.included.length, 1);
@@ -96,4 +130,20 @@ const cancelled = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether
 	() => { updated = true; }, () => { completed = true; });
 cancelled.cancel(); await cancelled.finished;
 assert(!completed && !updated, "cancelling suppresses updates and completion during planning");
-print("[ok] priority placement: requested-word priority, alternatives, scopes, remainder/fillers, future ID reservations, locks, weights, character boundaries and cancellation");
+for (const cancelAt of [0, 1]) {
+	let ended = false;
+	const generated = [];
+	const handle = soramimiMaker.generateFromTokens(textAnalyzer.tokenizeTogether(["カカ", "カカ"]), db,
+		{ ...base, PRIORITY_WORDS: prefs },
+		(_result, _line, _tokens, info) => {
+			if (info.stage !== "generating") return;
+			generated.push(info.completedLines);
+			if (info.completedLines === cancelAt) handle.cancel();
+		}, () => { ended = true; });
+	await handle.finished;
+	assert(!ended, "cancellation during remainder generation suppresses completion");
+	assert.deepEqual(generated, Array.from({ length: cancelAt + 1 }, (_, i) => i),
+		"cancellation prevents generation of subsequent lines");
+}
+
+print("[ok] priority placement: single remainder pass for 45 lines, best placement, joint assignments, scopes, fillers, ID reservations, locks, weights, character boundaries and cancellation");
