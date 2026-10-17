@@ -74,6 +74,7 @@ export function createCustomWordlistRepository(storage, {
 			}],
 		};
 		storage.setItem(CUSTOM_WORDLISTS_STORAGE_KEY, JSON.stringify(migrated));
+		// 新形式の書き込みに成功してからだけ旧キーを消す。
 		storage.removeItem(LEGACY_ORIGINAL_STORAGE_KEY);
 		return migrated;
 	}

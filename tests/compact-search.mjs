@@ -1,4 +1,4 @@
-// Compact scoring and public exact search preserve results without a target product.
+// Exact and approximate search must preserve eager scoring without a target product.
 // Run: node tests/compact-search.mjs
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -175,8 +175,21 @@ function eagerCandidates(db,target,param,length,rawWeights=null){
 	const variations = k2s.getVariation(target), grouped = {};
 	for(const v of variations)if(v.length in db)(grouped[v.length] ||= []).push(v);
 	const weights = normalWeights(rawWeights), cost = param.VARIATION_COST||0;
+	const limit = param.APPROX_CANDIDATES>0 ? Math.max(param.APPROX_CANDIDATES,length) : 0;
+	const entries = Object.keys(grouped).flatMap(key=>db[key]);
+	let selected = null;
+	if(limit && entries.length>limit*2 && new Set(entries.map(w=>w.id)).size>limit*2){
+		const best = new Map();
+		for(const key in grouped)for(const w of db[key]){
+			const score = eagerCoarse(grouped[key],w.pronunciation,param.VOWEL_RATIO??.8,
+				cost/16,w.vcost||0,weights);
+			if(!best.has(w.id) || score<best.get(w.id))best.set(w.id,score);
+		}
+		selected = new Set([...best].sort((a,b)=>a[1]-b[1]).slice(0,limit).map(([id])=>id));
+	}
 	const result = {};
 	for(const key in grouped)for(const w of db[key]){
+		if(selected && !selected.has(w.id))continue;
 		const sim = eagerExact(grouped[key],w.pronunciation,cost,w.vcost||0,weights);
 		if(w.id in result && sim>result[w.id].sim)continue;
 		result[w.id] = {...w,sim};
@@ -184,7 +197,7 @@ function eagerCandidates(db,target,param,length,rawWeights=null){
 	return Object.values(result).sort((a,b)=>a.sim-b.sim).slice(0,length);
 }
 const analyzer = {syllableToVariation:k2s.getVariation,getYomiAndPhraseBreak:tokens=>tokens};
-const maker = SoramimiMaker({getKanaSimilarity:()=>kanaDist},analyzer);
+const maker = SoramimiMaker({getKanaSimilarity:()=>kanaDist},analyzer,kana2phonon);
 const target = Array(6).fill("カン");
 const ids = ["10","z","2","01","a","4294967295","4294967294"];
 const db = {6:[],12:[word("2",Array(6).fill(["カ","ン"]).flat(),"last same ID")]};
@@ -196,16 +209,17 @@ for(let i=0;i<12;i++)db[6].push(word(`extra-${i}`,Array(6).fill(units[i%units.le
 db[6].push(word("bad-length",Array(12).fill("カ"),"malformed length"));
 db[6].push(word("unknown",Array(6).fill("☃"),"unknown unit"));
 assert.ok(new PronunciationSearch(target,Object.keys(db)).compact);
-for(const cost of [0,.3,16.25]){
+for(const cost of [0,.3,16.25])for(const ratio of [.2,.5,.8]){
 	for(const rawWeights of [null,[0,.3,1,1.9,2,.1]]){
-		for(const length of [0,1,2,40]){
-			const param = {VARIATION_COST:cost};
+		for(const [approximate,length] of [[0,40],[1,2],[3,2],[4,4]]){
+			const param = {VARIATION_COST:cost,VOWEL_RATIO:ratio,APPROX_CANDIDATES:approximate};
 			assert.deepEqual(maker.getCandidates(db,target,param,length,rawWeights),
 				eagerCandidates(db,target,param,length,rawWeights),JSON.stringify(param));
 		}
 	}
 }
-print("[ok] public exact candidates match complete eager ranking and requested result count");
+assert.deepEqual(maker.getCandidates(db,target,{APPROX_CANDIDATES:1},0),[]);
+print("[ok] public exact and approximate candidates match eager ranking and unique-ID shortlist");
 
 // Treat all source syllables as one character to query the full span through the
 // public generation API. Repeated lines exercise excluded IDs without tokenization.
@@ -219,18 +233,20 @@ const repeatedDb = {...tieDb,6:[
 	...Array.from({length:20},(_,i)=>word("10",Array(6).fill("カ"),`repeated-${i}`)),
 	...tieDb[6],
 ]};
-const repeatedCandidates = maker.getCandidates(repeatedDb,target,{VARIATION_COST:0},2);
-assert.deepEqual(repeatedCandidates.map(w=>w.id),["2","10"],
-	"duplicate readings consume one result slot; exact ties retain property order");
-assert.deepEqual(repeatedCandidates,eagerCandidates(repeatedDb,target,{VARIATION_COST:0},2));
+const shortlist = maker.getCandidates(repeatedDb,target,
+	{VARIATION_COST:0,APPROX_CANDIDATES:2},2);
+assert.deepEqual(shortlist.map(w=>w.id),["10","z"],
+	"duplicate readings consume one shortlist slot; coarse ties retain insertion order");
+assert.deepEqual(shortlist,eagerCandidates(repeatedDb,target,
+	{VARIATION_COST:0,APPROX_CANDIDATES:2},2));
 const summary = values=>values.map(w=>({id:w.id,surface:w.surface,sim:w.sim}));
-const expected = eagerCandidates(tieDb,target,{VARIATION_COST:0},20);
+const expected = eagerCandidates(tieDb,target,{VARIATION_COST:0,APPROX_CANDIDATES:0},20);
 const savedLog = console.log;
 console.log = ()=>{};
 let generated;
 try{
 	generated = await new Promise(resolve=>maker.generateFromTokens(
-		Array(5).fill(tokens),tieDb,{DUPLICATE:false,VARIATION_COST:0,
+		Array(5).fill(tokens),tieDb,{DUPLICATE:false,APPROX_CANDIDATES:1,VARIATION_COST:0,
 			SAME_PHRASE_BREAK_REWARD:0,WORD_NUMBER_PENALTY:20},null,resolve));
 }finally{
 	console.log = savedLog;
@@ -238,7 +254,7 @@ try{
 assert.deepEqual(generated.map(line=>summary(line)[0]),summary(expected.slice(0,5)));
 assert.equal(generated[0][0].surface,"same ID last");
 assert.deepEqual(generated.map(line=>line[0].id),["2","10","4294967294","z","01"]);
-print("[ok] generation excludes previous IDs from the full ranking and preserves same-ID ties");
+print("[ok] streaming generation excludes previous IDs and preserves same-ID ties");
 
 // If target enumeration returns, the heap limit makes only this child fail.
 // Both shortest and intermediate output lengths are reachable; this is not an
@@ -254,15 +270,15 @@ const units = ["カ","カー","ン"];
 const dist = Object.fromEntries(units.map(a=>[a,Object.fromEntries(units.map(b=>[b,Number(a!==b)]))]));
 const k2s = KanaToSyllable();
 const analyzer = {syllableToVariation:k2s.getVariation,getYomiAndPhraseBreak:tokens=>tokens};
-const maker = SoramimiMaker({getKanaSimilarity:()=>dist},analyzer);
+const maker = SoramimiMaker({getKanaSimilarity:()=>dist},analyzer,{"カ":["k","a"],"ン":["sp","N"]});
 const db = {
   36:Array.from({length:8},(_,i)=>({id:String(10+i),pronunciation:Array(36).fill("カ"),vcost:i})),
   54:[{id:"2",pronunciation:[...Array(18).fill(["カ","ン"]).flat(),...Array(18).fill("カ")],vcost:0}],
 };
-const param = {VARIATION_COST:.125};
+const param = {VARIATION_COST:.125,VOWEL_RATIO:.8,APPROX_CANDIDATES:0};
 const full = maker.getCandidates(db,target,param,20);
 assert.deepEqual(full.slice(0,2).map(w=>[w.id,w.sim]),[["2",2.25],["10",4.5]]);
-assert.deepEqual(maker.getCandidates(db,target,param,1),full.slice(0,1));
+assert.deepEqual(maker.getCandidates(db,target,{...param,APPROX_CANDIDATES:1},1),full.slice(0,1));
 const tokens = target.map((pronunciation,i)=>({pronunciation,char_index:0,phrase:0,surface_form:i?"":"sample"}));
 const generated = await new Promise(resolve=>maker.generateFromTokens([tokens,tokens],db,
   {...param,DUPLICATE:false,SAME_PHRASE_BREAK_REWARD:0},null,resolve));

@@ -307,6 +307,23 @@ function absorbSmallKana(text){
 	return chars.join("");
 }
 
+// 2個目以降の長音を母音へ開く。1文字ずつ置換し、元の文字位置を保つ。
+// 母音が特定できない場合(行頭やン・ッの後ろなど)は推測で補わない。
+function expandRepeatedLongVowels(text){
+	let previous = "", vowel = "", out = "";
+	for(const char of text){
+		if(char === "ー"){
+			out += previous === "ー" && vowel ? vowel : char;
+		}else{
+			const candidate = char === "ヲ" ? "オ" : charToVowel(char);
+			vowel = /^[アイウエオ]$/.test(candidate) ? candidate : "";
+			out += char;
+		}
+		previous = char;
+	}
+	return out;
+}
+
 //ーとッの不自然な並びを削除する
 function removeBarAndSokuonReputation(text){
 	text = text.replace(/ー+/g,"ー");//ーの連続を1文字にする
@@ -339,8 +356,22 @@ function KanaToMora(){
 	}
 }
 
-// 1音節の変種。削除(空ユニット)も残し、列挙と省メモリ検索で同じ規則を使う。
-function syllableVariations(syllable){
+// 長音は保持形と、直前の母音を独立させた形の両方で比較する。
+function longVowelExpansion(unit){
+	if(!unit.endsWith("ー"))return null;
+	const head = unit.slice(0,-1);
+	if(!head)return null;
+	const vowel = head === "ヲ" ? "オ" : charToVowel(head);
+	return /^[アイウエオ]$/.test(vowel) ? [head,vowel] : null;
+}
+
+function maximumVariationLength(syllables){
+	return (syllables||[]).reduce((sum,syllable)=>sum+(syllable === null ? 0
+		: Math.max(...syllableVariations(syllable).map(({u})=>u.filter(Boolean).length))),0);
+}
+
+// 1音節の変種。辞書保存時は長音展開を省き、比較時に状態を共有して処理する。
+function syllableVariations(syllable, expandLongVowels=true){
 	let variation = [];
 	if(/^[アイウエオ]$/.test(syllable)){//アイウエオは先に処理しておく
 		variation.push({u:[syllable],c:0});
@@ -395,6 +426,14 @@ function syllableVariations(syllable){
 	//1モーラ
 	else{
 		variation.push({u:[syllable],c:0});
+	}
+	if(expandLongVowels && syllable.includes("ー")){
+		const expanded = variation.flatMap(({u,c})=>{
+			const index = u.findIndex(unit=>longVowelExpansion(unit));
+			return index<0 ? [] : [{u:[...u.slice(0,index),
+				...longVowelExpansion(u[index]),...u.slice(index+1)],c}];
+		});
+		variation.push(...expanded);
 	}
 	return variation;
 }
@@ -464,7 +503,7 @@ function KanaToSyllable(){
 		//さらに .srcIndex プロパティで「各出力ユニットが入力syllablesの何番目に由来するか」を
 		//持たせる(ユニット位置別の重み付けスコアリング用。ン/ッ/ーの変種はユニット数が
 		//変わるため、位置の対応づけにはこの由来indexが要る)。
-		getVariation: function(syllables, maxUnits){
+		getVariation: function(syllables, maxUnits, expandLongVowels=true){
 			//console.log("syllable",syllables);
 			let result = [];
 			//result[k] が syllables の何番目に由来するか(null音節はスキップされ添字がずれる)
@@ -473,7 +512,7 @@ function KanaToSyllable(){
 			for(let si=0; si<syllables.length; si++){
 				const syllable = syllables[si];
 				if(syllable === null) continue;
-				const variation = syllableVariations(syllable);
+				const variation = syllableVariations(syllable, expandLongVowels);
 				result.push(variation);
 				resultSrc.push(si);
 			}
@@ -806,7 +845,8 @@ export {
 	barToVowel, vowelToBar, charToConsonant, charToVowel,
 	isSameKana, isSameVowel, isSameConsonant, isSameBar, isSameSokuon, isSameHatsuon,
 	hiraToKata, KanaPattern, smallVowelToBar, smallVowelToLarge,
-	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana,
-	moraSplit, KanaToMora, KanaToSyllable, syllableVariations, getKanaToVowelDictionary,
+	removeBarAndSokuonReputation, removeUnnaturalKanaPattern, absorbSmallKana, expandRepeatedLongVowels,
+	moraSplit, KanaToMora, KanaToSyllable, syllableVariations, longVowelExpansion,
+	maximumVariationLength, getKanaToVowelDictionary,
 	phononSplit, createKanaConverter,
 };

@@ -75,10 +75,10 @@ export async function buildApp() {
     return baseApp.wordList.parsePlain(text);
   }
 
-  function generate(phrases, db, param) {
+  function generate(phrases, db, param, weightsPerLine = null) {
     const app = appFor(param && param.VOWEL_RATIO);
     return new Promise((resolve) => {
-      app.soramimiMaker.generate(phrases, db, param, null, resolve);
+      app.soramimiMaker.generate(phrases, db, param, null, resolve, weightsPerLine);
     });
   }
 

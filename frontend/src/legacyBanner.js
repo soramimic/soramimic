@@ -1,0 +1,10 @@
+const banner = document.createElement("aside");
+banner.setAttribute("aria-label", "旧版のご案内");
+banner.style.cssText = "padding:.6rem 1rem;text-align:center;background:#fff2cc;color:#3d3100;font:14px/1.7 system-ui,sans-serif;";
+banner.append("Soramimic 旧版です。 ");
+const link = document.createElement("a");
+link.href = "https://soramimic.com/";
+link.textContent = "最新版はこちら";
+link.style.cssText = "color:#1549a5;display:inline-block;padding:.2rem;";
+banner.append(link);
+document.body.prepend(banner);

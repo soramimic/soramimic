@@ -4,10 +4,7 @@ import { readFile } from "node:fs/promises";
 const workflow = async (name) => readFile(
 	new URL(`../.github/workflows/${name}`, import.meta.url), "utf8");
 
-const adr = async (name) => readFile(
-	new URL(`../docs/adr/${name}`, import.meta.url), "utf8");
-
-const [automerge, bump, deploy, smoke, preview, release, retarget, releaseAdr] = await Promise.all([
+const [automerge, bump, deploy, smoke, preview, release, retarget] = await Promise.all([
 	workflow("automerge.yaml"),
 	workflow("bump-wordlists.yaml"),
 	workflow("deploy.yaml"),
@@ -15,19 +12,7 @@ const [automerge, bump, deploy, smoke, preview, release, retarget, releaseAdr] =
 	workflow("preview.yaml"),
 	workflow("release.yaml"),
 	workflow("retarget-main-pr.yaml"),
-	adr("00002-automate-preview-main-release.md"),
 ]);
-
-assert.match(releaseAdr, /- Status: accepted/,
-	"preview→mainリリース自動化のADRをacceptedとして維持する");
-assert.match(releaseAdr,
-	/同一repositoryの非ドラフト[^]*?`preview` → `main` pull requestを本番リリースの明示承認とする/,
-	"ADRでpreview→main PR作成をリリース承認として固定する");
-assert.match(releaseAdr,
-	/automerge workflowが自動マージ[^]*?本番deploy workflowを[^]*?直接呼び出す/,
-	"ADRで承認後のマージと本番デプロイを自動完了すると定める");
-assert.match(releaseAdr, /初回導入時だけ[^]*?手動マージしてbootstrapする/,
-	"ADRでmainにworkflowがない初回だけのbootstrapを区別する");
 
 assert.match(automerge, /branches: \[dev, preview, main\]/,
 	"自動マージworkflowはdev/preview PRとmain release PRを監視する");

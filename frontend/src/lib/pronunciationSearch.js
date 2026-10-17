@@ -1,12 +1,60 @@
-import { syllableVariations } from "./kanaToSyllable.js";
+import { syllableVariations, longVowelExpansion } from "./kanaToSyllable.js";
+
+// Store one pronunciation, sharing it across its reachable length buckets.
+// N long vowels need N+1 references, rather than 2**N copied pronunciations.
+export function indexPronunciation(db, word, maximum=Infinity){
+	const units = word.pronunciation;
+	const extra = units.reduce((sum,unit)=>sum+Number(!!longVowelExpansion(unit)),0);
+	for(let size=units.length;size<=Math.min(maximum,units.length+extra);size++){
+		(db[size] ||= []).push(word);
+	}
+}
+
+// Each local alternative rejoins the following syllable. Node order is
+// topological, and an edge emits at most one unit (or a deletion).
+function pronunciationGraph(levels){
+	const nodes = [[]];
+	let start = 0;
+	for(const {source,options} of levels){
+		const branches = options.map(option=>({
+			...option, middle:option.units.slice(1).map(()=>nodes.push([])-1),
+		}));
+		const end = nodes.push([])-1;
+		for(const {units,cost,middle} of branches){
+			const path = [start,...middle,end];
+			for(let i=0;i<Math.max(1,units.length);i++){
+				nodes[path[i]].push({end:path[i+1],unit:units[i]??null,
+					cost:i===0 ? cost : 0,source});
+			}
+		}
+		start = end;
+	}
+	return nodes;
+}
+let wordGraphs = new WeakMap();
+let wordGraphCount = 0;
+function longWordGraph(units){
+	if(!wordGraphs.has(units)){
+		// Live dictionaries can retain many entries; bound the derived graph cache too.
+		if(wordGraphCount>=256){ wordGraphs = new WeakMap(); wordGraphCount = 0; }
+		wordGraphs.set(units,pronunciationGraph(units.map((unit,source)=>({
+			source,options:[{units:[unit],cost:0},
+				...(longVowelExpansion(unit) ? [{units:longVowelExpansion(unit),cost:0}] : [])],
+		}))));
+		wordGraphCount++;
+	}
+	return wordGraphs.get(units);
+}
 
 // Equivalent algorithms: this switches representation, never drops alternatives.
 const MAX_ENUMERATED_VARIATIONS = 256;
 
 export class PronunciationSearch {
-	constructor(target, lengths){
+	// Diagnostics may restrict alternatives without changing normal searches.
+	constructor(target, lengths, {expandLongVowels=true, allowSoundChanges=true}={}){
 		this.levels = target.flatMap((syllable, source)=>syllable === null ? [] : [{
-			source, options: syllableVariations(syllable).map(({u,c})=>({
+			source, options: syllableVariations(syllable,expandLongVowels)
+				.filter(({c})=>allowSoundChanges || c===0).map(({u,c})=>({
 				units:u.filter(unit=>unit!==""), cost:c,
 			})),
 		}]);
@@ -87,6 +135,74 @@ export class PronunciationSearch {
 		for(let cost=0;cost<this.stride;cost++){
 			if(!this.suffixCosts[0].has(targetLength*this.stride+cost))continue;
 			best = Math.min(best,this.distance(targetLength,extend,variationWeight,wordCost,weights,cost));
+		}
+		return best;
+	}
+
+	// Match the two pronunciation graphs without enumerating either product.
+	// Dictionary edges only split long vowels, so their operation cost is zero.
+	scoreExpanded(pronunciation, length, kanaDist, variationCost=0, wordCost=0, weights=null){
+		const extend = (score,left,right,weight)=>left in kanaDist && right in kanaDist
+			? score+kanaDist[left][right]*weight : Infinity;
+		return this.distanceExpanded(pronunciation,length,extend,variationCost,wordCost,weights);
+	}
+
+	coarseScoreExpanded(pronunciation,length,unitFeature,vowelRatio=.8,variationWeight=1,
+		wordCost=0,weights=null){
+		const extend = (score,left,right,weight)=>{
+			const a = unitFeature(left)&65535, b = unitFeature(right)&65535;
+			if((a>>>8)!==(b>>>8))score += 5*vowelRatio*weight;
+			if((a&255)!==(b&255))score += 5*(1-vowelRatio)*weight;
+			return score;
+		};
+		if(!variationWeight)return this.distanceExpanded(pronunciation,length,extend,0,wordCost,weights,0);
+		this.prepareSuffixCosts();
+		let best = Infinity;
+		for(let cost=0;cost<this.stride;cost++){
+			if(!this.suffixCosts[0].has(length*this.stride+cost))continue;
+			best = Math.min(best,this.distanceExpanded(pronunciation,length,extend,
+				variationWeight,wordCost,weights,cost));
+		}
+		return best;
+	}
+
+	distanceExpanded(pronunciation,length,extend,variationCost,wordCost,weights,plannedCost=null){
+		if(!this.lengths.includes(length))return Infinity;
+		this.graph ||= pronunciationGraph(this.levels);
+		const left = this.graph, right = longWordGraph(pronunciation);
+		const coarse = plannedCost!==null;
+		const rows = Array.from({length:left.length},()=>new Map());
+		rows[0].set(0,new Map([[0,coarse ? (plannedCost+wordCost)*variationCost : 0]]));
+		const save = (a,b,position,operations,score)=>{
+			if(position>length || !Number.isFinite(score)
+				|| (coarse && variationCost && operations>plannedCost))return;
+			const states = rows[a].get(b) || new Map();
+			const key = position*this.stride+operations;
+			if(score<(states.get(key)??Infinity))states.set(key,score);
+			rows[a].set(b,states);
+		};
+		for(let a=0;a<left.length-1;a++){
+			for(const [b,states] of rows[a])for(const [key,score] of states){
+				const position = Math.floor(key/this.stride), operations = key%this.stride;
+				for(const edge of left[a]){
+					const cost = variationCost ? operations+edge.cost : 0;
+					if(edge.unit===null){
+						save(edge.end,b,position,cost,score);
+						continue;
+					}
+					const weight = weights && typeof weights[edge.source]==="number" ? weights[edge.source] : 1;
+					for(const other of right[b])save(edge.end,other.end,position+1,cost,
+						extend(score,edge.unit,other.unit,weight));
+				}
+			}
+			rows[a].clear();
+		}
+		let best = Infinity;
+		for(const [key,score] of rows.at(-1).get(right.length-1)||[]){
+			if(Math.floor(key/this.stride)!==length)continue;
+			const operations = key%this.stride;
+			if(coarse && variationCost && operations!==plannedCost)continue;
+			best = Math.min(best,coarse ? score : score+(operations+wordCost)*variationCost);
 		}
 		return best;
 	}

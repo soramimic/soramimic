@@ -1,3 +1,4 @@
+import { regenerateAll, menuAction } from "./editor-ui.mjs";
 // セットアップ画面(第1ステップ)のE2E。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけ、という契約を
 // 実ブラウザで確認する:
@@ -40,7 +41,7 @@ function assert(cond, message) {
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 
 const wordsOf = (page) =>
-	page.$$eval(".chip-word-surface", (els) => els.map((e) => e.textContent).join("|"));
+	page.$$eval(".review-word-surface", (els) => els.map((e) => e.textContent).join("|"));
 
 // hidden属性だけでなく、CSSのdisplay指定で見えてしまっていないかまで見る
 const isHidden = (page, sel) => page.isHidden(sel);
@@ -54,12 +55,12 @@ const waitSetupReady = (page) =>
 
 // 編集画面(結果表示)に入るまで待つ
 const waitEditor = (page) =>
-	page.waitForSelector(".editor-line .chip-word", { timeout: 180000 });
+	page.waitForSelector(".editor-line .review-word", { timeout: 180000 });
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
@@ -101,7 +102,7 @@ try {
 	assert(await page.textContent("#setup-song-title") === SONG_TITLE,
 		"曲名が表示されていない");
 
-	// 設定UI(⚙モーダルと同じ実体)がセットアップ画面の中に来ていること
+	// 設定UI(設定モーダルと同じ実体)がセットアップ画面の中に来ていること
 	assert(await page.$eval("#editor-settings-body",
 		(el) => !!el.closest("#editor-setup")),
 		"設定UIがセットアップ画面に入っていない");
@@ -120,10 +121,10 @@ try {
 
 	assert(await isHidden(page, "#editor-setup"), "変換後もセットアップ画面が残っている");
 	assert(!(await isHidden(page, "#editor-toolbar")), "変換後にツールバーが出ていない");
-	// 設定UIは⚙モーダルの中へ戻る
+	// 設定UIは設定モーダルの中へ戻る
 	assert(await page.$eval("#editor-settings-body",
 		(el) => !!el.closest("#editor-settings")),
-		"設定UIが⚙モーダルに戻っていない");
+		"設定UIが設定モーダルに戻っていない");
 
 	const afterConvert = await readData(page);
 	assert(afterConvert.results.length === PHRASES.length,
@@ -143,19 +144,22 @@ try {
 	const wordsFirst = await wordsOf(page);
 	assert(wordsFirst.length > 0, "替え歌単語が表示されていない");
 
-	// ---- 変換後: ⚙モーダルと再変換が従来どおり効く ----
-	await page.click("#btn-settings");
+	// ---- 変換後: 設定モーダルと再変換が従来どおり効く ----
+	await menuAction(page, "#btn-settings");
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await page.click("#editor-preset-buttons button:has-text('音そっくり')");
-	await page.click("#btn-reconvert");
+	await waitIdle(page);
+	assert(await wordsOf(page) === wordsFirst, "設定変更で歌詞が変わった");
+	await page.click("#btn-settings-close");
+	await regenerateAll(page);
 	await waitIdle(page);
 	const afterReconvert = await readData(page);
 	assert(afterReconvert.param.WORD_NUMBER_PENALTY === 0,
-		"⚙からの再変換でパラメータが反映されていない");
+		"設定変更後の再変換でパラメータが反映されていない");
 	assert(await wordsOf(page) !== wordsFirst, "再変換したのに結果が同じ");
 	// 「固定中以外を再生成」も使える
-	await page.click("#btn-regenerate");
+	await regenerateAll(page);
 	await page.waitForFunction(() => document.getElementById("regen-progress").hidden,
 		undefined, { timeout: 180000 });
 
@@ -223,6 +227,38 @@ try {
 	const afterFiltered = await readData(page);
 	assert(afterFiltered.where === HOST_WHERE,
 		"変換で絞り込みが変わった: " + JSON.stringify(afterFiltered.where));
+
+	// Confirmed host readings and phrase boundaries remain the source of truth,
+	// including after a reload and another setup conversion.
+	const hostTokens = [
+		["手", "テ", 0], ["を", "オ", 0], ["打つ", "ウツ", 1],
+	].map(([surface_form, pronunciation, phrase]) => ({
+		surface_form, pronunciation, reading: pronunciation, phrase, pos: "名詞",
+	}));
+	await seed(page, {
+		phrases: ["テオウツ"], tokensList: [hostTokens],
+		wordlist: { value: "ORIGINAL", dbtype: "tidy", csvText:
+			"id,original,surface,pronunciation\n0,時計,時計,トケイ\n1,手,手,テ\n" },
+	});
+	const checkBoundaries = async () => {
+		const saved = await readData(page);
+		assert(saved.unitsList[0].map(u => u.pronunciation).join("|") === "テ|オ|ウ|ツ",
+			"元歌詞の単語境界を越えてオウが結合された");
+		assert(saved.unitsList[0].map(u => u.phrase).join("|") === "0|0|1|1",
+			"元歌詞の文節境界が失われた");
+		assert(saved.unitsList[0].map(u => u.surface_form).join("") === "手を打つ",
+			"元歌詞の表記が失われた");
+	};
+	for (let attempt = 0; attempt < 2; attempt++) {
+		await waitSetupReady(page);
+		await page.click("#btn-setup-convert");
+		await waitEditor(page);
+		await checkBoundaries();
+		if (attempt === 0) {
+			const saved = await readData(page);
+			await seed(page, { ...saved, setupFirst: true });
+		}
+	}
 
 	// ---- 壊れたシード(phrasesもresultsも無い)は従来どおり空表示 ----
 	await seed(page, { param: {} });

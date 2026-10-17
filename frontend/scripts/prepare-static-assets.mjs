@@ -1,8 +1,9 @@
-import { readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CLOUDFLARE_PAGES_FILE_LIMIT = 25 * 1024 * 1024;
+export const CLOUDFLARE_PAGES_FILE_COUNT_LIMIT = 20_000;
 export const REQUIRED_WORDLIST_COLUMNS = ["id", "original", "surface", "pronunciation"];
 export const OMITTED_WORDLIST_COLUMNS = new Set(["image", "image_page", "description", "wikidata"]);
 
@@ -101,21 +102,40 @@ function assetPath(dist, filepath) {
 	return path;
 }
 
-// public/wordlists はsubmodule全体へのsymlinkなので、Viteは設定で使わないCSVも
-// distへコピーする。公開候補から外したリストが直URLで残らないよう、設定が参照する
-// CSVだけを成果物に残す。
+// public/wordlists はsubmodule全体へのsymlink。変換で使うCSVと出典・ライセンス
+// 表示だけを残し、画像や整備用ファイルは配信物に含めない。原本は変更しない。
 export async function pruneUnconfiguredWordlists(dist, plans) {
 	const allowed = new Set(plans.map((plan) => assetPath(dist, plan.filepath)));
 	const directory = resolve(dist, "wordlists");
 	const removed = [];
-	for (const entry of await readdir(directory, { withFileTypes: true })) {
-		if (!entry.isFile() || !entry.name.endsWith(".csv")) continue;
-		const path = resolve(directory, entry.name);
-		if (allowed.has(path)) continue;
-		await unlink(path);
-		removed.push(entry.name);
+	async function prune(parent) {
+		for (const entry of await readdir(parent, { withFileTypes: true })) {
+			const path = resolve(parent, entry.name);
+			if (entry.isFile() && (allowed.has(path) || (parent === directory &&
+				(entry.name === "README.md" || /^(LICENSE|COPYING|NOTICE)($|[._-])/i.test(entry.name))))) continue;
+			if (entry.isDirectory() && [...allowed].some((file) => file.startsWith(`${path}${sep}`))) {
+				await prune(path);
+				continue;
+			}
+			await rm(path, { recursive: true });
+			removed.push(relative(directory, path));
+		}
 	}
+	await prune(directory);
 	return removed.sort();
+}
+
+export async function checkDeploymentFileCount(root, limit = CLOUDFLARE_PAGES_FILE_COUNT_LIMIT) {
+	let count = 0;
+	async function visit(directory) {
+		for (const entry of await readdir(directory, { withFileTypes: true })) {
+			if (entry.isDirectory()) await visit(resolve(directory, entry.name));
+			else if (entry.isFile()) count += 1;
+		}
+	}
+	await visit(root);
+	if (count > limit) throw new Error(`配信ファイル数が${limit}件の上限を超えています: ${count}件`);
+	return count;
 }
 
 export async function findOversizedFiles(root, limit = CLOUDFLARE_PAGES_FILE_LIMIT) {
@@ -145,6 +165,7 @@ export async function prepareStaticAssets(distDirectory) {
 		const result = await projectWordlistCsv(path, path, plan.columns, plan.filepath);
 		projections.push({ values: plan.values, filepath: plan.filepath, ...result });
 	}
+	await checkDeploymentFileCount(dist);
 	const oversized = await findOversizedFiles(dist);
 	if (oversized.length > 0) {
 		const details = oversized

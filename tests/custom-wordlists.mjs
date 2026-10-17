@@ -8,7 +8,9 @@ import {
 } from "../frontend/src/customWordlists.js";
 
 class MemoryStorage {
-	constructor(values = {}) { this.values = new Map(Object.entries(values)); }
+	constructor(values = {}) {
+		this.values = new Map(Object.entries(values));
+	}
 	getItem(key) { return this.values.has(key) ? this.values.get(key) : null; }
 	setItem(key, value) { this.values.set(key, String(value)); }
 	removeItem(key) { this.values.delete(key); }
@@ -39,6 +41,7 @@ function repository(storage = new MemoryStorage()) {
 	assert.deepEqual(repo.list(), []);
 }
 
+// 編集開始後に別タブ相当の更新が入った場合、古い内容で上書きしない。
 {
 	const storage = new MemoryStorage();
 	const repo = repository(storage);
@@ -50,6 +53,7 @@ function repository(storage = new MemoryStorage()) {
 	assert.deepEqual(repo.get(first.id), newer);
 }
 
+// 旧単一キーは新ストレージが無い初回だけ移行し、再読込で重複しない。
 {
 	const storage = new MemoryStorage({ [LEGACY_ORIGINAL_STORAGE_KEY]: "山田,ヤマダ" });
 	const repo = repository(storage);
@@ -60,6 +64,7 @@ function repository(storage = new MemoryStorage()) {
 	assert.equal(repo.list().length, 1);
 }
 
+// 新形式があるときは、残っている旧キーで上書き・追加しない。
 {
 	const state = { version: 1, lists: [] };
 	const storage = new MemoryStorage({
@@ -70,12 +75,14 @@ function repository(storage = new MemoryStorage()) {
 	assert.equal(storage.getItem(LEGACY_ORIGINAL_STORAGE_KEY), "取り込まない");
 }
 
+// 壊れた保存データは黙って初期化しない。
 {
 	const storage = new MemoryStorage({ [CUSTOM_WORDLISTS_STORAGE_KEY]: "{" });
 	assert.throws(() => repository(storage).list(), /壊れています/);
 	assert.equal(storage.getItem(CUSTOM_WORDLISTS_STORAGE_KEY), "{");
 }
 
+// setItem失敗時は既存の保存内容が変わらない。
 {
 	const storage = new MemoryStorage();
 	const repo = repository(storage);

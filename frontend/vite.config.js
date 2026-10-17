@@ -43,11 +43,13 @@ function serveDictAsBinary() {
 
 export default defineConfig({
 	plugins: [serveDictAsBinary()],
-	// マルチページ: 生成画面(index.html)と編集ツール(editor.html)
+	// 生成画面・編集ツール・サイト情報をそれぞれ配信する。
 	build: {
 		rollupOptions: {
 			input: {
+				legacyTransfer: fileURLToPath(new URL("./legacy-transfer.html", import.meta.url)),
 				main: fileURLToPath(new URL("./index.html", import.meta.url)),
+				about: fileURLToPath(new URL("./about.html", import.meta.url)),
 				editor: fileURLToPath(new URL("./editor.html", import.meta.url)),
 			},
 		},

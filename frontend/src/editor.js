@@ -4,6 +4,15 @@
 // 以降: タップ・ドラッグ選択、候補グループ化・使用中表示・長押し詳細、戻る/進む
 import "./style.css";
 import "./editor.css";
+import "./appBridge.js";
+import { validateEditorData } from "./editorData.js";
+import { setupVisualization } from "./editorVisualization.js";
+import { setupEditorDisplay } from "./editorDisplay.js";
+import "./editorVisualization.css";
+import { createGenerationHistoryRepository } from "./generationHistory.js";
+import {
+	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
+} from "./editorReview.js";
 import {
 	initSoramimicApp, buildDatabase, unitsListFromTokens, ORIGINAL_STORAGE_KEY,
 } from "./appCore.js";
@@ -11,11 +20,22 @@ import { originalTextToCsv, looksLikeTidyHeader } from "./wordlistInput.js";
 import { alignLyricsToLines } from "./xfAlign.js";
 import { fetchJson } from "./api.js";
 import { makeResultText } from "./convert.js";
+import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
+import { alignmentFromUnits, countsForAlignment } from "./lib/readingAlignment.js";
+import { findPlacements, highlightOriginal } from "./reverseSearch.js";
+import { lineRegenerationInput } from "./editorRegeneration.js";
+import { lockPanelViewport } from "./editorPanelViewport.js";
+import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
+import { appendWordDetails } from "./editorWordDetails.js";
+import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
+import { normalizeWordSearch, searchWordlist } from "./editorWordlistSearch.js";
 import {
 	createParamControls, valuesFromParam,
 	hasFacets, renderFacets, compileWhere, restoreFacets,
 } from "./convertControls.js";
+
+const videoPeer = window.SoramimicBridge.peer("video", import.meta.env.VITE_SORAMIMIC_VIDEO_URL);
 
 export const EDITOR_STORAGE_KEY = "soramimic-editor";
 const GROUP_PAGE = 30; // 「もっと見る」1回で増える候補グループ数
@@ -26,6 +46,7 @@ const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
 const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
+const SKIP_REGEN_CONFIRMATION_KEY = "soramimic-skip-regenerate-confirmation";
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
 // stations.csv のような同梱リストも自作リストとして読み直せる容量にする。
@@ -33,18 +54,28 @@ const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
 const ORIGINAL_FILE_MAX = 10 * 1024 * 1024;
 
 let data = null;
+let visualization = null;
+let editorDisplay = {};
 // 候補提示の基盤(初期化完了までnull)。mecabは自由入力の読み付与に使う
 let app = null;
 let mecab = null;
 let db = null;
 let appFor = null; // 「音の合わせ方」別のエンジンを取り直すためのファクトリ
-let currentVowelRatio = null; // いまの app を作った VOWEL_RATIO
+let engineVowelRatio = null;
 let dbWhere = undefined; // いまの db を作った where(ファセット絞り込み)
 let dbWordlistKey = null; // いまの db を作った単語リスト(wordlistKey)
 let paramControls = null; // 変換設定パネルのパラメータUI(生成画面と共有)
 let facetsEnabled = false; // 単語リストに facets があるときだけ絞り込みを出す
 let wordlistCatalog = null; // value → エントリ(conf/setting.json 由来。取得失敗時null)
-let reconverting = false; // 再変換中(多重実行を防ぐ)
+let settingsUpdating = false;
+let settingsRevision = 0;
+let settingsReady = false;
+let settingsDirty = false;
+let regeneration = null;
+let reverseMatches = [];
+let reverseIndex = -1;
+let reverseTimer = null;
+let reverseRequest = null;
 let setupMode = false; // セットアップ画面(第1ステップ)を表示中
 let setupConverting = false; // セットアップ画面での変換中(多重実行を防ぐ)
 let songRequest = null; // ホストに出した曲の依頼 {type, id, nonce}(応答待ち中だけ非null)
@@ -60,11 +91,17 @@ let suppressClickUntil = 0; // ポインタ側で処理済みのタップのclic
 
 let panelShown = GROUP_PAGE; // 表示中の候補グループ数(「もっと見る」で増える)
 let openGroupKey = null; // 展開中の同名候補グループ(surface+kana)
+let wordlistSearchQuery = "";
+let openSearchGroup = null;
+let wordlistSearchController = null;
 let readingFixContext = null; // 読み修正ダイアログの下書き {line, span, draftAlign, alignMode}
-let candidateDraft = null; // {word, reading}: 候補タップだけでは results を変更しない
+let freeInputReturnClickUntil = 0;
 let freeInputOpen = false; // 希少な自由入力は必要なときだけ開く
 let freeInputDraft = { surface: "", reading: "" }; // 再描画しても未確定入力を保つ
 let readingInputLayoutCleanup = null; // iOSキーボード表示中のパネル位置調整を解除
+let reviewPreviousSelection = null;
+let reviewPanelViewportCleanup = null;
+let panelInitialResults = null;
 
 function $id(id) {
 	return document.getElementById(id);
@@ -80,6 +117,11 @@ function focusReadingInput(input, container = $id("editor-panel"), keepPositionU
 	readingInputLayoutCleanup?.();
 	if (!isIOSDevice() || !window.visualViewport) {
 		input.focus({ preventScroll: true });
+		return;
+	}
+	if (container === $id("editor-panel")) {
+		// The full-screen panel tracks the complete visual viewport while open.
+		input.focus();
 		return;
 	}
 	// iOS Safariの固定パネルはキーボードに隠れるため、visual viewportの下端まで
@@ -142,6 +184,21 @@ function setupEmbedNavigation() {
 }
 
 let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
+const generationHistory = createGenerationHistoryRepository();
+const pendingHistoryWrites = new Set();
+let historyFailureNotified = false;
+
+function saveGenerationHistory() {
+	if (!data?.generationHistoryId) return;
+	const write = generationHistory.update(data.generationHistoryId, data);
+	pendingHistoryWrites.add(write);
+	write.then(() => { pendingHistoryWrites.delete(write); }, () => {
+		pendingHistoryWrites.delete(write);
+		if (historyFailureNotified) return;
+		historyFailureNotified = true;
+		alert("編集内容を履歴に保存できませんでした。「書き出し」でファイルに保存してください。");
+	});
+}
 
 // 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
 // それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
@@ -149,6 +206,7 @@ let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作の
 function saveData() {
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+		saveGenerationHistory();
 		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
@@ -157,6 +215,7 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
+			saveGenerationHistory();
 			return true;
 		} catch (err2) {
 			console.error(err2);
@@ -179,12 +238,11 @@ function snapshotState() {
 		results: data.results,
 		tokensList: data.tokensList,
 		unitsList: data.unitsList,
-		// 変換設定も一緒に積むので、「この設定で再変換」も戻る1回で取り消せる。
-		// 単語リストも含めるので、リスト切替(=固定の全解除+全行作り直し)も
-		// 戻る1回で完全に元へ戻る。
+		// 設定変更も歌詞編集とは別の操作として取り消せる。
 		// where は undefined(=エントリ既定)と区別するため null にして持つ
 		param: data.param,
 		wordlist: data.wordlist,
+		wordlistSource: data.wordlistSource,
 		where: data.where === undefined ? null : data.where,
 		noteLengthAlpha: data.noteLengthAlpha,
 	}));
@@ -197,6 +255,7 @@ function restoreState(s) {
 	// 旧セッションの履歴には設定が入っていないので、あるときだけ戻す
 	if (s.param) data.param = s.param;
 	if (s.wordlist) data.wordlist = s.wordlist;
+	data.wordlistSource = s.wordlistSource;
 	if ("where" in s) data.where = s.where === null ? undefined : s.where;
 	if ("noteLengthAlpha" in s) data.noteLengthAlpha = s.noteLengthAlpha;
 }
@@ -261,7 +320,20 @@ function afterHistoryJump() {
 	updateHistoryButtons();
 	// パラメータ・絞り込みも戻るので、パネル表示と候補計算の土台を合わせ直す
 	syncSettingsUi();
-	if (appFor) syncEngine().then(() => renderPanel()).catch((err) => console.error(err));
+	if (appFor) {
+		setSettingsBusy(true);
+		showSettingsStatus();
+		syncEngine().then((applied) => {
+			if (!applied) return;
+			setSettingsBusy(false);
+			renderPanel();
+			scheduleReverseSearch();
+		}).catch((err) => {
+			db = null;
+			setSettingsBusy(false);
+			showSettingsStatus("単語リストを読み込めませんでした: " + err.message);
+		});
+	}
 }
 
 // 編集した行を記録する。「固定中以外を再生成」は編集の影響がありうる行だけを
@@ -271,8 +343,8 @@ function markDirty(line) {
 }
 
 function updateHistoryButtons() {
-	$id("btn-undo").disabled = data.history.length === 0;
-	$id("btn-redo").disabled = data.future.length === 0;
+	$id("btn-undo").disabled = settingsUpdating || data.history.length === 0;
+	$id("btn-redo").disabled = settingsUpdating || data.future.length === 0;
 }
 
 // ---- 表示 ----
@@ -312,152 +384,214 @@ function makeLockIcon(locked = false) {
 }
 
 function renderLine(line) {
-	const units = unitsOf(line);
-	const words = data.results[line] || [];
-	const el = document.createElement("div");
-	el.className = "editor-line";
-	el.dataset.line = String(line);
-
-	// 空行(改行だけの行)は行間スペーサとして表示する
-	if (units.length === 0) {
-		el.classList.add("editor-line-blank");
-		return el;
-	}
-
-	const caption = document.createElement("div");
-	caption.className = "editor-line-caption";
-	caption.textContent = (data.phrases && data.phrases[line]) || "";
-	// 元歌詞(字幕用)が対応づいていれば、ホバーでその行を確かめられるようにする
-	// (レイアウトは変えたくないのでツールチップだけ)
-	const original = Array.isArray(data.originalLines) ? data.originalLines[line] : "";
-	if (original) caption.title = original;
-	el.appendChild(caption);
-
-	// 1行 = 発音ユニット数分の列を持つグリッド。
-	// 上段: 元歌詞のユニットチップ(1列ずつ)
-	// 下段: 替え歌単語チップ(period[開始,終了) の列にまたがる)
-	const grid = document.createElement("div");
-	grid.className = "editor-grid";
-	grid.style.gridTemplateColumns = `auto repeat(${units.length}, minmax(2.4em, max-content))`;
-
-	const sourceLabel = document.createElement("span");
-	sourceLabel.className = "editor-row-label";
-	sourceLabel.textContent = "元歌詞の読み";
-	sourceLabel.style.gridRow = "1";
-	sourceLabel.style.gridColumn = "1";
-	const resultLabel = document.createElement("span");
-	resultLabel.className = "editor-row-label";
-	resultLabel.textContent = "替え歌";
-	resultLabel.style.gridRow = "2";
-	resultLabel.style.gridColumn = "1";
-	grid.append(sourceLabel, resultLabel);
-
-	const inSelection = (i) =>
-		selection && selection.line === line && i >= selection.start && i < selection.end;
-
-	units.forEach((unit, i) => {
-		const chip = document.createElement("span");
-		chip.className = "chip chip-unit";
-		// 文節の切れ目を視覚的に示す
-		if (i > 0 && unit.phrase !== units[i - 1].phrase) {
-			chip.classList.add("phrase-start");
-		}
-		if (inSelection(i)) chip.classList.add("selected");
-		chip.textContent = unit.pronunciation;
-		chip.title = unit.surface_form;
-		chip.setAttribute("aria-label", `${unit.surface_form}、読み ${unit.pronunciation}。範囲を選択`);
-		chip.dataset.index = String(i);
-		chip.style.gridRow = "1";
-		chip.style.gridColumn = `${i + 2}`;
-		chip.addEventListener("click", (e) => onUnitClick(line, i, e.shiftKey));
-		chip.addEventListener("pointerdown", (e) => onUnitPointerDown(line, i, e));
-		grid.appendChild(chip);
-	});
-
-	for (const word of words) {
-		const chip = document.createElement("span");
-		chip.className = "chip chip-word";
-		// filler(未変換=元歌詞のまま)は破線グレーの控えめな見た目にする。
-		// タップすれば通常の単語と同じように候補パネルが開き、差し替えられる
-		if (word.filler) chip.classList.add("filler");
-		if (word.locked) chip.classList.add("locked");
-		chip.dataset.start = String(word.period[0]);
-		chip.dataset.end = String(word.period[1]);
-		if (selection && selection.line === line &&
-			selection.start === word.period[0] && selection.end === word.period[1]) {
-			chip.classList.add("selected");
-		}
-		chip.style.gridRow = "2";
-		chip.style.gridColumn = `${word.period[0] + 2} / ${word.period[1] + 2}`;
-		const surface = document.createElement("span");
-		surface.className = "chip-word-surface";
-		surface.textContent = word.surface;
-		const kana = document.createElement("span");
-		kana.className = "chip-word-kana";
-		kana.textContent = word.kana;
-		if (word.filler) {
-			// 未変換なので表記と読みが同じ。二重に出さず、🔒(固定)も出さない
-			// (元歌詞のままの区間を固定しても意味がないため)
-			chip.append(surface);
-			chip.title = wordDetail(word);
-			attachLongPress(chip, () => wordDetail(word));
-			chip.addEventListener("click", () => onWordClick(line, word));
-			grid.appendChild(chip);
-			continue;
-		}
-		const main = document.createElement("span");
-		main.className = "chip-word-main";
-		const lockControl = document.createElement("label");
-		lockControl.className = "chip-lock";
-		lockControl.title = word.locked ? "固定を解除" : "この単語を固定";
-		const lock = document.createElement("input");
-		lock.className = "chip-lock-input";
-		lock.type = "checkbox";
-		lock.checked = !!word.locked;
-		lock.setAttribute("aria-label", `${word.surface}を固定`);
-		lock.addEventListener("change", () => {
-			const [start, end] = word.period;
-			toggleLock(line, word);
-			document.querySelector(
-				`.editor-line[data-line="${line}"] .chip-word[data-start="${start}"]` +
-				`[data-end="${end}"] .chip-lock-input`,
-			)?.focus({ preventScroll: true });
-		});
-		// 固定トグルへの操作で候補パネルや長押し詳細が誤発火しないようにする
-		lockControl.addEventListener("click", (e) => e.stopPropagation());
-		lockControl.addEventListener("pointerdown", (e) => e.stopPropagation());
-		lockControl.append(lock, makeLockIcon());
-		main.append(surface, lockControl);
-		chip.append(main, kana);
-		// PCはホバーで詳細(標準ツールチップ)、スマホは長押しでポップオーバー。
-		// 候補パネルと同じく、どのidの単語かまで分かるようにする
+	const matches = reverseMatches.filter((match) => match.line === line);
+	const current = reverseMatches[reverseIndex]?.line === line ? reverseMatches[reverseIndex] : null;
+	const row = renderReviewLine(data, line, selection, onWordClick, makeLockIcon, (chip, word) => {
 		chip.title = wordDetail(word);
 		attachLongPress(chip, () => wordDetail(word));
-		chip.addEventListener("click", () => onWordClick(line, word));
-		grid.appendChild(chip);
-	}
-
-	el.appendChild(grid);
-	return el;
+		if (editorDisplay.parodyReading && !word.filler && word.kana) {
+			const reading = document.createElement("span");
+			reading.className = "review-word-reading";
+			reading.setAttribute("aria-label", "替え歌の読み");
+			reading.textContent = word.kana.replace(/[ァ-ヶ]/g,
+				(char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+			chip.append(reading);
+		}
+		visualization?.decorate(chip, word, unitsOf(line).slice(...word.period).map((unit) => unit.pronunciation));
+		chip.classList.toggle("reverse-word-match", matches.some((match) =>
+			word.period[0] < match.end && match.start < word.period[1]));
+		if (current && word.period[0] < current.end && current.start < word.period[1]) {
+			chip.classList.add("reverse-current");
+			chip.setAttribute("aria-current", "true");
+		}
+	}, {
+		clear: editorDisplay.wordClear ? (line, word) => clearAssignment(line, ...word.period) : null,
+		lock: editorDisplay.wordLock ? toggleLock : null,
+		busy: settingsUpdating || !!regeneration,
+	});
+	if (!unitsOf(line).length) return row;
+	const original = row.querySelector(".review-original");
+	const heading = document.createElement("div");
+	heading.className = "review-line-heading";
+	const source = document.createElement("div");
+	source.className = "review-source";
+	const reading = document.createElement("p");
+	reading.className = "review-reading";
+	reading.setAttribute("aria-label", "元歌詞の読み");
+	reading.textContent = rangeKana(line, 0, unitsOf(line).length).replace(/[ァ-ヶ]/g,
+		(char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+	const regenerateButton = document.createElement("button");
+	regenerateButton.type = "button";
+	regenerateButton.className = "btn btn-ghost line-regenerate";
+	regenerateButton.textContent = "↻";
+	regenerateButton.title = "この行を再生成（固定中の単語は保持）";
+	regenerateButton.setAttribute("aria-label", `${line + 1}行目を再生成（固定中の単語は保持）`);
+	regenerateButton.disabled = !db || settingsUpdating || !!regeneration;
+	regenerateButton.addEventListener("click", () => regenerate({ line }).catch(showRegenerationError));
+	original.replaceWith(heading);
+	source.append(original);
+	if (editorDisplay.originalReading) source.append(reading);
+	heading.append(source);
+	if (editorDisplay.lineLock) {
+		const words = (data.results[line] || []).filter((word) => !word.filler);
+		const locked = words.length > 0 && words.every((word) => word.locked);
+		const lock = document.createElement("button");
+		lock.type = "button";
+		lock.className = "btn btn-ghost line-quick-lock inline-edit-action";
+		lock.disabled = !words.length || settingsUpdating || !!regeneration;
+		lock.dataset.empty = String(!words.length);
+		lock.setAttribute("aria-pressed", String(locked));
+		lock.title = locked ? `${line + 1}行目の固定をすべて解除` : `${line + 1}行目の単語をすべて固定`;
+		lock.setAttribute("aria-label", lock.title);
+		lock.append(makeLockIcon(locked));
+		lock.addEventListener("click", () => {
+			toggleLineLock(line);
+			document.querySelector(`.review-line[data-line="${line}"] .line-quick-lock`)?.focus({ preventScroll: true });
+		});
+		const actions = document.createElement("div");
+		actions.className = "review-line-actions";
+		actions.append(lock, regenerateButton);
+		heading.append(actions);
+	} else heading.append(regenerateButton);
+	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
+	return row;
 }
 
 function rerenderLine(line) {
 	const old = document.querySelector(`.editor-line[data-line="${line}"]`);
 	if (!old) return;
-	// 長い行の横スクロール位置を保つ(ドラッグ選択中の再描画で先頭に戻らないように)
-	const scrollLeft = old.scrollLeft;
-	const el = renderLine(line);
-	old.replaceWith(el);
-	el.scrollLeft = scrollLeft;
+	old.replaceWith(renderLine(line));
+	visualization?.refresh();
 }
 
 function renderAll() {
 	const container = $id("editor-lines");
 	container.textContent = "";
 	data.results.forEach((_, i) => container.appendChild(renderLine(i)));
+	visualization?.refresh();
+	scheduleReverseSearch();
+}
+
+function syncLineActions() {
+	for (const button of document.querySelectorAll(".line-regenerate")) {
+		button.disabled = !db || settingsUpdating || !!regeneration;
+	}
+	for (const button of document.querySelectorAll(".inline-edit-action")) {
+		button.disabled = button.dataset.empty === "true" || settingsUpdating || !!regeneration;
+	}
+	$id("reverse-word").disabled = !app || settingsUpdating || !!regeneration;
+	$id("reverse-clear").disabled = $id("reverse-word").disabled;
+	syncReverseNavigation();
+}
+
+function setupReverseSearch() {
+	$id("reverse-word").addEventListener("input", (event) => scheduleReverseSearch(event.isComposing));
+	$id("reverse-word").addEventListener("compositionend", () => scheduleReverseSearch());
+	$id("reverse-word").addEventListener("keydown", (event) => {
+		if (event.key !== "Enter" || event.isComposing || event.keyCode === 229
+			|| event.ctrlKey || event.altKey || event.metaKey) return;
+		event.preventDefault();
+		moveReverseMatch(event.shiftKey ? -1 : 1);
+	});
+	$id("reverse-previous").addEventListener("click", () => moveReverseMatch(-1));
+	$id("reverse-next").addEventListener("click", () => moveReverseMatch(1));
+	$id("reverse-clear").addEventListener("click", () => {
+		$id("reverse-word").value = "";
+		scheduleReverseSearch();
+		$id("reverse-word").focus();
+	});
+	$id("reverse-search").addEventListener("toggle", () => scheduleReverseSearch());
+}
+
+function syncReverseNavigation() {
+	const disabled = !reverseMatches.length || $id("reverse-word").disabled;
+	$id("reverse-previous").disabled = disabled;
+	$id("reverse-next").disabled = disabled;
+	$id("reverse-count").textContent = `${reverseIndex + 1} / ${reverseMatches.length}`;
+	$id("reverse-count").setAttribute("aria-label", reverseMatches.length
+		? `${reverseMatches.length}件中${reverseIndex + 1}件目` : "0件");
+}
+
+function scrollToReverseMatch() {
+	const match = reverseMatches[reverseIndex];
+	if (!match || $id("editor-panel").open) return;
+	const row = document.querySelector(`.editor-line[data-line="${match.line}"]`);
+	const target = row?.querySelector("mark.reverse-current, .review-word.reverse-current");
+	if (!target) return;
+	const main = document.querySelector("main");
+	const bounds = main.getBoundingClientRect();
+	const viewport = window.visualViewport;
+	const top = Math.max(bounds.top, viewport?.offsetTop || 0) + 12;
+	const bottom = Math.min(bounds.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight) - 12;
+	// Layout offsets stay independent of iOS's asynchronously painted scroll position.
+	let contentTop = 0;
+	for (let node = target; node && node !== main; node = node.offsetParent) contentTop += node.offsetTop;
+	const destination = Math.max(top, (top + bottom - target.offsetHeight) / 2);
+	main.scrollTo({ top: contentTop - (destination - bounds.top), behavior: "instant" });
+}
+
+function moveReverseMatch(direction) {
+	if ($id("reverse-next").disabled) return;
+	const previous = reverseMatches[reverseIndex];
+	reverseIndex = (reverseIndex + direction + reverseMatches.length) % reverseMatches.length;
+	for (const line of new Set([previous.line, reverseMatches[reverseIndex].line])) rerenderLine(line);
+	syncReverseNavigation();
+	scrollToReverseMatch();
+}
+
+function searchUnits(line) {
+	const row = unitsOf(line);
+	const derived = app.textAnalyzer.getYomiAndPhraseBreak(data.tokensList[line]);
+	const aligned = derived.length === row.length
+		&& derived.every((unit, i) => unit.pronunciation === row[i].pronunciation);
+	return row.map((unit, i) => ({ ...unit,
+		char_index: aligned ? derived[i].char_index : undefined,
+		token_index: aligned ? derived[i].token_index : undefined,
+	}));
+}
+
+function scheduleReverseSearch(composing = false) {
+	$id("reverse-clear").hidden = !$id("reverse-word").value;
+	clearTimeout(reverseTimer);
+	reverseRequest?.abort();
+	reverseRequest = null;
+	const previous = new Set(reverseMatches.map((match) => match.line));
+	reverseMatches = [];
+	reverseIndex = -1;
+	syncReverseNavigation();
+	for (const line of previous) rerenderLine(line);
+	const status = $id("reverse-status");
+	status.textContent = "";
+	if (!$id("reverse-search").open || !$id("reverse-word").value.trim() || !app || settingsUpdating || composing) return;
+	status.textContent = "当てはめ先を検索中…";
+	reverseTimer = setTimeout(async () => {
+		const request = new AbortController();
+		reverseRequest = request;
+		try {
+			const reading = $id("reverse-word").value.trim().normalize("NFKC");
+			if (!/^[ぁ-ゖァ-ヶー\s]+$/.test(reading)) {
+				throw new Error("ひらがな・カタカナで入力してください");
+			}
+			const kana = app.textAnalyzer.formatKana(reading);
+			const units = data.unitsList.map((_, line) => searchUnits(line));
+			const matches = await findPlacements(app, kana, units, data.param,
+				noteLengthWeights(), request.signal);
+			if (request.signal.aborted) return;
+			// Visit the best-scoring placements first, in the search's ranked order.
+			reverseMatches = matches;
+			reverseIndex = matches.length ? 0 : -1;
+			for (const line of new Set(matches.map((match) => match.line))) rerenderLine(line);
+			syncReverseNavigation();
+			status.textContent = matches.length ? "" : "当てはめられる範囲がありません";
+			scrollToReverseMatch();
+		} catch (error) {
+			if (!request.signal.aborted) status.textContent = error.message;
+		}
+	}, 250);
 }
 
 function toggleLock(line, word) {
+	if (settingsUpdating || regeneration) return;
 	pushHistory();
 	markDirty(line);
 	word.locked = !word.locked;
@@ -466,20 +600,46 @@ function toggleLock(line, word) {
 	renderPanel(); // パネルの固定ボタン表示も追従させる
 }
 
+function toggleLineLock(line) {
+	if (settingsUpdating || regeneration) return;
+	const words = (data.results[line] || []).filter((word) => !word.filler);
+	if (!words.length) return;
+	const locked = !words.every((word) => word.locked);
+	pushHistory();
+	markDirty(line);
+	for (const word of words) word.locked = locked;
+	saveData();
+	rerenderLine(line);
+	renderPanel();
+}
+
 // ---- 選択 ----
 
-function setSelection(next) {
+// Compare assignments and locks, excluding history and candidate browsing state.
+// Include every line because moving a duplicate can clear another assignment.
+function panelResultsSnapshot(results) {
+	return JSON.stringify(results.map((words) => words.map((word) => ({
+		id: isCustomWord(word) ? "custom" : word.id,
+		wordlistSource: word.wordlistSource || data.wordlistSource,
+		surface: word.surface, kana: word.kana,
+		period: word.period, locked: !!word.locked, filler: !!word.filler,
+	}))));
+}
+
+function setSelection(next, { keepSearch = false } = {}) {
 	panelShown = GROUP_PAGE;
 	openGroupKey = null;
-	candidateDraft = null;
+	if (!keepSearch) wordlistSearchQuery = "";
+	openSearchGroup = null;
 	freeInputOpen = false;
 	freeInputDraft = { surface: "", reading: "" };
 	const prev = selection;
+	if (!next) panelInitialResults = null;
+	else if (!prev) panelInitialResults = structuredClone(data.results);
 	selection = next;
 	if (prev) rerenderLine(prev.line);
 	if (next && (!prev || prev.line !== next.line)) rerenderLine(next.line);
-	// ドラッグ中はパネルを出さない。下部の行をドラッグ中にパネルが現れると
-	// チップに覆い被さって、なぞっている位置がずれるため(表示はドラッグ終了時)
+	// ドラッグ中は範囲ボタンの位置を保ち、候補は指を離してから更新する。
 	if (!pendingUnit) renderPanel();
 }
 
@@ -521,8 +681,8 @@ function unitTapAction(line, index) {
 
 // clickはShiftクリック(PCの範囲指定)専用。通常のタップはpointerup側で処理済み
 // (タッチではpointerdownをpreventDefaultするとclickが飛ばない環境があるため)
-function onUnitClick(line, index, shift) {
-	if (performance.now() < suppressClickUntil) return;
+function onUnitClick(line, index, shift, keyboard = false) {
+	if (!keyboard && performance.now() < suppressClickUntil) return;
 	if (shift && anchorUnit && anchorUnit.line === line) {
 		const [s, e] = [Math.min(anchorUnit.index, index), Math.max(anchorUnit.index, index)];
 		setSelection({ line, start: s, end: e + 1 });
@@ -537,6 +697,7 @@ function onUnitClick(line, index, shift) {
 // 閾値はタッチを広めにする
 
 function onUnitPointerDown(line, index, e) {
+	suppressClickUntil = 0; // 新しい操作は直前のpointerupに伴うclickではない。
 	if (e.shiftKey) return; // Shiftクリックの範囲指定はclickハンドラに任せる
 	if (e.pointerType === "mouse" && e.button !== 0) return;
 	e.preventDefault(); // ドラッグ中のテキスト選択を防ぐ
@@ -551,15 +712,6 @@ function onUnitPointerDown(line, index, e) {
 	document.addEventListener("pointercancel", onDragEnd);
 }
 
-// 長い行で画面外までドラッグ選択できるよう、行の端に近づいたら自動スクロール
-function autoScrollLine(e) {
-	const lineEl = document.querySelector(`.editor-line[data-line="${pendingUnit.line}"]`);
-	if (!lineEl || lineEl.scrollWidth <= lineEl.clientWidth) return;
-	const r = lineEl.getBoundingClientRect();
-	if (e.clientX > r.right - 36) lineEl.scrollLeft += 16;
-	else if (e.clientX < r.left + 36) lineEl.scrollLeft -= 16;
-}
-
 function onDragMove(e) {
 	if (!pendingUnit) return;
 	if (!dragging) {
@@ -568,16 +720,12 @@ function onDragMove(e) {
 		if (dx * dx + dy * dy < pendingUnit.slop * pendingUnit.slop) return;
 		dragging = true;
 		anchorUnit = { line: pendingUnit.line, index: pendingUnit.index };
-		// 開いていたパネルはドラッグ中は退ける(下の行のチップに覆い被さるため)。
-		// パネルはfixedオーバーレイなので、消してもチップの位置はずれない
-		$id("editor-panel").classList.remove("open");
 	}
-	autoScrollLine(e);
-	// setSelectionで行が再描画されて要素が入れ替わるため、毎回座標から引き直す
+	// 折り返した範囲ボタンも、ポインタの位置から選択する。
 	const el = document.elementFromPoint(e.clientX, e.clientY);
-	const chip = el && el.closest(".chip-unit");
+	const chip = el && el.closest(".review-unit");
 	if (!chip) return;
-	const lineEl = chip.closest(".editor-line");
+	const lineEl = chip.closest(".review-range");
 	if (!lineEl || Number(lineEl.dataset.line) !== pendingUnit.line) return;
 	const index = Number(chip.dataset.index);
 	const start = Math.min(pendingUnit.index, index);
@@ -585,6 +733,10 @@ function onDragMove(e) {
 	if (selection && selection.line === pendingUnit.line &&
 		selection.start === start && selection.end === end) return;
 	setSelection({ line: pendingUnit.line, start, end });
+	for (const unit of lineEl.querySelectorAll(".review-unit")) {
+		const selected = Number(unit.dataset.index) >= start && Number(unit.dataset.index) < end;
+		unit.setAttribute("aria-pressed", String(selected));
+	}
 }
 
 function onDragEnd(e) {
@@ -598,7 +750,7 @@ function onDragEnd(e) {
 	// この操作から生じるclickをタップとして二重処理しないようにする
 	suppressClickUntil = performance.now() + 400;
 	if (wasDragging) {
-		renderPanel(); // ドラッグ中に抑制していたパネルをここで出す
+		renderPanel(); // ドラッグ完了後に候補を更新する
 	} else if (pending && e.type === "pointerup") {
 		unitTapAction(pending.line, pending.index); // タップはここで確定する
 	}
@@ -610,10 +762,78 @@ function onDragEnd(e) {
 // 範囲に重なる既存単語は取り除き、periodと元歌詞情報を付けて挿入する。
 // 手で選んだ単語は再生成で消えないよう自動で固定する(🔓で解除可能)
 function replaceSelection(word) {
+	if (!selection) return;
+	const { line, start, end } = selection;
+	const conflicts = [];
+	data.results.forEach((words, otherLine) => {
+		for (const other of words || []) {
+			if (data.param.DUPLICATE || other.filler || !other.locked || other.id !== word.id
+				|| (other.wordlistSource || data.wordlistSource) !== (word.wordlistSource || data.wordlistSource)) continue;
+			if (otherLine === line && other.period[0] < end && start < other.period[1]) continue;
+			conflicts.push({ line: otherLine, word: other });
+		}
+	});
+	if (conflicts.length) {
+		confirmAssignment(word, conflicts);
+		return;
+	}
+	applyReplacement(word);
+}
+
+function confirmAssignment(word, conflicts) {
+	const selected = selection;
+	const results = data.results;
+	const dialog = $id("editor-assignment-dialog");
+	$id("assignment-conflict-description").textContent =
+		`「${word.surface}」は次の箇所で固定されています。ここを優先すると、元の箇所の割り当てを解除します。`;
+	const locations = $id("assignment-conflict-locations");
+	locations.replaceChildren();
+	for (const conflict of conflicts) {
+		const item = document.createElement("li");
+		item.textContent = `${conflict.line + 1}行目「${rangeSurface(conflict.line, ...conflict.word.period)}」`;
+		const context = document.createElement("span");
+		context.className = "assignment-conflict-context";
+		context.textContent = data.originalLines?.[conflict.line] || data.phrases?.[conflict.line] || "";
+		item.append(context);
+		locations.append(item);
+	}
+	$id("btn-assignment-keep").onclick = () => dialog.close();
+	$id("btn-assignment-move").onclick = () => {
+		dialog.close();
+		if (selection !== selected || data.results !== results) return;
+		applyReplacement(word, conflicts);
+	};
+	dialog.showModal();
+}
+
+function clearSelectionAssignment() {
+	if (!selection) return;
+	const { line, start, end } = selection;
+	clearAssignment(line, start, end);
+}
+
+function clearAssignment(line, start, end) {
+	if (settingsUpdating || regeneration) return;
+	const words = data.results[line] || [];
+	if (!words.some((word) => !word.filler && word.period[0] < end && start < word.period[1])) return;
+	pushHistory();
+	markDirty(line);
+	data.results[line] = words.filter((word) => word.period[1] <= start || end <= word.period[0]);
+	saveData();
+	rerenderLine(line);
+	renderPanel();
+}
+
+function applyReplacement(word, conflicts = []) {
 	pushHistory();
 	const { line, start, end } = selection;
 	markDirty(line);
+	for (const conflict of conflicts) {
+		data.results[conflict.line] = data.results[conflict.line].filter((other) => other !== conflict.word);
+		markDirty(conflict.line);
+	}
 	const placed = Object.assign({}, word, {
+		wordlistSource: word.wordlistSource || data.wordlistSource,
 		period: [start, end],
 		originalkana: rangeKana(line, start, end),
 		original_surface: rangeSurface(line, start, end),
@@ -625,57 +845,32 @@ function replaceSelection(word) {
 	words.sort((a, b) => a.period[0] - b.period[0]);
 	data.results[line] = words;
 	saveData();
-	setSelection(null);
+	setSelection(selection, { keepSearch: true });
+	$id("editor-panel").scrollTop = 0;
+	for (const otherLine of new Set(conflicts.map((conflict) => conflict.line))) {
+		if (otherLine !== line) rerenderLine(otherLine);
+	}
 }
 
-// 候補の読みを、通常の単語DBと同じ経路で選択範囲へ合わせ直す。
-// id/surface/original は維持し、video が使う kana と pronunciation を必ず同期する。
-function wordWithReading(word, rawReading, target, weights) {
-	const kana = app.textAnalyzer.formatKana(rawReading.trim());
-	if (kana === "" || kana.length > 100 || !/^[ァ-ヴー]+$/.test(kana)) return null;
-	if (kana === word.kana && Array.isArray(word.pronunciation)) {
-		return Object.assign({}, word);
-	}
-	// 選択元の発音変種が取りうる最大ユニット数より長い読みは一致しない。
-	// 上限なしの直積は「ン」「ッ」の連続で指数的に増えるため、生成前に枝数も抑える。
-	const maxTargetUnits = target.reduce((sum, syllable) => {
-		const variants = app.textAnalyzer.syllableToVariation([syllable]);
-		return sum + Math.max(0, ...variants.map((v) => v.length));
-	}, 0);
-	const syllables = app.textAnalyzer.yomiToSyllable(kana);
-	if (!Array.isArray(syllables) || maxTargetUnits === 0) return null;
-	let variationCount = 1;
-	for (const syllable of syllables) {
-		// 単独の削除変種は空配列として除外されるので、固定音節を番兵にして枝数を数える。
-		variationCount *= app.textAnalyzer.syllableToVariation(
-			[syllable, "ア"], maxTargetUnits + 1).length;
-		if (variationCount > 16384) return null;
-	}
-	const variants = app.textAnalyzer.yomiToVariation(kana, maxTargetUnits);
-	const oneWordDb = {};
-	for (const pronunciation of variants) {
-		if (!Array.isArray(pronunciation) || pronunciation.length === 0) continue;
-		if (!(pronunciation.length in oneWordDb)) oneWordDb[pronunciation.length] = [];
-		oneWordDb[pronunciation.length].push(Object.assign({}, word, {
-			kana,
-			pronunciation,
-			vcost: pronunciation.vcost || 0,
-		}));
-	}
-	return app.soramimiMaker.getCandidates(oneWordDb, target, data.param, 1, weights)[0] || null;
+function isCustomWord(word) {
+	return String(word?.id).startsWith("custom-");
 }
 
-// 自由入力から候補相当のオブジェクトを作る。読み欄が空なら従来どおり推定する。
-function makeCustomWord(text, rawReading, target, weights) {
+// 手入力は選択範囲と音数が違っても保存する。発音変種は展開せず、
+// 読みをそのまま音節へ分けて kana と pronunciation を同期する。
+function makeCustomWord(text, rawReading) {
 	const reading = rawReading.trim() || mecab.getYomi(text) || text;
-	const base = {
+	const kana = app.textAnalyzer.formatKana(reading);
+	if (kana === "" || kana.length > 100 || !/^[ァ-ヴー]+$/.test(kana)) return null;
+	const pronunciation = app.textAnalyzer.yomiToSyllable(kana);
+	if (!pronunciation?.length) return null;
+	return {
 		id: "custom-" + Date.now(),
 		surface: text,
-		kana: "",
+		kana,
+		pronunciation,
 		original: text,
-		sim: 0,
 	};
-	return wordWithReading(base, reading, target, weights);
 }
 
 // ---- 候補の詳細(長押しポップオーバー / PCはホバーのツールチップ) ----
@@ -762,7 +957,7 @@ function wordDetail(word) {
 	if (typeof sim === "number" && Number.isFinite(sim)) {
 		lines.push("スコア: " + sim.toFixed(3) + "(小さいほど近い)");
 	}
-	lines.push(String(word.id).startsWith("custom-") ? "自由入力" : "ID: " + word.id);
+	lines.push(isCustomWord(word) ? "自由入力" : "ID: " + word.id);
 	return lines.join("\n");
 }
 
@@ -881,6 +1076,7 @@ function applyReadingFix(line, span, newYomiRaw, alignMode = "untouched", draftA
 	data.tokensList[line] = tokens;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
+	scheduleReverseSearch();
 	if (readingChanged) {
 		data.results[line] = (data.results[line] || [])
 			.filter((w) => w.period[1] <= span.unitStart || w.period[0] >= span.unitEnd)
@@ -956,8 +1152,8 @@ function applyReadingFixFromDialog() {
 		return;
 	}
 	// 読みの長さでユニット境界が変わり得るため、古い候補範囲は引き継がない。
-	setSelection(null);
 	closeReadingFixDialog();
+	setSelection(null);
 }
 
 function setupReadingFixDialog() {
@@ -1008,7 +1204,7 @@ function usedIdSet(excludeLine, start, end) {
 	const used = new Set();
 	data.results.forEach((words, li) => {
 		for (const w of words || []) {
-			if (w.filler) continue; // fillerは実単語ではないので使用済みに数えない
+			if (w.filler || !isCurrentWord(w, data.wordlistSource)) continue;
 			if (li === excludeLine && !(w.period[1] <= start || end <= w.period[0])) continue;
 			used.add(w.id);
 		}
@@ -1016,80 +1212,47 @@ function usedIdSet(excludeLine, start, end) {
 	return used;
 }
 
-// 選択中の行がパネルに隠れていたら、パネルの上に見えるまでスクロールする
-// (タップした場所がパネルの裏に消えて見失わないように)
-function ensureSelectionVisible(line) {
-	const lineEl = document.querySelector(`.editor-line[data-line="${line}"]`);
-	const panel = $id("editor-panel");
-	if (!lineEl) return;
-	const panelTop = window.innerHeight - panel.offsetHeight;
-	const r = lineEl.getBoundingClientRect();
-	if (r.bottom > panelTop - 8) {
-		window.scrollBy({ top: r.bottom - (panelTop - 8), behavior: "smooth" });
-	}
-}
-
 function renderPanel() {
+	const focusedUnit = document.activeElement?.closest(".review-unit")?.dataset.index;
+	const focusedLock = document.activeElement?.matches(".panel-lock");
 	buildPanel();
-	if (selection) ensureSelectionVisible(selection.line);
-}
-
-// ---- 表層↔モーラの手動割当 ----
-
-// 手動割当[[表層,読み],...]から、各表層文字が持つモーラ数(counts)を復元する。
-// atoms はトークンのモーラ列。整合しなければ null。
-function countsFromAlign(align, atoms) {
-	if (!Array.isArray(align)) return null;
-	const counts = [];
-	let ai = 0;
-	for (const pair of align) {
-		if (!Array.isArray(pair)) return null;
-		let acc = "";
-		let c = 0;
-		while (ai < atoms.length && acc.length < pair[1].length) {
-			acc += atoms[ai].pronunciation;
-			ai += 1;
-			c += 1;
+	{
+		const panel = $id("editor-panel");
+		if (selection && !panel.open) {
+			reviewPanelViewportCleanup = lockPanelViewport(panel);
+			panel.showModal();
+			panel.scrollTop = 0;
+		} else if (!selection && panel.open) {
+			panel.close();
+			reviewPanelViewportCleanup?.();
+			reviewPanelViewportCleanup = null;
 		}
-		if (acc !== pair[1]) return null;
-		counts.push(c);
-	}
-	return ai === atoms.length ? counts : null;
-}
-
-// n 個のモーラを k 個の表層文字へ均等に割る(余りは先頭から)。balancedAllocate と同傾向。
-function evenCounts(n, k) {
-	const base = Math.floor(n / k);
-	const rem = n % k;
-	return Array.from({ length: k }, (_, i) => base + (i < rem ? 1 : 0));
-}
-
-// 現在のユニット(atoms)の表層所有(surface_form 非空=所有, 空=直前と同じ文字)から、
-// 各表層文字が持つモーラ数を復元する。各所有が単一文字で scChars と一致する時のみ。
-function countsFromAtoms(scChars, atoms) {
-	const groups = [];
-	for (const a of atoms) {
-		if (a.surface_form && a.surface_form.length > 0) {
-			groups.push({ surface: a.surface_form, count: 1 });
-		} else if (groups.length > 0) {
-			groups[groups.length - 1].count += 1;
-		} else {
-			return null;
+		if (selection) {
+			const target = focusedUnit !== undefined
+				? panel.querySelector(`.review-unit[data-index="${focusedUnit}"]`)
+				: panel.querySelector(focusedLock ? ".panel-lock" : ".panel-close");
+			target?.focus({ preventScroll: true });
+		} else if (reviewPreviousSelection) {
+			const { line, start } = reviewPreviousSelection;
+			const row = document.querySelector(`.review-line[data-line="${line}"]`);
+			(row?.querySelector(`.review-word[data-start="${start}"]`) || row?.querySelector(".review-word"))
+				?.focus({ preventScroll: true });
 		}
+		reviewPreviousSelection = selection;
+		if (isVideoReview(data) && window.parent !== window) window.parent.postMessage({
+			type: "soramimic:review-selection", open: !!selection,
+		}, window.location.origin);
 	}
-	if (groups.length === scChars.length && groups.every((g, i) => g.surface === scChars[i])) {
-		return groups.map((g) => g.count);
-	}
-	return null;
 }
+
+// ---- 表記↔音節の手動割当 ----
 
 // 割当エディタの対象かを判定し、対象なら描画に要る材料を返す。
-// 対象外(かな語・表層1文字・モーラ数不足)なら null。renderPanel から呼ばれるため、
+// 対象外(かな語・表層1文字)なら null。renderPanel から呼ばれるため、
 // 導出が投げてもパネル全体を巻き込まないよう握りつぶして「対象外」に倒す。
 function alignModel(line, arrIndex, tokens = data.tokensList[line]) {
 	const tok = tokens[arrIndex];
-	const scChars = [...(tok.surface_form || "")];
-	if (scChars.length < 2) return null;
+	if ([...(tok.surface_form || "")].length < 2) return null;
 	if (!/[㐀-鿿々]/.test(tok.surface_form || "")) return null; // 漢字を含む語のみ
 	let fresh;
 	try {
@@ -1099,33 +1262,26 @@ function alignModel(line, arrIndex, tokens = data.tokensList[line]) {
 		return null;
 	}
 	const atoms = fresh.filter((u) => u.token_index === tok.token_index);
-	if (atoms.length < scChars.length) return null; // 各文字に最低1モーラ割けない
-
-	// 初期値: 手動割当 → 現在の自動割当 → 均等割 の順で復元し、実表示と一致させる
-	let counts = countsFromAlign(tok.manualAlign, atoms);
-	if (!counts || counts.length !== scChars.length) {
-		counts = countsFromAtoms(scChars, atoms);
-	}
-	if (!counts || counts.length !== scChars.length) {
-		counts = evenCounts(atoms.length, scChars.length);
-	}
-	return { tok, scChars, atoms, counts };
+	const align = alignmentFromUnits(atoms);
+	const counts = countsForAlignment(align, atoms);
+	if (!counts) return null;
+	return { tok, surfaces: align.map(([surface]) => surface), atoms, counts };
 }
 
-// 表層文字ごとの割当を◀▶で調整するパネル本体。model は alignModel の結果。
+// 複数文字を含む表記のまとまりの間で、音節を◀▶で移す。
 function buildAlignEditor(model, onChange) {
-	const { tok, scChars, atoms, counts } = model;
+	const { tok, surfaces, atoms, counts } = model;
 
 	const buildAlign = (cs) => {
 		let ai = 0;
-		return scChars.map((ch, i) => {
+		return surfaces.map((ch, i) => {
 			const yomi = atoms.slice(ai, ai + cs[i]).map((a) => a.pronunciation).join("");
 			ai += cs[i];
 			return [ch, yomi];
 		});
 	};
 	const moveBoundary = (b, dir) => {
-		// b と b+1 の境界: dir=-1 は左の文字へ1モーラ寄せる、+1 は右へ
+		// b と b+1 の境界: dir=-1 は左の表記へ1音節寄せる、+1 は右へ
 		const cs = counts.slice();
 		if (dir === -1 && cs[b + 1] > 1) { cs[b] += 1; cs[b + 1] -= 1; }
 		else if (dir === 1 && cs[b] > 1) { cs[b] -= 1; cs[b + 1] += 1; }
@@ -1143,7 +1299,7 @@ function buildAlignEditor(model, onChange) {
 	const row = document.createElement("div");
 	row.className = "panel-align-row";
 	let ai = 0;
-	scChars.forEach((ch, i) => {
+	surfaces.forEach((ch, i) => {
 		if (i > 0) {
 			const ctrl = document.createElement("span");
 			ctrl.className = "align-boundary";
@@ -1151,15 +1307,17 @@ function buildAlignEditor(model, onChange) {
 			left.className = "btn align-arrow";
 			left.type = "button";
 			left.textContent = "◀";
-			left.title = "左の文字へ1モーラ寄せる";
-			left.setAttribute("aria-label", `${scChars[i - 1]}へ読みを1つ移す`);
+			left.title = "左の表記へ1音節寄せる";
+			left.disabled = counts[i] <= 1;
+			left.setAttribute("aria-label", `${surfaces[i - 1]}へ読みを1つ移す`);
 			left.addEventListener("click", () => moveBoundary(i - 1, -1));
 			const right = document.createElement("button");
 			right.className = "btn align-arrow";
 			right.type = "button";
 			right.textContent = "▶";
-			right.title = "右の文字へ1モーラ寄せる";
-			right.setAttribute("aria-label", `${scChars[i]}へ読みを1つ移す`);
+			right.title = "右の表記へ1音節寄せる";
+			right.disabled = counts[i - 1] <= 1;
+			right.setAttribute("aria-label", `${surfaces[i]}へ読みを1つ移す`);
 			right.addEventListener("click", () => moveBoundary(i - 1, 1));
 			ctrl.append(left, right);
 			row.appendChild(ctrl);
@@ -1188,31 +1346,37 @@ function buildAlignEditor(model, onChange) {
 	return box;
 }
 
-function selectCandidateDraft(cand) {
-	candidateDraft = { word: Object.assign({}, cand), reading: cand.kana };
-	freeInputOpen = false;
-	openGroupKey = null;
-	renderPanel();
-	queueMicrotask(() => {
-		const input = $id("editor-panel").querySelector(".panel-draft-reading");
-		input?.scrollIntoView({ block: "nearest" });
-	});
+function setupReplacementPanel() {
+	const panel = $id("editor-panel");
+	// 戻るタップのpointerupで画面を切り替えると、遅れたclickが候補に届く。
+	// 次の新しいタップはすぐ操作できるようpointerdownで抑止を解除する。
+	panel.addEventListener("pointerdown", () => { freeInputReturnClickUntil = 0; }, true);
+	panel.addEventListener("click", (event) => {
+		if (event.detail === 0 || performance.now() >= freeInputReturnClickUntil) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+	}, true);
 }
 
-function appendReplacementControls(panel, target, rangeWeights) {
+function closeFreeInput() {
+	if (!freeInputOpen) return;
+	freeInputOpen = false;
+	freeInputDraft = { surface: "", reading: "" };
+	renderPanel();
+	$id("editor-panel").querySelector(".panel-free-toggle")?.focus({ preventScroll: true });
+}
+
+function appendReplacementControls(panel) {
 	if (freeInputOpen) {
 		const free = document.createElement("div");
 		free.className = "panel-free";
-		const heading = document.createElement("h3");
-		heading.className = "panel-free-title";
-		heading.textContent = "候補にない歌詞を入力";
 		const fields = document.createElement("div");
 		fields.className = "panel-free-fields";
 		const surfaceLabel = document.createElement("label");
 		surfaceLabel.className = "panel-replacement-field";
-		surfaceLabel.innerHTML = '<span>替え歌歌詞</span>';
 		const surfaceInput = document.createElement("input");
 		surfaceInput.className = "input panel-free-surface";
+		surfaceInput.setAttribute("aria-label", "替え歌歌詞");
 		surfaceInput.value = freeInputDraft.surface;
 		surfaceLabel.appendChild(surfaceInput);
 		const readingLabel = document.createElement("label");
@@ -1223,7 +1387,16 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		readingInput.placeholder = "未入力なら自動で推定";
 		readingInput.value = freeInputDraft.reading;
 		readingLabel.appendChild(readingInput);
-		fields.append(surfaceLabel, readingLabel);
+		fields.append(surfaceLabel);
+		const readingDisclosure = document.createElement("details");
+		{
+			readingDisclosure.className = "review-reading-input";
+			const summary = document.createElement("summary");
+			summary.textContent = "読みを指定";
+			readingDisclosure.open = !!freeInputDraft.reading;
+			readingDisclosure.append(summary, readingLabel);
+			fields.append(readingDisclosure);
+		}
 		const note = document.createElement("span");
 		note.className = "panel-replacement-note";
 		note.setAttribute("role", "alert");
@@ -1232,13 +1405,8 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		const back = document.createElement("button");
 		back.className = "btn panel-free-back";
 		back.type = "button";
-		back.textContent = "← 候補選択に戻る";
-		const closeFreeInput = () => {
-			if (!freeInputOpen) return;
-			freeInputOpen = false;
-			freeInputDraft = { surface: "", reading: "" };
-			renderPanel();
-		};
+		back.textContent = "キャンセル";
+		back.setAttribute("aria-label", "キャンセルして候補選択に戻る");
 		// ソフトウェアキーボード表示中は通常の click がパネル移動で消えることがあるため、
 		// touch は pointerup で確定する。スクロール開始点がボタン上でも誤って閉じないよう、
 		// 指が動いた場合はタップとして扱わない。
@@ -1256,6 +1424,7 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		back.addEventListener("pointerup", (event) => {
 			if (!backTouch || event.pointerId !== backTouch.id) return;
 			backTouch = null;
+			freeInputReturnClickUntil = performance.now() + 400;
 			closeFreeInput();
 		});
 		back.addEventListener("pointercancel", () => {
@@ -1268,16 +1437,18 @@ function appendReplacementControls(panel, target, rangeWeights) {
 		});
 		const apply = document.createElement("button");
 		apply.className = "btn btn-primary panel-free-apply";
-		apply.textContent = "この歌詞で差し替え";
+		apply.textContent = "確定";
 		const applyFree = () => {
 			const text = surfaceInput.value.trim();
 			if (text === "") {
 				note.textContent = "替え歌歌詞を入力してください";
 				return;
 			}
-			const custom = makeCustomWord(text, readingInput.value, target, rangeWeights);
+			const custom = makeCustomWord(text, readingInput.value);
 			if (!custom) {
-				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
+				note.textContent = "読みをひらがな・カタカナで入力してください（100文字以内）";
+				readingDisclosure.open = true;
+				focusReadingInput(readingInput);
 				return;
 			}
 			replaceSelection(custom);
@@ -1295,141 +1466,136 @@ function appendReplacementControls(panel, target, rangeWeights) {
 			});
 		}
 		actions.append(back, apply);
-		free.append(heading, fields, note, actions);
+		free.append(fields, note, actions);
 		panel.appendChild(free);
 		queueMicrotask(() => focusReadingInput(surfaceInput));
-		return;
 	}
+}
 
-	if (candidateDraft) {
-		const draft = document.createElement("div");
-		draft.className = "panel-replacement-draft";
-		const surface = document.createElement("span");
-		surface.className = "panel-draft-surface";
-		surface.textContent = candidateDraft.word.surface;
-		const field = document.createElement("label");
-		field.className = "panel-replacement-field";
-		field.innerHTML = '<span>替え歌の読み</span>';
-		const input = document.createElement("input");
-		input.className = "input panel-draft-reading";
-		input.value = candidateDraft.reading;
-		input.addEventListener("input", () => {
-			candidateDraft.reading = input.value;
-		});
-		input.addEventListener("focus", () => {
-			if (isIOSDevice() && !readingInputLayoutCleanup) focusReadingInput(input);
-		});
-		field.appendChild(input);
-		const apply = document.createElement("button");
-		apply.className = "btn btn-primary panel-candidate-apply";
-		apply.textContent = "差し替え";
-		const note = document.createElement("span");
-		note.className = "panel-replacement-note";
-		note.setAttribute("role", "alert");
-		const applyCandidate = () => {
-			const fitted = wordWithReading(
-				candidateDraft.word, candidateDraft.reading, target, rangeWeights);
-			if (!fitted) {
-				note.textContent = "この範囲の音数に合わせられる読みを入力してください";
-				return;
+function setCandidateSelected(button, selected) {
+	button.setAttribute("aria-pressed", String(selected));
+}
+
+function appendWordlistSearch(panel, used, isSelected) {
+	const section = document.createElement("section");
+	section.className = "wordlist-search";
+	const field = document.createElement("div");
+	field.className = "reverse-word-field wordlist-search-field";
+	const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	icon.classList.add("wordlist-search-icon");
+	icon.setAttribute("viewBox", "0 0 24 24");
+	icon.setAttribute("aria-hidden", "true");
+	icon.innerHTML = '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>';
+	const input = document.createElement("input");
+	input.id = "wordlist-search-input";
+	input.className = "input";
+	input.placeholder = "検索";
+	input.setAttribute("aria-label", "単語リストから検索");
+	input.autocomplete = "off";
+	input.value = wordlistSearchQuery;
+	const clear = document.createElement("button");
+	clear.className = "reverse-clear wordlist-search-clear";
+	clear.type = "button";
+	clear.setAttribute("aria-label", "検索を消す");
+	clear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>';
+	const status = document.createElement("p");
+	status.className = "wordlist-search-status";
+	status.setAttribute("role", "status");
+	const results = document.createElement("div");
+	results.className = "wordlist-search-results";
+	field.append(icon, input, clear);
+	section.append(field, status, results);
+	panel.append(section);
+	let timer, composing = false;
+	const update = (delay = 150) => {
+		clearTimeout(timer);
+		wordlistSearchController?.abort();
+		wordlistSearchQuery = input.value;
+		clear.hidden = !input.value;
+		results.replaceChildren();
+		const searching = !!normalizeWordSearch(input.value);
+		results.hidden = !searching;
+		panel.querySelector(".panel-suggestions")?.toggleAttribute("hidden", searching);
+		status.textContent = searching && !composing ? "検索中…" : "";
+		if (!searching || composing) return;
+		const controller = new AbortController();
+		wordlistSearchController = controller;
+		timer = setTimeout(async () => {
+			if (!section.isConnected) return;
+			try {
+				const found = await searchWordlist(db, input.value, { signal: controller.signal });
+				if (controller.signal.aborted || !section.isConnected) return;
+				const shown = found.groups.reduce((count, group) => count + group.cands.length, 0);
+				status.textContent = !found.total ? "一致する単語がありません"
+					: `${found.total}件` + (shown < found.total ? `（${shown}件を表示・検索語を絞るとさらに探せます）` : "");
+				for (const group of found.groups) {
+					const canonical = { ...group, cands: group.cands.map((word) => ({
+						...word, pronunciation: app.textAnalyzer.yomiToSyllable(word.kana), vcost: 0,
+					})) };
+					results.append(candidateButton(canonical, used, isSelected, (chosen) => {
+						openSearchGroup = chosen;
+						renderPanel();
+					}));
+				}
+			} catch (error) {
+				if (controller.signal.aborted || !section.isConnected) return;
+				status.textContent = "検索できませんでした。もう一度入力してください";
 			}
-			replaceSelection(fitted);
-		};
-		apply.addEventListener("click", applyCandidate);
-		input.addEventListener("keydown", (e) => {
-			if (e.key === "Enter") applyCandidate();
-		});
-		draft.append(surface, field, apply, note);
-		panel.appendChild(draft);
-	}
-
-	const freeToggle = document.createElement("button");
-	freeToggle.className = "panel-free-toggle";
-	freeToggle.type = "button";
-	freeToggle.textContent = "候補にない歌詞を自由入力する";
-	freeToggle.setAttribute("aria-expanded", "false");
-	freeToggle.addEventListener("click", () => {
-		candidateDraft = null;
-		freeInputOpen = true;
-		freeInputDraft = { surface: "", reading: "" };
-		renderPanel();
+		}, delay);
+	};
+	input.addEventListener("input", (event) => {
+		composing = event.isComposing;
+		update();
 	});
-	panel.appendChild(freeToggle);
+	input.addEventListener("compositionstart", () => { composing = true; update(); });
+	input.addEventListener("compositionend", () => { composing = false; update(); });
+	clear.addEventListener("click", () => {
+		input.value = "";
+		composing = false;
+		update();
+		input.focus({ preventScroll: true });
+	});
+	queueMicrotask(() => { if (section.isConnected) update(0); });
 }
 
 function buildPanel() {
+	wordlistSearchController?.abort();
 	readingInputLayoutCleanup?.();
 	const panel = $id("editor-panel");
 	document.documentElement.classList.toggle(
 		"editor-free-input-open", !!selection && freeInputOpen);
 	hidePopover();
 	if (!selection) {
-		// 中身は残したまま下へスライドアウトさせる
 		panel.classList.remove("open");
+		panel.replaceChildren();
 		return;
 	}
 	panel.textContent = "";
 	panel.classList.add("open");
+	panel.setAttribute("aria-label", freeInputOpen ? "歌詞を入力" : "替え歌を編集");
+	if (freeInputOpen) {
+		appendReplacementControls(panel);
+		panel.scrollTop = 0;
+		return;
+	}
 	const { line, start, end } = selection;
 	const span = db ? tokenSpanForSelection(line, start, end) : null;
 
-	const header = document.createElement("div");
-	header.className = "panel-header";
-	const source = document.createElement("div");
-	source.className = "panel-source";
-	const sourceSurface = document.createElement("div");
-	sourceSurface.className = "panel-source-row";
-	sourceSurface.innerHTML =
-		'<span class="panel-source-label">元歌詞</span><span class="panel-original-surface"></span>';
-	sourceSurface.querySelector(".panel-original-surface").textContent =
-		rangeSurface(line, start, end);
-	const sourceReading = document.createElement("div");
-	sourceReading.className = "panel-source-row";
-	const sourceReadingLabel = document.createElement("span");
-	sourceReadingLabel.className = "panel-source-label";
-	sourceReadingLabel.textContent = "元歌詞の読み";
-	const sourceReadingValue = document.createElement("span");
-	sourceReadingValue.className = "panel-original-reading";
-	sourceReadingValue.textContent = rangeKana(line, start, end);
-	sourceReading.append(sourceReadingLabel, sourceReadingValue);
-	if (span) {
-		const toggle = document.createElement("button");
-		toggle.className = "panel-yomi-toggle";
-		toggle.type = "button";
-		toggle.textContent = "✏️";
-		const editLabel = `「${span.surface}（${span.yomi}）」の読みを修正`;
-		toggle.title = editLabel;
-		toggle.setAttribute("aria-label", editLabel);
-		toggle.addEventListener("click", () => openReadingFixDialog(line, start, end, span));
-		sourceReading.appendChild(toggle);
-	}
-	source.append(sourceSurface, sourceReading);
-	header.appendChild(source);
-	const headerActions = document.createElement("div");
-	headerActions.className = "panel-header-actions";
-	// 選択範囲がそのまま既存単語なら、パネルからも固定を切り替えられるようにする
-	// (チップ上の鍵はスマホだと小さいため)
-	const word = (data.results[line] || []).find(
-		(w) => w.period[0] === start && w.period[1] === end);
-	if (word) {
-		const lockBtn = document.createElement("button");
-		lockBtn.className = "btn panel-lock";
-		lockBtn.setAttribute("aria-pressed", String(!!word.locked));
-		const lockLabel = document.createElement("span");
-		lockLabel.textContent = word.locked ? "固定を解除" : "固定する";
-		lockBtn.append(makeLockIcon(!!word.locked), lockLabel);
-		lockBtn.addEventListener("click", () => toggleLock(line, word));
-		headerActions.appendChild(lockBtn);
-	}
-	const close = document.createElement("button");
-	close.className = "btn panel-close";
-	close.textContent = "✕";
-	close.addEventListener("click", () => setSelection(null));
-	headerActions.appendChild(close);
-	header.appendChild(headerActions);
-	panel.appendChild(header);
+	appendReviewHeader(panel, data, selection, {
+		hasChanges: panelResultsSnapshot(data.results) !== panelResultsSnapshot(panelInitialResults),
+		close: () => setSelection(null), lock: toggleLock, unit: onUnitClick,
+		lockIcon: makeLockIcon,
+		pointer: onUnitPointerDown,
+		reading: !isVideoReview(data) && span ? {
+			label: `「${span.surface}（${span.yomi}）」の読みを修正`,
+			open: () => openReadingFixDialog(line, start, end, span),
+		} : null,
+	});
+	const selectedWord = (data.results[line] || []).find((word) => !word.filler
+		&& word.period[0] === start && word.period[1] === end);
+	appendWordDetails(panel.querySelector(".review-selected"), selectedWord, data.wordlist, data.wordlistSource);
 
-	if (!db) {
+	if (!db || settingsUpdating) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
 		note.textContent = "候補を読み込み中...(単語リスト初期化中)";
@@ -1437,8 +1603,23 @@ function buildPanel() {
 		return;
 	}
 
-	// 候補の取得と同姓同名(表記+読みが同じでidが違う)のグループ化。
-	// 単語重複なしの判定はid単位なので、同名でも別idはそれぞれ選べるようにする
+	const used = usedIdSet(line, start, end);
+	const isSelected = (cand) => !!selectedWord && cand.id === selectedWord.id
+		&& cand.surface === selectedWord.surface && cand.kana === selectedWord.kana
+		&& (cand.wordlistSource || data.wordlistSource) === (selectedWord.wordlistSource || data.wordlistSource);
+	if (openSearchGroup) {
+		renderGroupPicker(panel, openSearchGroup, used, isSelected, () => {
+			openSearchGroup = null;
+			renderPanel();
+			$id("wordlist-search-input")?.focus({ preventScroll: true });
+		});
+		return;
+	}
+	appendWordlistSearch(panel, used, isSelected);
+	const suggestions = document.createElement("div");
+	suggestions.className = "panel-suggestions";
+	suggestions.hidden = !!normalizeWordSearch(wordlistSearchQuery);
+	panel.append(suggestions);
 	const target = unitsOf(line).slice(start, end).map((u) => u.pronunciation);
 	// 位置別の重み(汎用weightsList、または生ノート長とαから導出)があれば、
 	// 選択範囲に対応する区間を切り出して候補計算にも効かせる
@@ -1447,7 +1628,7 @@ function buildPanel() {
 		? allWeights[line].slice(start, end)
 		: null;
 	const fetched = app.soramimiMaker.getCandidates(db, target, data.param, RAW_FETCH, rangeWeights);
-	const used = usedIdSet(line, start, end);
+	// 同じ表記と読みでもIDの異なる単語は個別に選べるようにまとめる。
 	const groups = [];
 	const byKey = new Map();
 	for (const cand of fetched) {
@@ -1462,95 +1643,113 @@ function buildPanel() {
 
 	// 同名グループを開いている場合は個別選択リストを出す
 	if (openGroupKey && byKey.has(openGroupKey)) {
-		renderGroupPicker(panel, byKey.get(openGroupKey), used);
+		renderGroupPicker(suggestions, byKey.get(openGroupKey), used, isSelected);
 		return;
 	}
-	if (freeInputOpen) {
-		appendReplacementControls(panel, target, rangeWeights);
-		return;
-	}
-	if (candidateDraft) {
-		appendReplacementControls(panel, target, rangeWeights);
-	}
-
 	const list = document.createElement("div");
 	list.className = "panel-candidates";
 	const listTitle = document.createElement("h3");
 	listTitle.className = "panel-candidates-title";
 	listTitle.textContent = "候補から選ぶ";
 	list.appendChild(listTitle);
+	const freeToggle = document.createElement("button");
+	freeToggle.className = "btn panel-free-toggle";
+	freeToggle.type = "button";
+	const customWord = isCustomWord(selectedWord) ? selectedWord : null;
+	freeToggle.textContent = customWord ? "✎ 手入力を編集" : "＋ 自分で入力";
+	freeToggle.setAttribute("aria-expanded", "false");
+	freeToggle.addEventListener("click", () => {
+		freeInputOpen = true;
+		freeInputDraft = { surface: customWord?.surface || "", reading: customWord?.kana || "" };
+		renderPanel();
+	});
+	list.appendChild(freeToggle);
 	const shown = groups.slice(0, Math.min(panelShown, GROUP_MAX));
+	const shownCount = shown.length;
+	// 手入力・別リストの語・表示件数外の語も、現在の選択として解除できるようにする。
+	if (selectedWord && !shown.some((group) => group.cands.some(isSelected))) {
+		shown.unshift({ cands: [selectedWord] });
+	}
 	if (shown.length === 0) {
 		const note = document.createElement("p");
 		note.className = "panel-note";
-		note.textContent = "候補が見つかりませんでした。自由入力をお使いください。";
+		note.textContent = "候補がありません";
 		list.appendChild(note);
 	}
 	for (const g of shown) {
-		const cand = g.cands[0];
-		const allUsed = g.cands.every((c) => used.has(c.id));
-		const btn = document.createElement("button");
-		btn.className = "btn candidate";
-		btn.dataset.candidateId = String(cand.id);
-		const selected = candidateDraft && g.cands.some((item) =>
-			String(candidateDraft.word.id) === String(item.id) &&
-			candidateDraft.word.surface === item.surface);
-		btn.setAttribute("aria-pressed", String(!!selected));
-		if (selected) btn.classList.add("selected");
-		if (allUsed) btn.classList.add("used");
-		const surface = document.createElement("span");
-		surface.className = "candidate-surface";
-		surface.textContent = cand.surface;
-		if (g.cands.length > 1) {
-			const count = document.createElement("span");
-			count.className = "candidate-count";
-			count.textContent = `×${g.cands.length}`;
-			surface.appendChild(count);
-		}
-		const kana = document.createElement("span");
-		kana.className = "candidate-kana";
-		kana.textContent = cand.kana + (allUsed ? "・使用中" : "");
-		btn.append(surface, kana);
-		if (g.cands.length === 1) {
-			btn.title = candidateDetail(cand, used.has(cand.id));
-			attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
-			btn.addEventListener("click", () => selectCandidateDraft(cand));
-		} else {
-			btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
-			attachLongPress(btn, () =>
-				`${g.cands.length}件の同名候補:\n` +
-				g.cands.slice(0, 8).map((c) => c.original || c.surface).join("\n") +
-				(g.cands.length > 8 ? "\n…" : ""));
-			btn.addEventListener("click", () => {
-				openGroupKey = g.key;
-				renderPanel();
-			});
-		}
-		list.appendChild(btn);
+		list.appendChild(candidateButton(g, used, isSelected, (group) => {
+			openGroupKey = group.key;
+			renderPanel();
+		}));
 	}
-	if (groups.length > shown.length && shown.length < GROUP_MAX) {
+	if (groups.length > shownCount && shownCount < GROUP_MAX) {
 		const more = document.createElement("button");
 		more.className = "btn panel-more";
 		more.textContent =
-			`もっと見る(${shown.length}/${Math.min(groups.length, GROUP_MAX)}件表示中)`;
+			`もっと見る(${shownCount}/${Math.min(groups.length, GROUP_MAX)}件表示中)`;
 		more.addEventListener("click", () => {
 			panelShown += GROUP_PAGE;
 			renderPanel();
 		});
 		list.appendChild(more);
 	}
-	panel.appendChild(list);
-	if (!candidateDraft && !freeInputOpen) {
-		appendReplacementControls(panel, target, rangeWeights);
+	suggestions.appendChild(list);
+}
+
+function candidateButton(g, used, isSelected, openGroup) {
+	const cand = g.cands[0];
+	const allUsed = g.cands.every((c) => used.has(c.id));
+	const btn = document.createElement("button");
+	btn.className = "btn candidate";
+	btn.dataset.candidateId = String(cand.id);
+	const selected = g.cands.some(isSelected);
+	setCandidateSelected(btn, selected);
+	if (allUsed) btn.classList.add("used");
+	const surface = document.createElement("span");
+	surface.className = "candidate-surface";
+	surface.textContent = cand.surface;
+	if (g.cands.length > 1) {
+		const count = document.createElement("span");
+		count.className = "candidate-count";
+		count.textContent = `×${g.cands.length}`;
+		surface.appendChild(count);
 	}
+	const kana = document.createElement("span");
+	kana.className = "candidate-kana";
+	kana.textContent = cand.kana + (allUsed ? "・使用中" : "");
+	btn.append(surface, kana);
+	if (isCustomWord(cand)) {
+		const source = document.createElement("span");
+		source.className = "candidate-source";
+		source.textContent = "手入力";
+		btn.appendChild(source);
+	}
+	if (g.cands.length === 1) {
+		btn.title = candidateDetail(cand, used.has(cand.id));
+		attachLongPress(btn, () => candidateDetail(cand, used.has(cand.id)));
+		btn.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
+	} else {
+		btn.title = `${g.cands.length}件の同名候補(タップして選ぶ)`;
+		attachLongPress(btn, () =>
+			`${g.cands.length}件の同名候補:\n` +
+			g.cands.slice(0, 8).map((c) => c.original || c.surface).join("\n") +
+			(g.cands.length > 8 ? "\n…" : ""));
+		btn.addEventListener("click", () => {
+			if (selected) return clearSelectionAssignment();
+			openGroup(g);
+		});
+	}
+	if (selected) btn.title = "選択中（もう一度タップすると解除）";
+	return btn;
 }
 
 // 同名候補(id違い)の個別選択リスト
-function renderGroupPicker(panel, group, used) {
+function renderGroupPicker(panel, group, used, isSelected, onBack) {
 	const back = document.createElement("button");
 	back.className = "btn panel-back";
 	back.textContent = "← 候補一覧に戻る";
 	back.addEventListener("click", () => {
+		if (onBack) return onBack();
 		openGroupKey = null;
 		renderPanel();
 	});
@@ -1570,6 +1769,8 @@ function renderGroupPicker(panel, group, used) {
 		const row = document.createElement("button");
 		row.className = "btn group-entry";
 		row.dataset.candidateId = String(cand.id);
+		const selected = isSelected(cand);
+		setCandidateSelected(row, selected);
 		if (isUsed) row.classList.add("used");
 		const main = document.createElement("span");
 		main.textContent = cand.original || cand.surface;
@@ -1579,7 +1780,8 @@ function renderGroupPicker(panel, group, used) {
 		row.append(main, sub);
 		row.title = candidateDetail(cand, isUsed);
 		attachLongPress(row, () => candidateDetail(cand, isUsed));
-		row.addEventListener("click", () => selectCandidateDraft(cand));
+		if (selected) row.title = "選択中（もう一度タップすると解除）";
+		row.addEventListener("click", () => selected ? clearSelectionAssignment() : replaceSelection(cand));
 		list.appendChild(row);
 	}
 	panel.appendChild(list);
@@ -1588,8 +1790,45 @@ function renderGroupPicker(panel, group, used) {
 // ---- 再生成・コピー ----
 
 // 🔒固定した単語(と差し替え済み単語)を残し、それ以外を作り直す
-function regenerate() {
-	if (reconverting) return;
+function showRegenerationError(error) {
+	$id("regen-progress").textContent = error.message;
+	$id("regen-progress").hidden = false;
+}
+
+function setupRegenerationConfirmation() {
+	const dialog = $id("editor-regenerate-dialog");
+	const skip = $id("regenerate-skip-confirmation");
+	let skipConfirmation = false;
+	try { skipConfirmation = localStorage.getItem(SKIP_REGEN_CONFIRMATION_KEY) === "1"; } catch {}
+	$id("btn-regenerate").addEventListener("click", () => {
+		if (skipConfirmation) {
+			regenerate().catch(showRegenerationError);
+			return;
+		}
+		skip.checked = false;
+		dialog.showModal();
+	});
+	$id("btn-regenerate-cancel").addEventListener("click", () => dialog.close());
+	$id("btn-regenerate-confirm").addEventListener("click", () => {
+		if (!dialog.open) return;
+		if (skip.checked) {
+			skipConfirmation = true;
+			try { localStorage.setItem(SKIP_REGEN_CONFIRMATION_KEY, "1"); } catch {}
+		}
+		dialog.close();
+		regenerate().catch(showRegenerationError);
+	});
+	dialog.addEventListener("click", (event) => {
+		if (event.target !== dialog) return;
+		const bounds = dialog.getBoundingClientRect();
+		if (event.clientX < bounds.left || event.clientX > bounds.right
+			|| event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+	});
+}
+
+function regenerate({ allUnlocked = false, line = null } = {}) {
+	if (regeneration) return regeneration;
+	if (settingsUpdating || !db) return Promise.reject(new Error("候補の準備ができていません。もう一度お試しください"));
 	const btn = $id("btn-regenerate");
 	const progress = $id("regen-progress");
 	// 編集の影響がありうる行だけ再計算する。単語重複なしでは使用済み単語が
@@ -1602,56 +1841,97 @@ function regenerate() {
 	// filler(未変換の区間)は固定扱いにしない。単語が増えていれば埋まるように、
 	// 再生成のたびに埋め直しを試みる
 	const locksPerLine = data.results.map((words, i) =>
-		(words || []).filter((w) => !w.filler && (atRisk(i) ? w.locked : true)));
+		(words || []).filter((w) => !w.filler && ((allUnlocked || atRisk(i)) ? w.locked : true))
+			.map((word) => generationLock(word, data.wordlistSource)));
+	const input = line === null
+		? { tokens: data.tokensList, db, locks: locksPerLine, weights: noteLengthWeights() }
+		: lineRegenerationInput(data, db, line, noteLengthWeights());
 	btn.disabled = true;
 	progress.hidden = false;
-	progress.textContent = `再生成中... 0/${data.results.length}`;
+	progress.textContent = line === null ? `再生成中... 0/${data.results.length}` : `${line + 1}行目を再生成中…`;
 	setSelection(null);
-	app.soramimiMaker.generateFromTokens(
-		data.tokensList, db, data.param,
-		(result, i) => {
-			progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
-		},
-		(results) => {
-			pushHistory();
-			data.results = results;
-			data.dirtyLines = []; // 再生成直後はどの行も編集済みでない
-			saveData();
-			renderAll();
-			btn.disabled = false;
-			progress.hidden = true;
-		},
-		locksPerLine, noteLengthWeights());
+	$id("app").inert = true;
+	let handle, timeout;
+	regeneration = new Promise((resolve, reject) => {
+		timeout = setTimeout(() => {
+			handle?.cancel();
+			reject(new Error("再生成に時間がかかっています。もう一度お試しください"));
+		}, 120000);
+		handle = app.soramimiMaker.generateFromTokens(
+			input.tokens, input.db, data.param,
+			(result, i) => {
+				if (line === null) progress.textContent = `再生成中... ${i + 1}/${data.results.length}`;
+			},
+			(results) => {
+				try {
+					pushHistory();
+					if (line === null) {
+						data.results = results.map((words) => generatedWords(words, data.wordlistSource));
+						data.dirtyLines = [];
+					} else {
+						data.results[line] = generatedWords(results[0], data.wordlistSource);
+						data.dirtyLines = data.dirtyLines.filter((i) => i !== line);
+					}
+					saveData();
+					renderAll();
+					resolve();
+				} catch (error) { reject(error); }
+			},
+			input.locks, input.weights);
+		handle.finished?.catch(reject);
+	}).finally(() => {
+		clearTimeout(timeout);
+		regeneration = null;
+		btn.disabled = false;
+		progress.hidden = true;
+		$id("app").inert = false;
+		syncLineActions();
+	});
+	syncLineActions();
+	return regeneration;
 }
 
-// ---- 「変換のしかた」モーダル(パラメータ・絞り込み) ----
+// ---- 設定モーダル(パラメータ・絞り込み) ----
 // 生成画面へ戻らなくても変換のしかたを変えられるようにする(#17の続き)。
-// ツールバーの⚙から開くモーダル(dialog)で、パラメータUIは生成画面と同じ
+// 三点メニューから開くモーダル(dialog)で、パラメータUIは生成画面と同じ
 // 共有部品(convertControls.js)。初期値は引き継いだ data.param から逆算する
 
-// 単語リストエントリの同一性キー。自作リストは中身(正規化CSV)まで含めて
-// 比較する(テキストを書き換えたら別のリスト扱いにするため)
-function wordlistKey(entry) {
-	if (!entry) return "";
-	if (entry.value === "ORIGINAL") return "ORIGINAL\t" + (entry.csvText || "");
-	return [entry.value, entry.filepath, entry.dbtype].join("\t");
+// Prepare the engine against a captured settings value before committing it.
+async function prepareEngine(settings) {
+	const nextApp = appFor(settings.param?.VOWEL_RATIO);
+	const key = wordlistKey(settings.wordlist);
+	const nextDb = key === dbWordlistKey && settings.where === dbWhere && db
+		? db : await buildDatabase(nextApp, settings.wordlist, settings.where);
+	return { app: nextApp, db: nextDb, key, source: await wordlistSource(settings.wordlist) };
 }
 
-// 候補計算に使うエンジンとDBを、現在の data.param / data.wordlist / data.where に合わせる。
-// 「音の合わせ方」は類似度行列そのものが変わるためエンジンを取り直し、
-// 単語リストか絞り込み(where)が変わったら単語リストDBを作り直す
+function useEngine(engine, settings) {
+	app = engine.app;
+	db = engine.db;
+	engineVowelRatio = settings.param?.VOWEL_RATIO;
+	dbWhere = settings.where;
+	dbWordlistKey = engine.key;
+	data.wordlistSource = engine.source;
+	visualization?.refresh();
+}
+
+function engineMatches(settings = data) {
+	return db && dbWordlistKey === wordlistKey(settings.wordlist) && dbWhere === settings.where
+		&& engineVowelRatio === settings.param?.VOWEL_RATIO;
+}
+
 async function syncEngine() {
-	if (!appFor) return;
-	const ratio = data.param && data.param.VOWEL_RATIO;
-	if (ratio !== currentVowelRatio) {
-		app = appFor(ratio);
-		currentVowelRatio = ratio;
-	}
-	const key = wordlistKey(data.wordlist);
-	if (data.where !== dbWhere || key !== dbWordlistKey) {
-		db = await buildDatabase(app, data.wordlist, data.where);
-		dbWhere = data.where;
-		dbWordlistKey = key;
+	if (!appFor) return false;
+	const revision = ++settingsRevision;
+	const settings = { param: data.param, wordlist: data.wordlist, where: data.where };
+	try {
+		const engine = await prepareEngine(settings);
+		if (revision !== settingsRevision) return false;
+		useEngine(engine, settings);
+		return true;
+	} catch (error) {
+		if (revision !== settingsRevision) return false;
+		throw error;
 	}
 }
 
@@ -1659,6 +1939,7 @@ async function syncEngine() {
 // モーダルが閉じていてもDOMは生きているので、次に開いたときに正しい表示になる
 function syncSettingsUi() {
 	if (!paramControls) return;
+	syncWordlistUi();
 	paramControls.setValues(valuesFromParam(data.param));
 	paramControls.syncPreset();
 	const noteField = $id("editor-note-length-field");
@@ -1667,7 +1948,6 @@ function syncSettingsUi() {
 	if (noteInput && Array.isArray(data.noteLengthRawList)) {
 		noteInput.value = String(data.noteLengthAlpha);
 	}
-	syncWordlistUi();
 }
 
 // ---- 自作リストの入力(貼り付け / ファイル読み込み) ----
@@ -1778,15 +2058,15 @@ function syncWordlistUi() {
 	} else {
 		$id("editor-facets").innerHTML = "";
 	}
+	paramControls?.refreshPriority();
 }
 
-// 単語リストの選択が変わったとき。適用はしない(「この設定で再変換」に集約)。
-// ファセットだけは新しいリストのもので組み直す(チェックは既定に戻る)
+// 選んだリストの絞り込みを表示し、今ある歌詞を保ったまま設定を保存する。
 function onWordlistChange() {
 	const entry = wordlistCatalog && wordlistCatalog.get($id("editor-wordlist").value);
 	if (!entry) return;
 	showOriginalEditButton(entry.value === "ORIGINAL");
-	if (entry.value === "ORIGINAL") openOriginalDialog(wordlistUiValue);
+	if (entry.value === "ORIGINAL") openOriginalDialog(data.wordlist?.value || wordlistUiValue);
 	else wordlistUiValue = entry.value;
 	facetsEnabled = hasFacets(entry);
 	$id("editor-facet-field").hidden = !facetsEnabled;
@@ -1796,14 +2076,22 @@ function onWordlistChange() {
 	if (facetsEnabled && entry.value === (data.wordlist && data.wordlist.value)) {
 		restoreFacets($id("editor-facets"), data.where);
 	}
+	if (entry.value !== "ORIGINAL") saveSettings();
 }
 
 let originalDialogRestoreValue = null;
 let originalDialogAccepted = false;
+let originalDraftEntry = null;
 
 // 自作リストは別モーダルで編集する。選択操作から開いた場合は、キャンセル時に
 // それまで適用されていた単語リストへセレクトを戻す。
 function openOriginalDialog(restoreValue = null) {
+	if (engineMatches()) {
+		++settingsRevision;
+		setSettingsBusy(false);
+		showSettingsStatus();
+	}
+	originalDraftEntry = null;
 	const dialog = $id("editor-original-dialog");
 	const ta = $id("editor-original-text");
 	originalDialogRestoreValue = restoreValue && restoreValue !== "ORIGINAL"
@@ -1829,12 +2117,20 @@ function acceptOriginalDialog() {
 		setOriginalFileStatus("単語を1つ以上入力してください");
 		return;
 	}
+	try {
+		originalDraftEntry = { value: "ORIGINAL", text: "自作リストを使う",
+			csvText: originalTextToCsv(text, app) };
+	} catch (error) {
+		setOriginalFileStatus(error.message);
+		return;
+	}
 	saveOriginalText(text);
 	originalDialogAccepted = true;
 	originalDialogRestoreValue = null;
 	wordlistUiValue = "ORIGINAL";
 	$id("editor-original-dialog").close();
 	showOriginalEditButton(true);
+	saveSettings();
 }
 
 function finishOriginalDialog() {
@@ -1852,11 +2148,9 @@ function pickedWordlistEntry() {
 	const picked = wordlistCatalog && sel && wordlistCatalog.get(sel.value);
 	if (!picked) return data.wordlist;
 	if (picked.value !== "ORIGINAL") return Object.assign({}, picked);
-	return {
-		value: "ORIGINAL",
-		text: picked.text,
-		csvText: originalTextToCsv($id("editor-original-text").value, app),
-	};
+	return originalDraftEntry || (data.wordlist?.value === "ORIGINAL" ? data.wordlist : {
+		value: "ORIGINAL", text: picked.text, csvText: "",
+	});
 }
 
 // conf/setting.json から単語リストの選択肢を組み立てる(生成画面と同じ情報源)。
@@ -1927,93 +2221,89 @@ async function setupWordlistPicker() {
 			sel.value = def.value;
 		}
 	}
-	sel.addEventListener("change", onWordlistChange);
+	sel.addEventListener("change", () => {
+		onWordlistChange();
+		if (!$id("editor-original-dialog").open) paramControls.refreshPriority();
+	});
 	syncWordlistUi();
 	$id("editor-wordlist-field").hidden = false;
 }
 
-function setReconverting(busy) {
-	reconverting = busy;
-	$id("btn-regenerate").disabled = busy || !db;
-	// 再変換中に⚙からモーダルを開いても設定をいじれないようにする。
-	// 閉じる操作だけは残したいので×は対象外
-	for (const el of $id("editor-settings").querySelectorAll("button, input, select, textarea")) {
-		if (el.id === "btn-settings-close") continue;
-		el.disabled = busy;
+function showSettingsStatus(message = "") {
+	for (const id of ["settings-progress", "editor-settings-status"]) {
+		$id(id).textContent = message;
+		$id(id).hidden = !message;
 	}
-	for (const el of $id("editor-original-dialog").querySelectorAll("button, input, textarea")) {
-		el.disabled = busy;
-	}
-	$id("btn-reconvert").disabled = busy || !db;
 }
 
-// モーダルの設定で全行を変換し直す。固定(🔒)した単語だけは持ち越すので、
-// 差し替えた単語は残る(未固定の手編集は作り直される)。直前の状態は
-// 結果・パラメータ・単語リスト・絞り込みをまとめて履歴に積むので、
-// 「↩ 戻る」1回で戻せる。
-// 単語リストの切替もここで適用する(select単体では再変換しない)。リストが
-// 変わったときだけは固定を全解除して全行を作り直す: 別リストの単語を持ち越すと
-// idが衝突して単語重複なしの判定が壊れるため
-async function reconvertAll() {
-	if (!app || !db || !paramControls || reconverting) return;
-	const progress = $id("reconvert-progress");
+function setSettingsBusy(busy) {
+	settingsUpdating = busy;
+	$id("editor-settings").setAttribute("aria-busy", String(busy));
+	$id("btn-regenerate").disabled = busy || !db || !!regeneration;
+	syncLineActions();
+	updateHistoryButtons();
+	if (busy) scheduleReverseSearch();
+}
+
+// Settings apply to future edits and generation. Existing lyrics and locks stay
+// intact, including when IDs happen to overlap between different word lists.
+async function saveSettings() {
+	if (setupMode || regeneration || $id("editor-original-dialog").open) return;
+	settingsDirty = true;
+	if (!settingsReady || !appFor) return;
+	settingsDirty = false;
+	const revision = ++settingsRevision;
+	const previousEntry = data.wordlist;
 	const nextEntry = pickedWordlistEntry();
+	paramControls.refreshPriority();
 	const listChanged = wordlistKey(nextEntry) !== wordlistKey(data.wordlist);
-	setReconverting(true);
-	progress.hidden = false;
-	progress.textContent = `再変換中... 0/${data.results.length}`;
-	setSelection(null);
-	pushHistory();
-	// 親アプリ独自のパラメータ(ノート長重視α等)を消さないよう既存に重ねる
-	data.param = Object.assign({}, data.param, paramControls.getParam());
-	applyNoteLengthSetting();
-	if (listChanged) {
-		data.wordlist = nextEntry;
-		facetsEnabled = hasFacets(nextEntry);
-	}
-	if (facetsEnabled) data.where = compileWhere($id("editor-facets"), data.wordlist);
-	else if (listChanged) data.where = undefined; // 新しいリストのエントリ既定に戻す
-	try {
-		await syncEngine();
-	} catch (err) {
-		console.error(err);
-		restoreState(data.history.pop()); // 設定ごと巻き戻す
-		updateHistoryButtons();
-		syncSettingsUi();
-		progress.textContent = "単語リストの再構築に失敗しました: " + err.message;
-		setReconverting(false);
+	const alpha = Number($id("editor-note-length-alpha").value);
+	const next = {
+		param: { ...data.param, ...paramControls.getParam() },
+		wordlist: nextEntry,
+		where: hasFacets(nextEntry) ? compileWhere($id("editor-facets"), nextEntry)
+			: listChanged ? undefined : data.where,
+		noteLengthAlpha: Array.isArray(data.noteLengthRawList)
+			? Number.isFinite(alpha) && alpha >= 0 ? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA
+			: data.noteLengthAlpha,
+	};
+	if (engineMatches() && !listChanged && next.where === data.where && next.noteLengthAlpha === data.noteLengthAlpha
+		&& JSON.stringify(next.param) === JSON.stringify(data.param)) {
+		setSettingsBusy(false);
+		showSettingsStatus();
+		scheduleReverseSearch();
+		renderPanel();
 		return;
 	}
-	// 固定単語は新しい絞り込みの対象外になっていても固定のまま渡す。
-	// ただしリストごと変わったときは持ち越さない(idが別リストのものになるため)
-	// filler(未変換の区間)は持ち越さず、新しい設定で埋め直しを試みる
-	const locksPerLine = listChanged
-		? data.results.map(() => [])
-		: data.results.map((words) => (words || []).filter((w) => w.locked && !w.filler));
-	app.soramimiMaker.generateFromTokens(
-		data.tokensList, db, data.param,
-		(result, i) => {
-			progress.textContent = `再変換中... ${i + 1}/${data.results.length}`;
-		},
-		(results) => {
-			data.results = results;
-			data.dirtyLines = []; // 全行を作り直したので編集済みの行はない
-			saveData();
-			renderAll();
-			progress.hidden = true;
-			setReconverting(false);
-		},
-		locksPerLine, noteLengthWeights());
-}
-
-// 絞り込みは選択即実行。チェックの連打をまとめるため少しだけ待ってから走らせる。
-// 単語リストの切替が保留されていれば、それも一緒に適用される(絞り込みだけを
-// 古いリストに対して当てても意味のある結果にならないため)
-let facetTimer = null;
-function onFacetChange() {
-	if (!facetsEnabled) return;
-	clearTimeout(facetTimer);
-	facetTimer = setTimeout(reconvertAll, 400);
+	setSettingsBusy(true);
+	showSettingsStatus("設定を反映中…");
+	renderPanel();
+	try {
+		const engine = await prepareEngine(next);
+		const previousSource = data.wordlistSource || await wordlistSource(previousEntry);
+		if (revision !== settingsRevision) return;
+		pushHistory();
+		if (listChanged) {
+			data.results = data.results.map((words) => generatedWords(words, previousSource, true));
+		}
+		Object.assign(data, next);
+		if (originalDraftEntry === nextEntry) originalDraftEntry = null;
+		useEngine(engine, next);
+		data.dirtyLines = data.results.map((_, i) => i);
+		saveData();
+		setSettingsBusy(false);
+		showSettingsStatus();
+		renderAll();
+		renderPanel();
+	} catch (error) {
+		if (revision !== settingsRevision) return;
+		setSettingsBusy(false);
+		originalDraftEntry = null;
+		syncSettingsUi();
+		showSettingsStatus("設定を反映できませんでした: " + error.message);
+		scheduleReverseSearch();
+		renderPanel();
+	}
 }
 
 function setupSettingsPanel() {
@@ -2023,21 +2313,23 @@ function setupSettingsPanel() {
 		paramArea: $id("editor-param-area"),
 		presetArea: $id("editor-preset-buttons"),
 		duplicateArea: $id("editor-duplicate-buttons"),
+		priorityArea: $id("editor-priority-words"),
+		getPriorityContext: () => priorityContext(pickedWordlistEntry()),
+		getPriorityWords: createPriorityCatalogLoader(() => app, () => {
+			const entry = pickedWordlistEntry();
+			return { entry, where: hasFacets(entry) ? compileWhere($id("editor-facets"), entry) : data.where };
+		}),
 		values: valuesFromParam(data.param),
+		onChange: saveSettings,
 	});
 	syncSettingsUi();
 	// 絞り込みは単語リスト設定に facets があるときだけ(自作リスト等では出さない)。
 	// リスト切替で出たり消えたりするので、リスナはコンテナに固定で付けておく
 	syncWordlistUi();
-	$id("editor-facets").addEventListener("change", onFacetChange);
+	$id("editor-facets").addEventListener("change", () => { paramControls.refreshPriority(); saveSettings(); });
+	$id("editor-note-length-alpha").addEventListener("input", saveSettings);
 	// 単語リストの選択肢は conf の取得を待つので、あとから足す
 	setupWordlistPicker().catch((err) => console.error(err));
-	// 再変換の進捗はツールバー側(#reconvert-progress)に出るので、押したら閉じる。
-	// モーダルに隠れて進捗が見えない状態を作らないため
-	$id("btn-reconvert").addEventListener("click", () => {
-		dialog.close();
-		reconvertAll();
-	});
 	$id("btn-settings").addEventListener("click", () => dialog.showModal());
 	$id("btn-settings-close").addEventListener("click", () => dialog.close());
 	// バックドロップ(ダイアログの外側)のクリックで閉じる。ダイアログ自身の
@@ -2054,7 +2346,8 @@ function setupSettingsPanel() {
 // ---- セットアップ画面(第1ステップ) ----
 // 編集画面がメインで設定はオプションだが、起動時だけは 設定 → 編集画面 の順で出す。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけで、
-// tokensList / unitsList / results はここでブラウザ変換して作る。
+// tokensList が渡されていれば確定済みの読み・単語境界・文節を保持して使う。
+// 渡されていないときは phrases から解析し、unitsList / results を導出する。
 // 設定UI(単語リスト・パラメータ・絞り込み)は⚙モーダルと同じ実体を借りる:
 // セットアップ画面と⚙モーダルは同時に出ないので、#editor-settings-body を
 // DOMごと付け替えれば paramControls も含めてまるごと共有できる
@@ -2089,7 +2382,7 @@ function moveSettingsBody(toSetup) {
 		return;
 	}
 	const dialog = $id("editor-settings");
-	dialog.insertBefore(body, dialog.querySelector(".editor-settings-actions"));
+	dialog.insertBefore(body, $id("editor-settings-status"));
 }
 
 function enterSetup() {
@@ -2285,7 +2578,6 @@ function applyHostResponse(next) {
 	if (!hasResults()) {
 		data.results = [];
 		data.unitsList = [];
-		delete data.tokensList;
 	}
 	if (!Array.isArray(data.weightsList)) delete data.weightsList;
 	normalizeNoteLengthSetting();
@@ -2322,6 +2614,8 @@ function lyricsEnabled() {
 // data.lyrics と phrases を対応づけて data.originalLines を作り直す。
 // 元歌詞が空(または行が無い)なら originalLines ごと落とす
 function syncOriginalLines() {
+	// Review uses the host's analyzed alignment, also used for video subtitles.
+	if (isVideoReview(data)) return;
 	const text = typeof data.lyrics === "string" ? data.lyrics : "";
 	const phrases = Array.isArray(data.phrases) ? data.phrases : [];
 	if (text.trim() === "" || phrases.length === 0) {
@@ -2342,8 +2636,13 @@ function renderLyricsStatus() {
 		return;
 	}
 	const matched = lines.filter((t) => t !== "").length;
+	// 元歌詞の1行をまるごと採れた行と、行の途中で区切りを推定した行を分けて出す。
+	// 「n/m行」だけだと、区切りがずれていても全行そのまま対応づいたように見える
+	const whole = new Set((data.lyrics || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+	const guessed = lines.filter((t) => t !== "" && !whole.has(t.trim())).length;
 	el.textContent = `対応づけ: ${matched}/${lines.length}行`
-		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "");
+		+ (matched < lines.length ? "(対応づかなかった行は字幕に出ません)" : "")
+		+ (guessed > 0 ? `(うち${guessed}行は行の途中で区切り)` : "");
 	el.hidden = false;
 }
 
@@ -2386,6 +2685,7 @@ async function setupConvert() {
 	data.param = Object.assign({}, data.param, paramControls.getParam());
 	applyNoteLengthSetting();
 	data.wordlist = pickedWordlistEntry();
+	originalDraftEntry = null;
 	facetsEnabled = hasFacets(data.wordlist);
 	data.where = facetsEnabled
 		? compileWhere($id("editor-facets"), data.wordlist)
@@ -2394,7 +2694,13 @@ async function setupConvert() {
 	let unitsList;
 	try {
 		await syncEngine();
-		tokensList = app.textAnalyzer.tokenizeTogether(data.phrases);
+		// tokensList は読み修正やホストの解析結果の正本。カナだけの phrases
+		// から再解析すると、元歌詞の単語・文節境界と確定した読みが失われる。
+		tokensList = Array.isArray(data.tokensList)
+			&& data.tokensList.length === data.phrases.length
+			&& data.tokensList.every(Array.isArray)
+			? structuredClone(data.tokensList)
+			: app.textAnalyzer.tokenizeTogether(data.phrases);
 		unitsList = unitsListFromTokens(app, tokensList);
 	} catch (err) {
 		console.error(err);
@@ -2403,7 +2709,7 @@ async function setupConvert() {
 		return;
 	}
 	progress.textContent = `変換中... 0/${data.phrases.length}`;
-	app.soramimiMaker.generateFromTokens(
+	const generationHandle = app.soramimiMaker.generateFromTokens(
 		tokensList, db, data.param,
 		(result, i) => {
 			progress.textContent = `変換中... ${i + 1}/${data.phrases.length}`;
@@ -2411,7 +2717,7 @@ async function setupConvert() {
 		(results) => {
 			data.tokensList = tokensList;
 			data.unitsList = unitsList;
-			data.results = results;
+			data.results = results.map((words) => generatedWords(words, data.wordlistSource));
 			data.dirtyLines = []; // 変換直後はどの行も編集済みでない
 			data.history = [];
 			data.future = [];
@@ -2422,9 +2728,12 @@ async function setupConvert() {
 			renderAll();
 			updateHistoryButtons();
 			$id("btn-regenerate").disabled = false;
-			$id("btn-reconvert").disabled = false;
 		},
 		null, noteLengthWeights());
+	generationHandle.finished?.catch(error => {
+		progress.textContent = "変換に失敗しました: " + error.message;
+		setSetupBusy(false);
+	});
 }
 
 function setupSetupScreen() {
@@ -2455,27 +2764,8 @@ function setupSetupScreen() {
 	});
 }
 
-// Clipboard APIはHTTPS(または localhost)でしか使えないため、
-// LAN実機確認のようなhttp環境ではテキストエリア+execCommandで代替する
-async function writeClipboard(text) {
-	if (navigator.clipboard && window.isSecureContext) {
-		await navigator.clipboard.writeText(text);
-		return;
-	}
-	const ta = document.createElement("textarea");
-	ta.value = text;
-	ta.style.position = "fixed";
-	ta.style.opacity = "0";
-	document.body.appendChild(ta);
-	ta.focus();
-	ta.select();
-	const ok = document.execCommand("copy");
-	ta.remove();
-	if (!ok) throw new Error("クリップボードに書き込めませんでした");
-}
-
 async function copyResult() {
-	const btn = $id("btn-copy");
+	const label = $id("copy-button-label");
 	let text = makeResultText(data.results, $id("copy-format").value);
 	// 末尾に使用単語の元表記(フルネーム等)を登場順で付ける。
 	// filler(未変換=元歌詞のまま)は使った単語ではないので載せない
@@ -2491,13 +2781,13 @@ async function copyResult() {
 	}
 	try {
 		await writeClipboard(text);
-		btn.textContent = "コピーしました";
+		label.textContent = "コピーしました";
 	} catch (err) {
 		console.error(err);
-		btn.textContent = "コピーに失敗しました";
+		label.textContent = "コピーに失敗しました";
 	}
 	setTimeout(() => {
-		btn.textContent = "コピー";
+		label.textContent = "コピー";
 	}, 1500);
 }
 
@@ -2507,20 +2797,10 @@ async function copyResult() {
 
 export const EXPORT_FORMAT = "soramimic-editor/1";
 
-// 読み込むデータの最低条件(生成画面からの受け渡しと同じ形)
-export function validateEditorData(obj) {
-	if (!obj || typeof obj !== "object") return "JSONオブジェクトではありません";
-	if (!Array.isArray(obj.results)) return "results(行ごとの単語列)がありません";
-	if (!Array.isArray(obj.unitsList)) return "unitsList(行ごとの発音ユニット列)がありません";
-	if (obj.results.length !== obj.unitsList.length) {
-		return "resultsとunitsListの行数が一致しません";
-	}
-	return null;
-}
-
+export { validateEditorData } from "./editorData.js";
 // ホスト固有の一時情報(host / hostRequest)は載せない。書き出しJSONは
 // 単体の編集ツールでも読み直せる自己完結した内容だけにする
-function exportData() {
+function exportPayload() {
 	const payload = {
 		format: EXPORT_FORMAT,
 		phrases: data.phrases,
@@ -2528,6 +2808,7 @@ function exportData() {
 		results: data.results,
 		param: data.param,
 		wordlist: data.wordlist,
+		wordlistSource: data.wordlistSource,
 		where: data.where,
 		unitsList: data.unitsList,
 		// 生ノート長があるときは現在のαで再計算し、旧版向け互換値も古くしない。
@@ -2538,6 +2819,13 @@ function exportData() {
 	// 元歌詞(字幕用)は持っているときだけ載せる。ホストはこれを字幕に使う
 	if (typeof data.lyrics === "string") payload.lyrics = data.lyrics;
 	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
+	if (data.song?.title) payload.song = { title: data.song.title };
+	if (data.videoMetadata) payload.videoMetadata = data.videoMetadata;
+	return payload;
+}
+
+function exportData() {
+	const payload = exportPayload();
 	const blob = new Blob([JSON.stringify(payload, null, 1)], {
 		type: "application/json",
 	});
@@ -2565,6 +2853,7 @@ async function importFile(file) {
 	// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
 	// 生成画面から開いたときと同じ起動フローに乗る
 	delete obj.format;
+	delete obj.generationHistoryId;
 	obj.history = [];
 	obj.future = [];
 	try {
@@ -2588,14 +2877,29 @@ function setupImportExport() {
 	}
 	const exportBtn = $id("btn-export");
 	if (exportBtn) exportBtn.addEventListener("click", exportData);
+	const videoBtn = $id("btn-video");
+	videoBtn.hidden = !videoPeer || window.parent !== window;
+	videoBtn.addEventListener("click", async () => {
+		const status = $id("bridge-status");
+		status.hidden = false;
+		status.textContent = "ビデオへ歌詞を渡しています…";
+		videoBtn.disabled = true;
+		try {
+			const payload = window.SoramimicBridge.portable(exportPayload());
+			await window.SoramimicBridge.send(videoPeer, () => payload);
+			status.textContent = "ビデオへ歌詞を渡しました。開いた画面で同じ曲の音源またはMIDIを選んでください。";
+		} catch (error) { status.textContent = error.message; }
+		finally { videoBtn.disabled = false; }
+	});
 }
 
 // ---- 起動 ----
 
-async function start() {
+async function start({ saveReceivedResult = false } = {}) {
 	const empty = $id("editor-empty");
 	setupImportExport();
 	setupReadingFixDialog();
+	setupReverseSearch();
 
 	try {
 		data = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));
@@ -2618,6 +2922,28 @@ async function start() {
 		return;
 	}
 	setupMode = !converted || data.setupFirst === true;
+	{
+		setupReviewToolbar(isVideoReview(data), scrollToReverseMatch);
+		visualization = setupVisualization(() => ({ app, param: data.param }));
+		editorDisplay = setupEditorDisplay(renderAll);
+		const panel = $id("editor-panel");
+		panel.addEventListener("cancel", (event) => {
+			event.preventDefault();
+			if (freeInputOpen) closeFreeInput();
+			else setSelection(null);
+		});
+		panel.addEventListener("keydown", (event) => {
+			if (event.key !== "Tab") return;
+			const controls = [...panel.querySelectorAll("button, input, summary")]
+				.filter((node) => !node.disabled && node.getClientRects().length);
+			const first = controls[0], last = controls.at(-1);
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault(); last?.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault(); first?.focus();
+			}
+		});
+	}
 	// 未変換でも以降の処理が同じ形を前提にできるよう、空配列で埋めておく
 	if (!Array.isArray(data.results)) data.results = [];
 	if (!Array.isArray(data.unitsList)) data.unitsList = [];
@@ -2638,11 +2964,37 @@ async function start() {
 		data.dirtyLines = data.results.map((_, i) => i);
 	}
 
-	// 元歌詞(字幕用)は読み込み直後に行対応づけまで済ませておく。ホストはいつ
-	// ペイロードを読んでも、いまの phrases に対応した originalLines を見られる
+	// 保存済みの行対応はそのまま復元し、未保存の場合だけ対応づける。
 	if (lyricsEnabled()) {
-		syncOriginalLines();
+		if (!Array.isArray(data.originalLines)
+			|| data.originalLines.length !== data.phrases?.length
+			|| !data.originalLines.every((line) => typeof line === "string")) {
+			syncOriginalLines();
+		}
 		saveData();
+	}
+	if (saveReceivedResult) {
+		try {
+			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "", { deduplicate: true });
+			data.generationHistoryId = entry.id;
+			saveData();
+			// Returning to the generation screen should select the received item,
+			// including when it reused an older matching result.
+			try {
+				let mainState;
+				try { mainState = JSON.parse(sessionStorage.getItem("soramimic-main")); } catch {}
+				if (!mainState || typeof mainState !== "object" || Array.isArray(mainState)) mainState = {};
+				mainState.historyId = entry.id;
+				delete mainState.unsavedResult;
+				delete mainState.pastResult;
+				delete mainState.lastConversion;
+				sessionStorage.setItem("soramimic-main", JSON.stringify(mainState));
+			} catch (error) { console.warn("生成画面の履歴選択を保存できませんでした:", error); }
+		} catch {
+			const status = $id("bridge-status");
+			status.hidden = false;
+			status.textContent = "ビデオの歌詞を読み込みましたが、過去の結果に保存できませんでした。「書き出し」でファイルに保存してください。";
+		}
 	}
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する
@@ -2651,7 +3003,7 @@ async function start() {
 	const toolbar = $id("editor-toolbar");
 	toolbar.hidden = false;
 	$id("btn-regenerate").disabled = true; // DB初期化が済むまで再生成は不可
-	$id("btn-regenerate").addEventListener("click", regenerate);
+	setupRegenerationConfirmation();
 	$id("btn-copy").addEventListener("click", copyResult);
 	$id("btn-undo").addEventListener("click", undo);
 	$id("btn-redo").addEventListener("click", redo);
@@ -2675,8 +3027,9 @@ async function start() {
 		});
 		app = core.app;
 		appFor = core.appFor;
-		currentVowelRatio = data.param && data.param.VOWEL_RATIO;
+		engineVowelRatio = data.param?.VOWEL_RATIO;
 		mecab = core.mecab;
+		visualization?.refresh();
 		// 自作リストで来た(生成画面から/旧データ)場合は、DB構築に使う正規化CSVを
 		// エントリに焼き付けてから組む。以後は localStorage を書き換えても
 		// この編集セッションのDBはぶれず、書き出しJSONも自己完結する(csvText契約)
@@ -2697,16 +3050,21 @@ async function start() {
 			db = await buildDatabase(app, data.wordlist, data.where);
 			dbWhere = data.where;
 			dbWordlistKey = wordlistKey(data.wordlist);
+			data.wordlistSource = await wordlistSource(data.wordlist);
+			saveData();
 		}
 		status.hidden = true;
+		settingsReady = true;
 		$id("btn-regenerate").disabled = !db;
-		$id("btn-reconvert").disabled = !db;
+		syncLineActions();
+		scheduleReverseSearch();
 		if (setupMode) {
 			$id("setup-progress").hidden = true;
 			// 初期化前に曲を選ぶ操作をしていたら、依頼中のロックは維持する
 			syncSetupControls();
 		}
 		renderPanel(); // 読み込み中表示のパネルが開いていたら差し替える
+		if (settingsDirty) saveSettings();
 	} catch (err) {
 		console.error(err);
 		status.textContent = "候補機能の初期化に失敗しました: " + err.message;
@@ -2716,4 +3074,54 @@ async function start() {
 }
 
 setupEmbedNavigation();
-start();
+if (window.parent === window) {
+	$id("editor-brand").addEventListener("click", async event => {
+		if (!data?.generationHistoryId || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+		event.preventDefault();
+		const href = event.currentTarget.href;
+		await Promise.all([...pendingHistoryWrites].map(write => write.catch(() => {})));
+		location.assign(href);
+	});
+}
+setupReplacementPanel();
+const initialization = (async () => {
+	const status = $id("bridge-status");
+	let received = false;
+	try {
+		if (new URL(location.href).searchParams.has("lyrics-transfer")) {
+			status.hidden = false;
+			status.textContent = "ビデオから歌詞を受け取っています…";
+		}
+		received = await window.SoramimicBridge.receive(videoPeer, (payload) => {
+			const problem = validateEditorData(payload);
+			if (problem) throw new Error(problem);
+			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
+		});
+		if (received) status.textContent = "ビデオの歌詞を読み込みました。";
+	} catch (error) {
+		status.hidden = false;
+		status.textContent = error.message;
+		// A failed handoff must not present an unrelated previous edit as this job.
+		setupImportExport();
+		$id("editor-empty").hidden = false;
+		return;
+	}
+	await start({ saveReceivedResult: received });
+})();
+// The same-origin video host waits for completion before reading shared storage.
+window.soramimicVideoReview = {
+	async regenerateUnlocked() {
+		let timer;
+		try {
+			await Promise.race([
+				initialization,
+				new Promise((_, reject) => {
+					timer = setTimeout(() => reject(new Error("候補の準備に時間がかかっています。もう一度お試しください")), 60000);
+				}),
+			]);
+		} finally { clearTimeout(timer); }
+		if (!isVideoReview(data)) throw new Error("歌詞確認画面を開き直してください");
+		if (regeneration) await regeneration;
+		await regenerate({ allUnlocked: true });
+	},
+};

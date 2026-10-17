@@ -1,10 +1,8 @@
 import "./style.css";
+import { setupLegacyLink } from "./legacyTransfer.js";
 import { startApp } from "./app.js";
 
-const INIT_TEXT =
-	"変換したい文章をここに入力してください。\n上のボタンでサンプルを試すこともできます";
-
-document.getElementById("input-text").value = INIT_TEXT;
+setupLegacyLink(document.getElementById("btn-legacy"), document.getElementById("legacy-status"));
 
 startApp().catch((err) => {
 	console.error(err);

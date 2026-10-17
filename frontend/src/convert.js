@@ -1,4 +1,5 @@
-// 変換前後のテキスト処理。widget/ConversionArea.js から移植(ロジック無改変)。
+// 変換前後のテキスト処理。
+import { rubySourceRanges } from "./lib/ruby.js";
 
 export const MAX_PHRASE_LENGTH = 40;
 
@@ -30,16 +31,26 @@ function originalHiragana(word) {
 
 // 長い行を区切り文字(改行・句読点・空白)を考慮して分割する
 export function splitLongLine(text, max_length) {
+	const ranges = rubySourceRanges(text);
 	let result = [];
 	let start = 0;
 	let length = max_length;
 	let delimiters = [/\r\n|\n|。/, /\s|、|,/];
 	while (start + length < text.length) {
+		const crossing = ranges.find((span) => span.start < start + length && start + length < span.end);
+		if (crossing) {
+			// Prefer cutting before an annotation. An annotation longer than the
+			// phrase limit stays intact because its reading cannot be guessed in parts.
+			length = (crossing.start > start ? crossing.start : crossing.end) - start;
+		}
+		if (start + length >= text.length) break;
 		for (let d of delimiters) {
-			if (d.test(text.substr(start, length)) === false) continue;
-			let tmp = text.substr(start, length).split(d);
-			let last = tmp[tmp.length - 1].length;
-			length = length - last;
+			const matches = [...text.substr(start, length).matchAll(new RegExp(d.source, "g"))]
+				.filter((match) => !ranges.some((span) =>
+					span.start <= start + match.index && start + match.index < span.end));
+			if (!matches.length) continue;
+			const last = matches.at(-1);
+			length = last.index + last[0].length;
 			break;
 		}
 		result.push(text.substr(start, length));
@@ -52,9 +63,15 @@ export function splitLongLine(text, max_length) {
 
 // 入力テキストを変換単位(フレーズ)の配列にする
 export function textToPhrases(text) {
-	const SPLITTER = "/";
-	text = text.replace(/\r\n|\n|\r/g, SPLITTER);
-	const raw_phrases = text.split(SPLITTER);
+	const ranges = rubySourceRanges(text);
+	const raw_phrases = [];
+	let start = 0;
+	for (const match of text.matchAll(/\r\n|\n|\r|\//g)) {
+		if (ranges.some((span) => span.start <= match.index && match.index < span.end)) continue;
+		raw_phrases.push(text.slice(start, match.index));
+		start = match.index + match[0].length;
+	}
+	raw_phrases.push(text.slice(start));
 	return raw_phrases.map((v) => splitLongLine(v, MAX_PHRASE_LENGTH)).flat();
 }
 
@@ -62,8 +79,8 @@ export function textToPhrases(text) {
 export function makeResultText(result, format) {
 	if (format == "1") {
 		return result.map((line) => {
-			let l1 = line.map((v) => v.surface).join("  "); //word
-			let l2 = line.map((v) => v.original_surface).join(""); //org
+			let l1 = line.map((v) => v.surface).join("  ");
+			let l2 = line.map((v) => v.original_surface).join("");
 			return [l1, l2, ""].join("\n");
 		}).join("\n");
 	} else if (format == "2") {

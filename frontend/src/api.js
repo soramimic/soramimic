@@ -1,5 +1,5 @@
-export async function fetchText(path) {
-	const res = await fetch(path);
+export async function fetchText(path, options) {
+	const res = await fetch(path, options);
 	if (!res.ok) throw new Error(`fetch failed: ${res.status} ${path}`);
 	return res.text();
 }

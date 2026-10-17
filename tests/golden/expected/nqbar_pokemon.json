@@ -5,9 +5,9 @@
  "results": [
   [
    {
-    "id": "701",
-    "kana": "デデンネ",
-    "original": "デデンネ",
+    "id": "545",
+    "kana": "モンメン",
+    "original": "モンメン",
     "original_surface": "ゴメンネ ",
     "originalkana": "ゴメンネ",
     "period": [
@@ -15,55 +15,53 @@
      3
     ],
     "pronunciation": [
-     "デ",
-     "デ",
-     "ン",
-     "ネ"
+     "モ",
+     "メー"
     ],
-    "score": 89.00375299746534,
-    "sim": 89.00375299746534,
-    "surface": "デデンネ",
-    "vcost": 0
+    "score": 77.07168307984128,
+    "sim": 77.07168307984128,
+    "surface": "モンメン",
+    "vcost": 2
    },
    {
-    "id": "144",
-    "kana": "サンダー",
-    "original": "サンダー",
-    "original_surface": "サンタ",
-    "originalkana": "サンタ",
+    "id": "170",
+    "kana": "ランターン",
+    "original": "ランターン",
+    "original_surface": "サンタサン ",
+    "originalkana": "サンタサン",
     "period": [
      3,
-     5
+     6
     ],
     "pronunciation": [
-     "サ",
+     "ラ",
      "ン",
-     "ダー"
+     "ター",
+     "ン"
     ],
-    "score": 30.14365622879158,
-    "sim": 30.14365622879158,
-    "surface": "サンダー",
+    "score": 28.721706678582972,
+    "sim": 28.721706678582972,
+    "surface": "ランターン",
     "vcost": 0
    },
    {
-    "id": "597",
-    "kana": "ナットレイ",
-    "original": "ナットレイ",
-    "original_surface": "サン ホッケー",
-    "originalkana": "サンホッケー",
+    "id": "445",
+    "kana": "ゴンベ",
+    "original": "ゴンベ",
+    "original_surface": "ホッケー",
+    "originalkana": "ホッケー",
     "period": [
-     5,
+     6,
      8
     ],
     "pronunciation": [
-     "ナ",
-     "ッ",
-     "ト",
-     "レー"
+     "ゴ",
+     "ン",
+     "ベ"
     ],
-    "score": 75.90518492203672,
-    "sim": 75.90518492203672,
-    "surface": "ナットレイ",
+    "score": 60.84312381253463,
+    "sim": 60.84312381253463,
+    "surface": "ゴンベ",
     "vcost": 0
    }
   ]

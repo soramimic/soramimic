@@ -37,6 +37,12 @@ function TokenFormatter(){
 		  
 		  return tokens;
 	}
+	//ルビ記法(｜表層《よみ》)で読みを明示指定したトークン。
+	//読みは確定済みなので、推定系の上書きやトークン結合の対象から外す
+	//(記法を使わない従来の入力にはこのフラグが付かないため、挙動は変わらない)
+	function isRuby(token){
+		return !!(token && token.ruby);
+	}
 	function isSmallKanaStart(char){
 		return /^[ぁぃぅぇぉゃゅょゎっァィゥェォヮャュョッ]/.test(char);
 	}
@@ -50,6 +56,7 @@ function TokenFormatter(){
 	
 	function concatSmallKana(tokens){
 		for(let i=1;i<tokens.length;i++){
+			if(isRuby(tokens[i]) || isRuby(tokens[i-1]))continue;
 			if(isSmallKanaStart(tokens[i].surface_form) && isKanaEnd(tokens[i-1].surface_form)){
 				tokens[i-1].surface_form += tokens[i].surface_form;
 				tokens[i-1].pronunciation += tokens[i].pronunciation;
@@ -77,6 +84,7 @@ function TokenFormatter(){
 	
 	function setKanaPronunciation(tokens){
 		tokens = tokens.map(token=>{
+			if(isRuby(token))return token;
 			if(isKana(token.surface_form)){
 				 token.pronunciation = hiraToKata(token.surface_form);
 				 if(token.pos === "記号")token.pos="名詞";
@@ -89,20 +97,23 @@ function TokenFormatter(){
 	//長音の処理
 	//単独のtokenがあれば、直前のtokenとくっつける
 	function concatSingleBar(tokens){
-		
-		  for(let i=1;i<tokens.length;i++){
-			  if(tokens[i]["surface_form"] === "ー"){
-				  tokens[i-1]["surface_form"] += "ー";  
-				  tokens[i-1]["pronunciation"] += "ー";
-			  }
-		  }
-		  tokens = tokens.filter(token=>token["surface_form"] !== "ー");
-		return tokens;
+		const out = [];
+		for(const token of tokens){
+			const previous = out[out.length - 1];
+			if(previous && !isRuby(token) && !isRuby(previous) && token.surface_form === "ー"){
+				previous.surface_form += "ー";
+				previous.pronunciation += "ー";
+			}else{
+				out.push(token);
+			}
+		}
+		return out;
 	}
 	
 	function setNumberPronunciation(tokens){
 		let n2p = {"1":"イチ","2":"ニ","3":"サン","4":"ヨン","5":"ゴ","6":"ロク","7":"ナナ","8":"ハチ","9":"キュウ","0":"ゼロ"}
 		tokens = tokens.map(token=>{
+			if(isRuby(token))return token;
 			// 複数桁も1トークンになる。仮読みは桁読みでよいので、まず編集可能な
 			// 発音ユニットを作り、必要なら編集ツールで「12→ジュウニ」のように直す。
 			if(/^[0-9]+$/.test(token.surface_form) &&
@@ -434,23 +445,6 @@ function Character(kanji){
 	  return output;
 	}
 
-	// 手動の表層↔読み割当(manualAlign)が、現在の表層/読みと整合するときだけ採用する。
-	// 形は kanjiAllocate と同じ [[surfaceChunk, yomiChunk], ...]。連結して元の
-	// surface_form / pronunciation に一致しなければ(読み修正後などで陳腐化していれば)
-	// 無効とみなし、通常の自動割当へフォールバックする。
-	function validManualAlign(align, surface_form, pronunciation){
-		if(!Array.isArray(align) || align.length === 0) return false;
-		let s = "", y = "";
-		for(const pair of align){
-			if(!Array.isArray(pair) || pair.length !== 2) return false;
-			if(typeof pair[0] !== "string" || typeof pair[1] !== "string") return false;
-			// balancedAllocate が 0 除算しないよう、各チャンクは表層・読みとも非空
-			if(pair[0].length === 0 || pair[1].length === 0) return false;
-			s += pair[0]; y += pair[1];
-		}
-		return s === surface_form && y === pronunciation;
-	}
-
 	//tokensはkuromojiのtokenizeの結果
 	function getCharCorrespondance(tokens, kanji_allocator){
 		//console.log("tokens getCharCorrespondance",tokens);
@@ -524,9 +518,7 @@ function Character(kanji){
 	      }];
 	    }else if(token.type == "nonkana" && token.surface_form.length > 1 && /^[\w']+$/.test(token.surface_form) == false){
 	    	//console.log("in if",token);
-		correspondance = validManualAlign(token.manualAlign, token.surface_form, token.pronunciation)
-    		? token.manualAlign
-    		: kanji_allocator.allocate(token.surface_form, token.pronunciation);
+		correspondance = kanji_allocator.allocate(token.surface_form, token.pronunciation);
 	      correspondance = correspondance.map(function([surface_form,yomi]){
 	    	 let c = balancedAllocate(surface_form, yomi);
 	    	 //surfaceが１文字のとき何もしない

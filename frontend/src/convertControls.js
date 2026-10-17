@@ -1,6 +1,8 @@
 // 変換の設定UI(パラメータ・単語重複・ファセット絞り込み)の共有部品。
 // 生成画面(app.js)と編集ツール(editor.js)の両方から使うため、
 // DOMのidには依存せずコンテナ要素を引数で受け取って中身を組み立てる。
+import { createPriorityWordControls } from "./priorityWordControls.js";
+import { normalizePriorityWords } from "./lib/priorityWords.js";
 
 // 単一選択のボタングループ
 export function setupButtonGroup(container, onChange) {
@@ -21,10 +23,10 @@ export function activeValue(container) {
 
 // 両端ラベル付きスライダーの1項目を作る(「音の合わせ方」「文節の区切り」「単語の長さ」で共通)。
 // val() は生のスライダー値(数値)を返す。ペナルティへの写像は paramFromValues() が行う。
-export function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel }) {
-	const item = document.createElement("div");
-	item.className = "param-item param-item-wide";
-	const title = document.createElement("h4");
+export function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel, collapsible = false }) {
+	const item = document.createElement(collapsible ? "details" : "div");
+	item.className = "param-item param-item-wide" + (collapsible ? " param-disclosure" : "");
+	const title = document.createElement(collapsible ? "summary" : "h4");
 	title.className = "field-label";
 	title.textContent = label;
 	const row = document.createElement("div");
@@ -87,6 +89,7 @@ export function paramFromValues(values) {
 		MID_PHRASE_BREAK_PENALTY: v.phrase * 20,
 		WORD_NUMBER_PENALTY: v.wordnum * 10,
 		DUPLICATE: v.duplicate === true || v.duplicate === "true",
+		PRIORITY_WORDS: normalizePriorityWords(v.priorityWords),
 	};
 }
 
@@ -101,15 +104,21 @@ export function valuesFromParam(param) {
 		phrase: clamp(Math.round(num(p.MID_PHRASE_BREAK_PENALTY, DEFAULT_VALUES.phrase * 20) / 20), 0, 8),
 		wordnum: clamp(Math.round(num(p.WORD_NUMBER_PENALTY, DEFAULT_VALUES.wordnum * 10) / 10), 0, 6),
 		duplicate: p.DUPLICATE === true,
+		priorityWords: normalizePriorityWords(p.PRIORITY_WORDS),
 	};
 }
 
 // パラメータUI(プリセット + スライダー3本 + 単語重複)をコンテナへ組み立てる。
 // - paramArea / presetArea は必須。duplicateArea は省略可(省略時 DUPLICATE=false 固定)
 // - duplicateArea が空なら「あり/なし」ボタンをここで作る(HTMLに置いてあればそれを使う)
-// - onChange(kind, detail) の kind は "preset" | "param" | "duplicate"
-export function createParamControls({ paramArea, presetArea, duplicateArea, values, onChange }) {
+// - priorityArea は省略可。指定時は検索用 getPriorityWords / getPriorityContext を渡す
+// - onChange(kind, detail) の kind は "preset" | "param" | "duplicate" | "priority"
+export function createParamControls({ paramArea, presetArea, duplicateArea, priorityArea, getPriorityWords, getPriorityContext, values, onChange, collapseSound = false }) {
 	const notify = (kind, detail) => { if (onChange) onChange(kind, detail); };
+	const priority = priorityArea ? createPriorityWordControls({
+		container: priorityArea, getWords: getPriorityWords, getContext: getPriorityContext,
+		onChange: () => notify("priority"),
+	}) : null;
 
 	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
 	// - 「音の合わせ方」= vowelRatio(r)。行列がコア音素タイブレーク方式になったので、
@@ -120,6 +129,7 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 		label: "音の合わせ方", leftText: "子音重視", rightText: "母音重視",
 		min: 0.1, max: 0.9, step: 0.1, defaultValue: DEFAULT_VALUES.sound,
 		ariaLabel: "音の合わせ方(子音重視〜母音重視)",
+		collapsible: collapseSound,
 	});
 	const iptPhrasebreak = createSliderItem({
 		label: "文節の区切り", leftText: "無視", rightText: "がっちり守る",
@@ -182,12 +192,14 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 			phrase: iptPhrasebreak.val(),
 			wordnum: iptWordnum.val(),
 			duplicate: duplicateArea ? activeValue(duplicateArea) === "true" : false,
+			...priority?.getValues(),
 		};
 	}
 
 	// 与えられたキーだけ反映する(欠けているキーは現状維持)
 	function setValues(v) {
 		if (!v) return;
+		priority?.setValues(v);
 		if (typeof v.sound === "number") iptSound.set(v.sound);
 		if (typeof v.phrase === "number") iptPhrasebreak.set(v.phrase);
 		if (typeof v.wordnum === "number") iptWordnum.set(v.wordnum);
@@ -221,6 +233,7 @@ export function createParamControls({ paramArea, presetArea, duplicateArea, valu
 
 	return {
 		getValues,
+		refreshPriority: () => priority?.refresh(),
 		setValues,
 		getParam: () => paramFromValues(getValues()),
 		applyPreset,
@@ -261,28 +274,63 @@ export function renderFacets(container, entry) {
 	for (const f of facets) {
 		const group = document.createElement("div");
 		group.className = "facet-group";
+		// 任意追加の対象は、未選択や旧設定の復元で暗黙に全件へ広げない。
+		group.__defaultClauses = f.defaultWhenEmpty
+			? f.values.filter((item) => item.default === true).map((item) => facetClause(f, item))
+			: [];
+		const header = document.createElement("div");
+		header.className = "facet-header";
 		const label = document.createElement("span");
 		label.className = "facet-label";
 		label.textContent = f.label || f.column || "";
-		group.appendChild(label);
+		const selectAllLabel = document.createElement("label");
+		selectAllLabel.className = "facet-check facet-select-all";
+		const selectAll = document.createElement("input");
+		selectAll.type = "checkbox";
+		selectAll.className = "facet-select-all-input";
+		selectAll.setAttribute("aria-label", `${label.textContent}をすべて選択`);
+		selectAllLabel.append(selectAll, document.createTextNode("(すべて選択)"));
+		header.append(label, selectAllLabel);
+		group.appendChild(header);
+		const options = document.createElement("div");
+		options.className = "facet-options";
+		group.appendChild(options);
+		const valueCheckboxes = [];
+		const syncSelectAll = () => {
+			const checkedCount = valueCheckboxes.filter((cb) => cb.checked).length;
+			selectAll.checked = checkedCount === valueCheckboxes.length;
+			selectAll.indeterminate = checkedCount > 0 && checkedCount < valueCheckboxes.length;
+		};
+		selectAll.addEventListener("change", () => {
+			for (const cb of valueCheckboxes) cb.checked = selectAll.checked;
+			syncSelectAll();
+		});
+		// default 指定がない facet は未チェックでも全選択扱いになるため、
+		// 同じ意味を保ったまま初期表示だけ分かりやすく全チェックにする。
+		const hasDefault = f.values.some((item) => item.default === true);
 		for (const item of f.values) {
 			const lbl = document.createElement("label");
 			lbl.className = "facet-check";
 			const cb = document.createElement("input");
 			cb.type = "checkbox";
+			cb.className = "facet-value";
 			cb.value = item.v;
-			cb.checked = item.default === true;
+			cb.checked = !hasDefault || item.default === true;
+			cb.addEventListener("change", syncSelectAll);
+			valueCheckboxes.push(cb);
 			// 各選択肢が担う where 断片を要素に持たせる(単一列に限らない)
 			cb.__where = facetClause(f, item);
 			lbl.append(cb, document.createTextNode(item.label || item.v));
-			group.appendChild(lbl);
+			options.appendChild(lbl);
 		}
+		syncSelectAll();
 		container.appendChild(group);
 	}
 }
 
 // 現在のチェック状態を where 文字列にコンパイルする。
-// 同一 facet 内は or、facet をまたぐと and。未チェックの facet は制約なし。
+// 同一 facet 内は or、facet をまたぐと and。未チェックは制約なしだが、
+// defaultWhenEmpty を指定した facet は既定の選択肢に戻す。
 // 各選択肢の断片は facetClause() が決める(column= / columns の or / 任意の where)。
 // facets 未定義のエントリは従来どおり entry.where を返す。
 export function compileWhere(container, entry) {
@@ -290,8 +338,9 @@ export function compileWhere(container, entry) {
 	if (facets.length === 0) return entry ? entry.where : undefined;
 	const clauses = [];
 	for (const group of container.querySelectorAll(".facet-group")) {
-		const frags = [...group.querySelectorAll("input:checked")]
+		let frags = [...group.querySelectorAll("input.facet-value:checked")]
 			.map((cb) => cb.__where);
+		if (frags.length === 0) frags = group.__defaultClauses || [];
 		if (frags.length === 0) continue; // 制約なし
 		clauses.push("(" + frags.join(" or ") + ")");
 	}
@@ -318,7 +367,17 @@ function containsFragment(where, frag) {
 // renderFacets の既定(default:true)のまま何もしない
 export function restoreFacets(container, where) {
 	if (typeof where !== "string") return;
-	for (const cb of container.querySelectorAll("input[type=checkbox]")) {
+	for (const cb of container.querySelectorAll("input.facet-value")) {
 		cb.checked = containsFragment(where, cb.__where);
+	}
+	for (const group of container.querySelectorAll(".facet-group")) {
+		const values = [...group.querySelectorAll("input.facet-value")];
+		if (!values.some((cb) => cb.checked) && group.__defaultClauses?.length) {
+			for (const cb of values) cb.checked = group.__defaultClauses.includes(cb.__where);
+		}
+		const selectAll = group.querySelector("input.facet-select-all-input");
+		const checkedCount = values.filter((cb) => cb.checked).length;
+		selectAll.checked = checkedCount === values.length;
+		selectAll.indeterminate = checkedCount > 0 && checkedCount < values.length;
 	}
 }

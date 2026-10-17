@@ -1,4 +1,10 @@
 .DS_Store
+
+# Claude Code local preferences and isolated sessions
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/worktrees/
+
 .project
 .pydevproject
 .Rhistory

@@ -3,8 +3,10 @@
 // 実行: npm run build && node tests/smoke.mjs
 // 形態素解析はkuromoji.jsでブラウザ内完結(外部API通信なし)。
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import { build } from "vite";
 import { chromium } from "playwright";
+import { Parser } from "../src/lib/wordList.js";
 import { buildXfMidi } from "../../tests/xfmidi-fixture.mjs";
 
 const PORT = 4199;
@@ -45,34 +47,19 @@ try {
 	await page.waitForFunction(
 		() => {
 			const t = document.getElementById("btn-convert").textContent;
-			return t === "変換" || t === "読み込みに失敗しました";
+			return t === "生成" || t === "読み込みに失敗しました";
 		},
 		{ timeout: 60000 },
 	);
 	const initState = await page.textContent("#btn-convert");
-	if (initState !== "変換") {
+	if (initState !== "生成") {
 		throw new Error("初期化失敗: " + initState + " / " + pageErrors.map((e) => e.message).join("; "));
 	}
-	const defaultFormat = await page.inputValue("#format-select");
-	if (defaultFormat !== "4") {
-		throw new Error("既定の出力形式が対応区切りではない: " + defaultFormat);
-	}
+	assert.equal(await page.locator("#format-select").count(), 0);
+	assert.equal(await page.locator("#output-text").evaluate(el =>
+		el.matches("input, textarea") || el.isContentEditable), false);
 
-	// format 4を新しい既定にしても、保存済みのformat 1は従来どおり復元する
-	await page.evaluate(() => {
-		sessionStorage.setItem("soramimic-main", JSON.stringify({ format: "1" }));
-	});
-	await page.reload();
-	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
-		{ timeout: 60000 },
-	);
-	const restoredFormat = await page.inputValue("#format-select");
-	if (restoredFormat !== "1") {
-		throw new Error("保存済みの出力形式を復元できない: " + restoredFormat);
-	}
-
-	// ---- 名前付き自作リスト: 旧データ移行と行内の選択・編集・削除 ----
+	// ---- 名前付き自作リスト: 旧1件データの移行・複数保存・編集・削除 ----
 	await page.evaluate(() => {
 		localStorage.removeItem("soramimic-custom-wordlists");
 		localStorage.setItem("originalWordlist", "山田,ヤマダ");
@@ -80,53 +67,169 @@ try {
 	});
 	await page.reload();
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	const migrated = await page.evaluate(() => ({
 		legacy: localStorage.getItem("originalWordlist"),
 		state: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")),
 	}));
-	if (migrated.legacy !== null || migrated.state.lists.length !== 1
+	if (migrated.legacy !== null || migrated.state.version !== 1
+		|| migrated.state.lists.length !== 1
 		|| migrated.state.lists[0].text !== "山田,ヤマダ") {
 		throw new Error("旧自作リストの移行に失敗: " + JSON.stringify(migrated));
 	}
-
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.setViewportSize({ width: 320, height: 568 });
 	const customTrigger = page.locator(".custom-wordlist-trigger");
 	const customMenu = page.locator("#custom-wordlist-menu");
+	const chooseWordlist = async (value) => {
+		await customTrigger.click();
+		await customMenu.locator(`[role="menuitemradio"][data-value="${value}"]`).click();
+	};
 	if (await customTrigger.getAttribute("aria-haspopup") !== "menu"
+		|| await customTrigger.getAttribute("aria-controls") !== "custom-wordlist-menu"
 		|| await customTrigger.getAttribute("aria-expanded") !== "false") {
 		throw new Error("自作リストtriggerのARIA属性が不正");
 	}
 	await customTrigger.click();
-	const row = customMenu.locator(".custom-wordlist-menu-row").first();
-	const rowState = await row.evaluate((el) => ({
-		roles: [...el.children].map((child) => child.getAttribute("role")),
-		labels: [...el.children].map((child) => child.getAttribute("aria-label")),
-		right: el.getBoundingClientRect().right,
-		heights: [...el.children].map((child) => child.getBoundingClientRect().height),
+	const rowStructure = await customMenu.locator(".custom-wordlist-menu-row").first().evaluate((row) => ({
+		children: [...row.children].map((el) => ({
+			role: el.getAttribute("role"),
+			label: el.ariaLabel,
+			icon: !!el.querySelector("svg[aria-hidden='true']"),
+		})),
+		nested: row.querySelectorAll("button button").length,
+		rect: (() => {
+			const rect = row.getBoundingClientRect();
+			return { left: rect.left, right: rect.right, width: rect.width };
+		})(),
+		heights: [...row.children].map((el) => el.getBoundingClientRect().height),
 	}));
-	if (rowState.roles.join(",") !== "menuitemradio,menuitem,menuitem"
-		|| !rowState.labels[1].includes("編集") || !rowState.labels[2].includes("削除")
-		|| rowState.right > 320 || rowState.heights.some((height) => height < 43)) {
-		throw new Error("自作リスト行の操作・狭幅配置が不正: " + JSON.stringify(rowState));
+	if (rowStructure.children.length !== 3
+		|| rowStructure.children[0].role !== "menuitemradio"
+		|| rowStructure.children[1].role !== "menuitem"
+		|| rowStructure.children[2].role !== "menuitem"
+		|| !rowStructure.children[1].label.includes("編集")
+		|| !rowStructure.children[2].label.includes("削除")
+		|| !rowStructure.children[1].icon || !rowStructure.children[2].icon
+		|| rowStructure.nested !== 0 || rowStructure.rect.left < 0
+		|| rowStructure.rect.right > 320 || rowStructure.heights.some((height) => height < 43)) {
+		throw new Error("自作リスト行の3操作・狭幅配置が不正: " + JSON.stringify(rowStructure));
 	}
+	// 基本キー操作と、閉じた後のtrigger focusを確認する。
 	await page.keyboard.press("End");
-	if ((await page.locator(":focus").textContent()).trim() !== "＋ 新しいリスト") {
-		throw new Error("自作リストメニューのEndキー操作に失敗");
+	if (await page.locator(":focus").getAttribute("aria-label") !== "「自作リスト」を削除") {
+		throw new Error("Endで末尾項目へ移動しない");
 	}
 	await page.keyboard.press("Home");
+	if (await page.locator(":focus").getAttribute("role") !== "menuitemradio") {
+		throw new Error("Homeで先頭項目へ移動しない");
+	}
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowUp");
 	await page.keyboard.press("Escape");
 	if (!await customMenu.isHidden() || !await customTrigger.evaluate((el) => el === document.activeElement)) {
 		throw new Error("Escapeでメニューを閉じてtriggerへfocusしない");
 	}
-
+	await customTrigger.click();
+	await page.keyboard.press("Tab");
+	if (!await customMenu.isHidden()) throw new Error("Tabでメニューが閉じない");
+	await customTrigger.click();
+	await page.mouse.click(2, 2);
+	if (!await customMenu.isHidden()) throw new Error("外側クリックでメニューが閉じない");
+	await page.click("#input-text");
+	assert(await page.locator("#input-text").evaluate(el => el === document.activeElement));
+	await customTrigger.click();
+	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
+	if (!await customTrigger.evaluate((el) => el.classList.contains("active")
+		&& el === document.activeElement)) {
+		throw new Error("保存済み自作リストの選択後にtriggerへfocusしない");
+	}
+	await customTrigger.focus();
+	await page.keyboard.press("ArrowDown");
+	const selectedMenuVisual = await customMenu.getByRole(
+		"menuitemradio", { name: "自作リスト", exact: true }).evaluate((el) => {
+		const style = getComputedStyle(el);
+		const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+		const luminance = (value) => {
+			const channels = rgb(value).map((n) => {
+				const v = n / 255;
+				return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+			});
+			return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+		};
+		const [hi, lo] = [luminance(style.color), luminance(style.backgroundColor)]
+			.sort((a, b) => b - a);
+		return {
+			contrast: (hi + 0.05) / (lo + 0.05),
+			outlineWidth: parseFloat(style.outlineWidth),
+			outlineStyle: style.outlineStyle,
+		};
+	});
+	if (selectedMenuVisual.contrast < 4.5 || selectedMenuVisual.outlineWidth < 2
+		|| selectedMenuVisual.outlineStyle === "none") {
+		throw new Error("ダークモードの選択行・focus表示が不明瞭: "
+			+ JSON.stringify(selectedMenuVisual));
+	}
+	await page.keyboard.press("Escape");
+	// 同じメニューから通常リストへ移ると、自作リストの選択状態を解除する。
+	await chooseWordlist("MARINE_LIFE");
+	if (await customTrigger.evaluate((el) => el.classList.contains("active"))) {
+		throw new Error("通常リスト選択後も自作リストがactiveのまま");
+	}
 	await customTrigger.click();
 	await customMenu.getByRole("menuitemradio", { name: "自作リスト", exact: true }).click();
 	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "「自作リスト」を編集" }).click();
+	await page.waitForSelector("#original-dialog[open]");
+	if (await page.inputValue("#original-text") !== "山田,ヤマダ") {
+		throw new Error("移行した自作リスト本文が編集画面に復元されない");
+	}
+	const darkColors = await page.evaluate(() => {
+		const input = getComputedStyle(document.getElementById("original-name"));
+		const textarea = getComputedStyle(document.getElementById("original-text"));
+		const dialog = getComputedStyle(document.getElementById("original-dialog"));
+		const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+		const luminance = (value) => {
+			const channels = rgb(value).map((n) => {
+				const v = n / 255;
+				return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+			});
+			return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+		};
+		const contrast = (fg, bg) => {
+			const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a);
+			return (hi + 0.05) / (lo + 0.05);
+		};
+		return {
+			inputContrast: contrast(input.color, input.backgroundColor),
+			textareaContrast: contrast(textarea.color, textarea.backgroundColor),
+			inputFontSize: parseFloat(input.fontSize),
+			dialogBackground: dialog.backgroundColor,
+			inputBackground: input.backgroundColor,
+			buttonsInsideViewport: [...document.querySelectorAll(
+				"#original-dialog .custom-wordlist-dialog-buttons button:not([hidden])")]
+				.every((button) => {
+					const rect = button.getBoundingClientRect();
+					return rect.left >= 0 && rect.right <= innerWidth;
+				}),
+		};
+	});
+	if (darkColors.inputContrast < 4.5 || darkColors.textareaContrast < 4.5
+		|| darkColors.dialogBackground !== darkColors.inputBackground
+		|| darkColors.inputFontSize < 16 || !darkColors.buttonsInsideViewport) {
+		throw new Error("ダークモード・狭幅の保存画面表示が不正: " + JSON.stringify(darkColors));
+	}
+	await page.fill("#original-name", "名字");
+	await page.fill("#original-text", "佐藤,サトウ");
+	await page.click("#original-register");
+	await page.emulateMedia({ colorScheme: "light" });
+	await page.setViewportSize({ width: 1280, height: 720 });
+
+	await customTrigger.click();
 	await customMenu.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
+	await page.waitForSelector("#original-dialog[open]");
 	const dropzoneText = await page.textContent("#btn-original-file");
 	if (!dropzoneText.includes("ここにドロップ") || !dropzoneText.includes("クリックして選択")) {
 		throw new Error("ファイルのドラッグ＆ドロップ案内が表示されない");
@@ -154,113 +257,260 @@ try {
 		throw new Error("ドロップしたファイルの読み込み状態が表示されない");
 	}
 	await page.fill("#original-name", "");
-	const tidyCustomText = readFileSync(
-		new URL("../../wordlists/nations.csv", import.meta.url), "utf8");
+	const uploadedText = "surface,pronunciation\n林檎,リンゴ";
 	const [chooser] = await Promise.all([
 		page.waitForEvent("filechooser"),
 		page.click("#btn-original-file"),
 	]);
 	await chooser.setFiles({
-		name: "nations.csv",
+		name: "食べ物.csv",
 		mimeType: "text/csv",
-		buffer: Buffer.from(tidyCustomText),
+		buffer: Buffer.from(uploadedText, "utf8"),
 	});
 	await page.waitForFunction(
 		(text) => document.getElementById("original-text").value === text,
-		tidyCustomText, { timeout: 10000 });
-	if (await page.inputValue("#original-name") !== "nations") {
-		throw new Error("ファイル名から自作リスト名が補完されない");
+		uploadedText, { timeout: 10000 });
+	if (await page.inputValue("#original-name") !== "食べ物"
+		|| !(await page.textContent("#original-status")).includes("1語")) {
+		throw new Error("自作リストファイルの名前・件数表示が不正");
 	}
-	await page.fill("#original-name", "食べ物");
 	await page.click("#original-register");
-	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
-		throw new Error("新規自作リストが選択されない");
-	}
-	await page.fill("#input-text", "にほん");
-	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => !document.getElementById("output-field").hidden
-			&& document.getElementById("output-text").value.length > 0,
-		{ timeout: 120000 },
-	);
-	const customOutput = await page.inputValue("#output-text");
-	if (!customOutput.includes("ニホン") || customOutput.includes("エラーが発生しました")) {
-		throw new Error("保存済み自作リストで変換できない: " + customOutput);
-	}
-	const [customEditor] = await Promise.all([
-		page.waitForEvent("popup"),
-		page.click("#btn-open-editor"),
-	]);
-	customEditor.on("pageerror", (e) => pageErrors.push(e));
-	await customEditor.waitForFunction(
-		() => !document.getElementById("btn-regenerate").disabled,
-		{ timeout: 120000 },
-	);
-	const editorWordlist = await customEditor.evaluate(() =>
-		JSON.parse(sessionStorage.getItem("soramimic-editor")).wordlist);
-	if (!editorWordlist.value.startsWith("CUSTOM:") || editorWordlist.originalText !== tidyCustomText) {
-		throw new Error("自作リストの編集ツール受け渡しが不正: " + JSON.stringify(editorWordlist));
-	}
-	await customEditor.click("#btn-regenerate");
-	await customEditor.waitForFunction(
-		() => !document.getElementById("btn-regenerate").disabled,
-		{ timeout: 120000 },
-	);
-	await customEditor.close();
-
-	// 非選択行の編集・削除では現在の選択を維持する。
-	await customTrigger.click();
-	await customMenu.getByRole("menuitem", { name: "「自作リスト」を編集" }).click();
-	await page.fill("#original-name", "名字");
-	await page.fill("#original-text", "佐藤,サトウ");
-	await page.click("#original-register");
-	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
-		throw new Error("非選択リスト編集後に選択が変わった");
-	}
-	await customTrigger.click();
-	page.once("dialog", (dialog) => dialog.accept());
-	await customMenu.getByRole("menuitem", { name: "「名字」を削除" }).click();
-	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
-		throw new Error("非選択リスト削除後に選択が変わった");
+	const savedCustom = await page.evaluate(() =>
+		JSON.parse(localStorage.getItem("soramimic-custom-wordlists")));
+	if (savedCustom.lists.length !== 2
+		|| savedCustom.lists[0].name !== "名字"
+		|| savedCustom.lists[0].text !== "佐藤,サトウ"
+		|| savedCustom.lists[1].name !== "食べ物") {
+		throw new Error("複数自作リストの保存に失敗: " + JSON.stringify(savedCustom));
 	}
 
-	// sessionStorageからCUSTOM:idを復元し、選択中削除は既定リストへ戻す。
+	// 選択中IDも既存sessionStorage経由で復元され、本文はlocalStorageから再構築される。
 	await page.reload();
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
-	if (!await page.locator(".custom-wordlist-trigger").evaluate((el) =>
-		el.classList.contains("active") && el.textContent.includes("食べ物"))) {
-		throw new Error("自作リスト選択の復元に失敗");
+	const restoredCustom = await page.evaluate(() => ({
+		active: document.querySelector(".custom-wordlist-trigger")?.classList.contains("active"),
+		label: document.querySelector(".custom-wordlist-trigger span:last-of-type")?.textContent,
+	}));
+	if (!restoredCustom.active || restoredCustom.label !== "食べ物") {
+		throw new Error("自作リスト選択の復元に失敗: " + JSON.stringify(restoredCustom));
 	}
-	await page.locator(".custom-wordlist-trigger").click();
+	await page.fill("#input-text", "りんご");
+	await page.click("#btn-convert");
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	await page.waitForSelector(".review-word");
+	assert.equal(page.context().pages().length, 1, "生成後は同じタブで編集する");
+	await page.goBack();
+	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
+
+	const latestResult = page.locator(".history-item").first();
+	const customOutput = await latestResult.locator(".history-preview").textContent();
+	if (!customOutput.includes("林檎") || customOutput.includes("エラーが発生しました")) {
+		throw new Error("保存済み自作リストで変換できない: " + customOutput);
+	}
+
+	// 非選択行を編集しても、現在選択しているリストを維持する。
+	await customTrigger.click();
+	await customMenu.getByRole("menuitem", { name: "「名字」を編集" }).click();
+	await page.fill("#original-name", "名字改");
+	await page.click("#original-register");
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リストの編集後に現在選択が変わった");
+	}
+
+	// 行の削除はcancelでは残り、accept後も非選択削除なら現在選択を維持する。
+	await customTrigger.click();
+	page.once("dialog", (dialog) => dialog.dismiss());
+	await customMenu.getByRole("menuitem", { name: "「名字改」を削除" }).click();
+	if ((await page.evaluate(() => JSON.parse(localStorage.getItem(
+		"soramimic-custom-wordlists")).lists.length)) !== 2) {
+		throw new Error("削除確認cancelでリストが消えた");
+	}
 	page.once("dialog", (dialog) => dialog.accept());
-	await page.locator("#custom-wordlist-menu").getByRole(
-		"menuitem", { name: "「食べ物」を削除" }).click();
+	await customMenu.getByRole("menuitem", { name: "「名字改」を削除" }).click();
+	if (await customTrigger.locator("span:last-of-type").textContent() !== "食べ物") {
+		throw new Error("非選択リスト削除後に現在選択が変わった");
+	}
+
+	// 選択中行のごみ箱から削除した場合は、既定リストへ安全に戻る。
+	await customTrigger.click();
+	page.once("dialog", (dialog) => dialog.accept());
+	await customMenu.getByRole("menuitem", { name: "「食べ物」を削除" }).click();
 	const afterDelete = await page.evaluate(() => ({
 		count: JSON.parse(localStorage.getItem("soramimic-custom-wordlists")).lists.length,
-		active: document.querySelector("#wordlist-buttons button.active")?.dataset.value,
+		active: document.querySelector("#wordlist-trigger").dataset.value,
+		triggerFocused: document.querySelector(".custom-wordlist-trigger") === document.activeElement,
 	}));
-	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL") {
-		throw new Error("選択中自作リスト削除後の状態が不正: " + JSON.stringify(afterDelete));
+	if (afterDelete.count !== 0 || afterDelete.active !== "BASEBALL" || !afterDelete.triggerFocused) {
+		throw new Error("自作リスト削除後の状態が不正: " + JSON.stringify(afterDelete));
 	}
-	await page.emulateMedia({ colorScheme: "light" });
-	await page.setViewportSize({ width: 1280, height: 720 });
+
+	// ---- ファセット: Excel風の「すべて選択」で全選択・全解除・中間状態を表す ----
+	await chooseWordlist("POKEMON");
+	await page.click("#generation-advanced > summary");
+	const initialFacetState = await page.locator("#wordlist-facets .facet-group").evaluateAll((groups) =>
+		groups.map((group) => ({
+			all: group.querySelectorAll("input.facet-value").length,
+			checked: group.querySelectorAll("input.facet-value:checked").length,
+			selectAll: group.querySelector("input.facet-select-all-input").checked,
+			indeterminate: group.querySelector("input.facet-select-all-input").indeterminate,
+		})));
+	if (initialFacetState.length === 0 || initialFacetState.some((s) =>
+		s.all === 0 || s.checked !== s.all || !s.selectAll || s.indeterminate)) {
+		throw new Error("既定指定のないファセットが全チェックで始まらない: " +
+			JSON.stringify(initialFacetState));
+	}
+	const firstFacet = page.locator("#wordlist-facets .facet-group").first();
+	const headerLayout = await firstFacet.locator(".facet-header").evaluate((header) => {
+		const label = header.querySelector(".facet-label").getBoundingClientRect();
+		const selectAll = header.querySelector(".facet-select-all").getBoundingClientRect();
+		return {
+			labelCenterY: label.top + label.height / 2,
+			selectAllCenterY: selectAll.top + selectAll.height / 2,
+			selectAllRight: selectAll.right,
+			headerRight: header.getBoundingClientRect().right,
+		};
+	});
+	if (Math.abs(headerLayout.labelCenterY - headerLayout.selectAllCenterY) > 1 ||
+		Math.abs(headerLayout.headerRight - headerLayout.selectAllRight) > 1) {
+		throw new Error("ファセットのすべて選択が見出し行の右端にない: " +
+			JSON.stringify(headerLayout));
+	}
+	const selectAll = firstFacet.getByRole("checkbox", { name: "タイプをすべて選択" });
+	await selectAll.uncheck();
+	if (await firstFacet.locator("input.facet-value:checked").count() !== 0) {
+		throw new Error("すべて選択を外しても個別チェックが外れない");
+	}
+	await selectAll.check();
+	if (await firstFacet.locator("input.facet-value:checked").count() !==
+		await firstFacet.locator("input.facet-value").count()) {
+		throw new Error("すべて選択を入れても全件チェックされない");
+	}
+	await firstFacet.locator("input.facet-value").first().uncheck();
+	await chooseWordlist("POKEMON");
+	assert(!await firstFacet.locator("input.facet-value").first().isChecked(),
+		"同じ単語リストを選び直しても絞り込みを保持する");
+	if (!await selectAll.evaluate((el) => el.indeterminate)) {
+		throw new Error("一部選択時にすべて選択が中間状態にならない");
+	}
+	// 科学者: 実際のUIが組み立てるwhereで、著名人博士の全行を任意選択できる。
+	await chooseWordlist("SCIENTIST");
+	const scope = page.locator("#wordlist-facets .facet-group").filter({ hasText: "通常の科学者" });
+	const ordinary = scope.locator("input.facet-value[value='no']");
+	const celebrities = scope.locator("input.facet-value[value='yes']");
+	assert(await ordinary.isChecked(), "通常の科学者が既定で選ばれていない");
+	assert(!await celebrities.isChecked(), "著名人博士が既定で選ばれている");
+	const fields = page.locator("#wordlist-facets .facet-group").filter({ hasText: "理学（専攻未詳）" });
+	const economics = fields.locator("input.facet-value[value='経済学']");
+	assert(!await economics.isChecked(), "分野の経済学が既定で選ばれている");
+	const config = await (await fetch(`http://localhost:${PORT}/conf/setting.json`)).json();
+	const scientist = config.wordlist.find((entry) => entry.value === "SCIENTIST");
+	const controlsBundle = await build({
+		configFile: false, logLevel: "silent",
+		build: { lib: { entry: new URL("../src/convertControls.js", import.meta.url).pathname,
+			formats: ["es"] }, write: false, minify: false },
+	});
+	const controlsSource = [controlsBundle].flat().flatMap(result => result.output)
+		.find(chunk => chunk.type === "chunk").code;
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(controlsSource).toString("base64")}`;
+	const getScientistWhere = () => page.evaluate(async ({ moduleUrl, scientist }) => {
+		const { compileWhere } = await import(moduleUrl);
+		return compileWhere(document.querySelector("#wordlist-facets"), scientist);
+	}, { moduleUrl, scientist });
+	const csv = await (await fetch(`http://localhost:${PORT}/wordlists/scientist.csv`)).text();
+	const [header, ...rows] = csv.trimEnd().split(/\r?\n/).map((line) => line.split(","));
+	const flagIndex = header.indexOf("celebrity_doctorate");
+	assert(flagIndex >= 0, "配信CSVに著名人博士フラグがない");
+	const fieldIndex = header.indexOf("field");
+	const reviewed = rows.filter((row) => row[flagIndex] === "yes" && row[fieldIndex] !== "経済学");
+	assert(reviewed.length > 0, "著名人博士の検証対象が空");
+	const parser = Parser();
+	assert(scientist.where && parser.filter(scientist.where, header, rows)
+		.every((row) => row[flagIndex] === "no"), "エントリの既定条件に著名人博士が混入した");
+	const defaults = parser.filter(await getScientistWhere(), header, rows);
+	const economicOnly = rows.filter((row) => row[fieldIndex] === "経済学" && row[flagIndex] === "no");
+	assert(economicOnly.length > 0, "経済学専業の検証対象が空");
+	assert(economicOnly.every((row) => !defaults.includes(row)),
+		"経済学をオフにした既定で経済学専業が選ばれた");
+	const mathematicalEconomists = rows.filter((row) => row[fieldIndex].split("/").includes("経済学")
+		&& row[fieldIndex].split("/").includes("数学") && row[flagIndex] === "no");
+	assert(mathematicalEconomists.length > 0 && mathematicalEconomists.every((row) => defaults.includes(row)),
+		"数学がオンなのに数学も兼ねる経済学者が除外された");
+	await economics.check();
+	const withEconomics = parser.filter(await getScientistWhere(), header, rows);
+	assert(economicOnly.every((row) => withEconomics.includes(row)),
+		"経済学をオンにしても経済学専業が選べない");
+	await economics.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"経済学をオフに戻せない");
+	assert(defaults.length > 0 && defaults.every((row) => row[flagIndex] === "no"),
+		"既定の科学者リストに著名人博士が混入した");
+	const nobel = page.locator("#wordlist-facets .facet-group").filter({ hasText: "ノーベル賞" });
+	const nobelAll = nobel.locator("input.facet-select-all-input");
+	const nobelIndex = header.indexOf("nobel");
+	const nobelOptions = { yes: ["yes"], other: ["no", "NA"] };
+	assert.equal(await nobel.locator("input.facet-value").count(), 2,
+		"ノーベル賞は受賞者とその他の2択にする");
+	assert.deepEqual([...new Set(defaults.map((row) => row[nobelIndex]))].sort(),
+		["NA", "no", "yes"], "科学者の初期選択で受賞歴による除外がある");
+	assert(await nobelAll.isChecked(), "ノーベル賞は既定ですべて選択する");
+	for (const [value, statuses] of Object.entries(nobelOptions)) {
+		await nobelAll.uncheck();
+		await nobel.locator(`input.facet-value[value='${value}']`).check();
+		assert.deepEqual(parser.filter(await getScientistWhere(), header, rows),
+			defaults.filter((row) => statuses.includes(row[nobelIndex])), "受賞歴を個別に絞れない");
+		assert(!await nobelAll.isChecked(), "一部の選択で「すべて」がチェックされる");
+		assert(await nobelAll.evaluate((cb) => cb.indeterminate),
+			"受賞歴の一部選択を「すべて」に反映できない");
+		await nobelAll.check();
+		assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+			"「すべて」で受賞歴による絞り込みを解除できない");
+	}
+	await celebrities.check();
+	const enabled = parser.filter(await getScientistWhere(), header, rows);
+	assert(reviewed.every((row) => enabled.includes(row)),
+		"著名人博士を選んでも分野・時代・ノーベル賞の条件で除外される");
+	await ordinary.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), reviewed,
+		"著名人博士だけに絞れない");
+	await ordinary.check();
+	await celebrities.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"著名人博士をオフに戻せない");
+	await ordinary.uncheck();
+	assert.deepEqual(parser.filter(await getScientistWhere(), header, rows), defaults,
+		"対象を全解除したときに著名人博士へ暗黙に広がる");
+	// 編集ツールで旧形式のwhereを復元する場合も、追加対象は既定オフ。
+	await page.evaluate(async (moduleUrl) => {
+		const { restoreFacets } = await import(moduleUrl);
+		restoreFacets(document.querySelector("#wordlist-facets"), "(field~=物理)");
+	}, moduleUrl);
+	assert(await ordinary.isChecked() && !await celebrities.isChecked(),
+		"旧設定の復元で著名人博士が既定オフにならない");
+	assert(parser.filter(await getScientistWhere(), header, rows)
+		.every((row) => row[flagIndex] === "no"), "旧設定の復元で著名人博士が混入した");
+
+	// 後続の既存変換テストは従来どおり既定の野球選手リストで行う。
+	await chooseWordlist("BASEBALL");
+	const baseballSelectAll = page.getByRole("checkbox", { name: "種類をすべて選択" });
+	if (!await baseballSelectAll.evaluate((el) => el.indeterminate)) {
+		throw new Error("既定が部分選択のファセットで中間状態にならない");
+	}
 
 	await page.fill("#input-text", "夢は今もめぐりて 忘れがたきふるさと");
 	await page.click("#btn-convert");
 
-	// 変換完了(出力欄に結果が入る)を待つ。単語リストのロード・解析込み
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	await page.waitForSelector(".review-word");
+	await page.goBack();
+	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
+	await page.click("#output-field > summary");
+	await latestResult.locator(".history-full > summary").click();
+	await page.waitForFunction(() => document.querySelector(".history-item .output-text").textContent);
 
-	const output = await page.inputValue("#output-text");
+	const output = await latestResult.locator(".output-text").textContent();
 	console.log("--- 変換結果 ---");
 	console.log(output);
 
@@ -271,9 +521,33 @@ try {
 		throw new Error("変換結果が空");
 	}
 
+	// ---- 結果コピー: 現在表示されている本文をそのままコピーする ----
+	await page.evaluate(() => {
+		window.__copiedResult = null;
+		navigator.clipboard.writeText = (text) => {
+			window.__copiedResult = text;
+			return Promise.resolve();
+		};
+	});
+	await latestResult.locator(".output-copy").click();
+	await page.waitForFunction(() => window.__copiedResult !== null, { timeout: 10000 });
+	const copiedResult = await page.evaluate(() => window.__copiedResult);
+	if (copiedResult !== output) {
+		throw new Error("出力結果とコピー内容が一致しない");
+	}
+	assert.equal(await page.getByRole("button", { name: "歌詞をコピー" }).count(), await page.locator(".history-item").count());
+	assert.equal(await latestResult.locator(".output-copy svg").count(), 1);
+	if (!await latestResult.locator(".output-copy").evaluate((el) => el.classList.contains("copy-success"))) {
+		throw new Error("コピー成功状態が表示されない");
+	}
+	if (await latestResult.locator("[role=status]").textContent() !== "コピーしました") {
+		throw new Error("コピー成功が読み上げ通知されない");
+	}
+
 	// ---- パラメータ永続化: 設定を変えてリロードしても復元されることを確認 ----
 	// プリセット「文節重視」(phrase=8)を選び、単語重複を「あり」にしてからリロードする
 	const phraseSlider = "input[aria-label='文節の区切り(無視〜がっちり守る)']";
+	await page.locator("#generation-advanced").evaluate(el => { el.open = true; });
 	await page.click("#preset-buttons button:has-text('文節重視')");
 	await page.click("#duplicate-buttons button[data-value='true']");
 	await page.waitForFunction((sel) => document.querySelector(sel).value === "8", phraseSlider);
@@ -281,7 +555,7 @@ try {
 	await page.waitForFunction(
 		() => {
 			const t = document.getElementById("btn-convert").textContent;
-			return t === "変換" || t === "読み込みに失敗しました";
+			return t === "生成" || t === "読み込みに失敗しました";
 		},
 		{ timeout: 60000 },
 	);
@@ -327,23 +601,14 @@ try {
 		throw new Error("元歌詞対応づけのステータスが想定外: " + alignStatus);
 	}
 
-	// ---- サンプルチップ: クリックで歌詞と単語リストが入り、自動で変換が始まる ----
-	// (完了まで待つと全曲変換で時間がかかるため、開始=ボタンdisabledまでを確認する)
-	await page.click("#sample-buttons button:has-text('ももたろう × ポケモン')");
-	await page.waitForFunction(
-		() => document.getElementById("input-text").value.includes("桃太郎さん"),
-		{ timeout: 15000 },
-	);
-	const sampleWordlist = await page.evaluate(
-		() => document.querySelector("#wordlist-buttons button.active")?.dataset.value,
-	);
-	if (sampleWordlist !== "POKEMON") {
-		throw new Error("サンプルチップで単語リストが切り替わらない: " + sampleWordlist);
-	}
-	await page.waitForFunction(
-		() => document.getElementById("btn-convert").disabled,
-		{ timeout: 15000 },
-	);
+	// サンプルは歌詞だけを読み込み、選択中のリストで生成できる。
+	const selectedBeforeSample = await customTrigger.getAttribute("data-value");
+	await page.click("#btn-sample-lyrics");
+	await page.getByRole("dialog", { name: "サンプル歌詞を選ぶ" }).getByRole("button", { name: "ももたろう", exact: true }).click();
+	await page.waitForFunction(() => document.getElementById("input-text").value.includes("桃太郎さん"));
+	assert.equal(await customTrigger.getAttribute("data-value"), selectedBeforeSample);
+	assert(!page.url().endsWith("editor.html"));
+	await page.click("#btn-convert");
 
 	// ---- 中止ボタン: 変換中に押すとUIが即座に待機状態へ戻る ----
 	await page.waitForSelector("#btn-cancel:not([hidden])", { timeout: 15000 });
@@ -351,31 +616,12 @@ try {
 	await page.waitForFunction(
 		() => {
 			const b = document.getElementById("btn-convert");
-			return !b.disabled && b.textContent === "変換" &&
+			return !b.disabled && b.textContent === "生成" &&
 				document.getElementById("progress").hidden &&
 				document.getElementById("btn-cancel").hidden;
 		},
 		{ timeout: 5000 },
 	);
-
-	// ---- 大規模な駅名リスト: 短い歌詞に不要な長さの候補を展開せず完了する ----
-	await page.click("#wordlist-buttons button[data-value='STATION']");
-	await page.fill("#input-text", "山の畑の、桑の実を");
-	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const button = document.getElementById("btn-convert");
-			const output = document.getElementById("output-text");
-			return !button.disabled && button.textContent === "変換"
-				&& !document.getElementById("output-field").hidden
-				&& output.value.length > 0;
-		},
-		{ timeout: 60000 },
-	);
-	const stationOutput = await page.inputValue("#output-text");
-	if (stationOutput.includes("エラーが発生しました")) {
-		throw new Error("駅名リストの変換がエラーで終了: " + stationOutput);
-	}
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

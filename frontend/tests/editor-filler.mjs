@@ -1,3 +1,4 @@
+import { regenerateAll, selectRange, menuAction } from "./editor-ui.mjs";
 // filler(万能候補)のE2E(#128)。
 // 語数の少ない自作リストで再変換すると、置ける単語が無い区間は「元歌詞のまま」の
 // filler チップ(破線)になり、行が空にならないこと。filler をタップすれば通常どおり
@@ -46,8 +47,8 @@ const CANDIDATE = "#editor-panel.open .panel-candidates .candidate";
 
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
@@ -71,36 +72,29 @@ try {
 	// ---- 生成画面で変換して編集ツールを開く ----
 	await page.goto(`${BASE}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	await page.fill("#input-text", "夢は今もめぐりて");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
+
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
+		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 
 	// ---- 語数の少ない自作リストで再変換する ----
-	await editor.click("#btn-settings");
+	await menuAction(editor, "#btn-settings");
 	await editor.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 	await editor.selectOption("#editor-wordlist", "ORIGINAL");
 	await editor.waitForSelector("#editor-original-dialog[open]", { timeout: 10000 });
 	await editor.fill("#editor-original-text", ORIGINAL_PLAIN);
 	await editor.click("#btn-original-register");
-	await editor.click("#btn-reconvert");
+	await waitIdle(editor);
+	await editor.click("#btn-settings-close");
+	await regenerateAll(editor);
 	await waitIdle(editor);
 
 	// ---- 空行にならず、埋まらない区間が filler になっている ----
@@ -127,38 +121,35 @@ try {
 	}
 
 	// ---- 表示: 破線の控えめなチップ・🔒は出さない ----
-	const fillerChips = editor.locator(".editor-line[data-line='0'] .chip-word.filler");
-	assert(await fillerChips.count() === fillers.length,
-		"fillerチップの数が結果と一致しない");
+	const fillerChips = editor.locator(".editor-line[data-line='0'] .review-word.filler");
+	assert((await fillerChips.allTextContents()).join("") === fillers.map((word) => word.surface).join(""),
+		"未対応の読みが一覧で欠落した");
 	// 候補差し替えの検証には、1モーラ語しかないテスト用リストに合わせて
 	// 1ユニットのfillerを選ぶ（複数ユニット漢字のfiller表示は上で検証済み）。
 	const replaceIndex = fillers.findIndex((f) => f.period[1] - f.period[0] === 1);
 	assert(replaceIndex >= 0, "差し替え可能な1ユニットfillerがない");
 	const replaceFiller = fillers[replaceIndex];
-	const replaceChip = fillerChips.nth(replaceIndex);
+	const replaceChip = fillerChips.first();
 	const style = await replaceChip.evaluate((el) => {
 		const s = getComputedStyle(el);
-		return { borderStyle: s.borderTopStyle, text: el.textContent, locks: el.querySelectorAll(".chip-lock").length };
+		return { borderStyle: s.borderTopStyle, text: el.textContent, locks: el.querySelectorAll(".chip-lock-icon").length, start: Number(el.dataset.start), end: Number(el.dataset.end) };
 	});
 	assert(style.borderStyle === "dashed", "fillerチップが破線になっていない: " + style.borderStyle);
 	assert(style.locks === 0, "fillerチップに🔒が出ている");
-	assert(style.text === replaceFiller.surface,
-		`fillerチップの文字が元歌詞のかなでない: ${style.text} != ${replaceFiller.surface}`);
+	assert(style.text === units.slice(style.start, style.end).join(""),
+		"未対応の範囲と表示する読みが一致しない");
 
 	// ---- タップすると候補パネルが開き、実単語に差し替えられる ----
 	await replaceChip.click();
+	await editor.waitForSelector(".review-unit");
+	await selectRange(editor, 0, replaceFiller.period[0], replaceFiller.period[1] - 1);
 	await editor.waitForSelector(CANDIDATE, { timeout: 30000 });
 	const candCount = await editor.locator(CANDIDATE).count();
 	assert(candCount > 0, "fillerをタップしても候補が出ない");
 	const picked = await editor.locator(CANDIDATE + " .candidate-surface").first()
 		.evaluate((el) => el.textContent.replace(/×\d+$/, ""));
 	await editor.locator(CANDIDATE).first().click();
-	await editor.waitForSelector(".panel-candidate-apply", { timeout: 10000 });
-	assert((await readData(editor)).results[0].some((w) => w.filler &&
-		w.period[0] === replaceFiller.period[0] && w.period[1] === replaceFiller.period[1]),
-		"候補選択だけでfillerが差し替えられた");
-	await editor.click(".panel-candidate-apply");
-	await editor.waitForSelector(".editor-line[data-line='0'] .chip-word.locked", { timeout: 10000 });
+	await editor.waitForSelector(".editor-line[data-line='0'] .review-word.locked", { timeout: 10000 });
 
 	const after = await readData(editor);
 	const replaced = after.results[0].find(
@@ -170,8 +161,8 @@ try {
 		`差し替えた単語が候補と違う: ${replaced.surface} != ${picked}`);
 	assert(after.results[0].filter((w) => w.filler).length === fillers.length - 1,
 		"差し替えでfillerが1つ減っていない");
-	assert(await editor.locator(".editor-line[data-line='0'] .chip-word.filler").count()
-		=== fillers.length - 1, "表示上のfillerチップが減っていない");
+	assert((await fillerChips.allTextContents()).join("") === after.results[0].filter((word) => word.filler).map((word) => word.surface).join(""),
+		"差し替え後の未対応範囲が一覧と一致しない");
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

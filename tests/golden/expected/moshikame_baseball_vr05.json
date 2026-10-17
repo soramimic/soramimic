@@ -324,62 +324,43 @@
     "vcost": 0
    },
    {
-    "id": "4010",
-    "kana": "ソン",
-    "original": "宋相勲",
-    "original_surface": "そん",
-    "originalkana": "ソン",
+    "id": "8688",
+    "kana": "ソタニ",
+    "original": "曽谷龍平",
+    "original_surface": "そんなに ",
+    "originalkana": "ソンナニ",
     "period": [
      3,
-     4
+     6
     ],
     "pronunciation": [
      "ソ",
-     "ン"
-    ],
-    "score": 20,
-    "sim": 0,
-    "surface": "宋",
-    "vcost": 0
-   },
-   {
-    "id": "4486",
-    "kana": "タニノ",
-    "original": "谷野彰",
-    "original_surface": "なに の",
-    "originalkana": "ナニノ",
-    "period": [
-     4,
-     7
-    ],
-    "pronunciation": [
      "タ",
-     "ニ",
-     "ノ"
+     "ニ"
     ],
-    "score": 56.52545972341244,
-    "sim": 36.52545972341244,
-    "surface": "谷野",
+    "score": 46.52545972341244,
+    "sim": 46.52545972341244,
+    "surface": "曽谷",
     "vcost": 0
    },
    {
-    "id": "8367",
-    "kana": "ロイ",
-    "original": "トニー・ロイ",
-    "original_surface": "ろい",
-    "originalkana": "ロイ",
+    "id": "5635",
+    "kana": "ノリン",
+    "original": "ショーン・ノリン",
+    "original_surface": "のろい",
+    "originalkana": "ノロイ",
     "period": [
-     7,
+     6,
      9
     ],
     "pronunciation": [
-     "ロ",
-     "イ"
+     "ノ",
+     "リー"
     ],
-    "score": 0,
-    "sim": 0,
-    "surface": "ロイ",
-    "vcost": 0
+    "score": 47.80672312505219,
+    "sim": 47.80672312505219,
+    "surface": "ノリン",
+    "vcost": 1
    },
    {
     "id": "5585",

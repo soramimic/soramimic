@@ -148,7 +148,7 @@ print("[ok] fillerは使用済み(単語重複なし)の対象外で何度でも
 
 // ---- 4b. 複数ユニットの1文字も途中で切らずにfillerで覆う ----
 {
-	const noMatchDb = wordList.parsePlain(["クケコサ"].join("\n"));
+	const noMatchDb = await wordList.parsePlain(["クケコサ"].join("\n"));
 	const phrase = "畑";
 	const phraseUnits = unitsOf(phrase);
 	assert.deepEqual(phraseUnits, ["ハ", "タ", "ケ"], "畑は3ユニット");
