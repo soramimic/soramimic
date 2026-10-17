@@ -90,6 +90,66 @@ for (const syllables of [
 }
 print('[ok] graph matching agrees with exhaustive exact/coarse scores and source weights');
 
+// Fractional scores expose rounding changes, while partial weights retain source
+// positions after deletions and expansion. Force the graph path on the same
+// bounded inputs as an additional reference for the small-query DP.
+let randomState = 0x617cf;
+const random = n => {
+  randomState = (Math.imul(randomState,1664525)+1013904223)>>>0;
+  return randomState%n;
+};
+const pick = values => values[random(values.length)];
+const floats = [0,.1,1/3,1e-12,1e12,2**53];
+const fractionalDist = Object.fromEntries(units.map(left=>[left,
+  Object.fromEntries(units.map(right=>[right,pick(floats)]))]));
+for (let sample=0;sample<160;sample++) {
+  const syllables = Array.from({length:1+random(4)},()=>pick(['カ','カー','カン','カーン','カーッ','ンッ',null]));
+  const word = Array.from({length:1+random(4)},()=>pick(['カー','カ','キー','キ','ン','ッ']));
+  const variants = k2s.getVariation(syllables);
+  const weights = sample%3 ? Array.from({length:random(syllables.length+1)},()=>pick([0,.3,1.9])) : null;
+  const cost = pick([0,.1,16.25,-.125]), wordCost = random(4), ratio = pick([.2,.5,.8]);
+  for (const size of [...new Set(wordVariants(word).map(v=>v.length))]) {
+    const search = new PronunciationSearch(syllables,[size]);
+    const graph = new PronunciationSearch(syllables,[size]);
+    graph.compact = true;
+    let exact = Infinity, coarse = Infinity;
+    for (const left of variants) for (const right of wordVariants(word)) {
+      if (left.length!==size || right.length!==size) continue;
+      let e = 0, c = (left.vcost+wordCost)*cost;
+      for (let i=0;i<size;i++) {
+        const sourceWeight = weights?.[left.srcIndex[i]];
+        const weight = typeof sourceWeight==='number' ? sourceWeight : 1;
+        e += fractionalDist[left[i]][right[i]]*weight;
+        const a = features(left[i]), b = features(right[i]);
+        if ((a>>>8)!==(b>>>8)) c += 5*ratio*weight;
+        if ((a&255)!==(b&255)) c += 5*(1-ratio)*weight;
+      }
+      exact = Math.min(exact,e+(left.vcost+wordCost)*cost);
+      coarse = Math.min(coarse,c);
+    }
+    const context = JSON.stringify({syllables,word,size,weights,cost,wordCost,ratio});
+    for (const scorer of [search,graph]) {
+      assert.equal(scorer.scoreExpanded(word,size,fractionalDist,cost,wordCost,weights),exact,context);
+      assert.equal(scorer.coarseScoreExpanded(word,size,features,ratio,cost,wordCost,weights),coarse,context);
+    }
+  }
+}
+print('[ok] small-query DP and graph scores retain exhaustive fractional, partial-weight and deletion results');
+
+// A required expansion at every word position has only one possible alignment.
+// Count actual distance lookups so impossible shorter paths cannot creep back in.
+{
+  let comparisons = 0;
+  const countedDist = Object.fromEntries(units.map(left=>[left,new Proxy(dist[left],{
+    get(row,right){ comparisons++; return row[right]; },
+  })]));
+  const search = new PronunciationSearch(Array(72).fill('カ'),[72]);
+  assert.equal(search.scoreExpanded(Array(36).fill('カー'),72,countedDist),
+    Array(36).fill(0).reduce(score=>score+dist['カ']['カ']+dist['カ']['ア'],0));
+  assert.equal(comparisons,72,'forced expansions compare each mora once');
+}
+print('[ok] forced long-vowel expansions prune all impossible shorter paths');
+
 // More IDs than the approximation threshold force the coarse shortlist path.
 const many = await app.wordList.parsePlain([
   'ナゲール',...Array.from({length:24},(_,i)=>`別語${i},${i%2 ? 'キキキキ' : 'クククク'}`),
@@ -135,6 +195,8 @@ const dist = Object.fromEntries(units.map(a=>[a,Object.fromEntries(units.map(b=>
 const maker = SoramimiMaker({getKanaSimilarity:()=>dist},analyzer,{カ:['k','a'],ア:['sp','a']});
 const full = maker.getCandidates(db,Array(36).fill('カー'),{APPROX_CANDIDATES:0},1);
 assert.equal(full[0].sim,0);
+// One lyric path against 2**36 word paths must also stay compact.
+assert.equal(maker.getCandidates(db,Array(54).fill('カ'),{APPROX_CANDIDATES:0},1)[0].sim,36);
 const intermediate = Array(18).fill(['カ','ア']).flat().concat(Array(18).fill('カ'));
 assert.equal(maker.getCandidates(db,intermediate,{APPROX_CANDIDATES:0},1)[0].sim,18);
 assert.equal(maker.getCandidates(db,Array(36).fill('カン'),
