@@ -9,8 +9,15 @@ on:
       - 'frontend/scripts/prepare-legacy.mjs'
       - 'frontend/tests/legacy-transfer.mjs'
       - '.github/scripts/ensure-legacy-project.mjs'
+      - '.github/scripts/ensure-legacy-domain.mjs'
+      - 'tests/legacy-domain.mjs'
       - '.github/workflows/legacy.yaml'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      domain_only:
+        description: 'Configure the legacy domain without rebuilding the frozen site'
+        type: boolean
+        default: false
 
 concurrency:
   group: legacy-pages-${{ github.event.pull_request.number || 'deployment' }}
@@ -20,7 +27,21 @@ permissions:
   contents: read
 
 jobs:
+  configure-domain:
+    if: github.event_name == 'workflow_dispatch' && inputs.domain_only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/legacy-domain.mjs
+      - run: node .github/scripts/ensure-legacy-domain.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   deploy-legacy:
+    if: inputs.domain_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +70,8 @@ jobs:
           cache-dependency-path: |
             tooling/frontend/package-lock.json
             frozen/frontend/package-lock.json
+      - name: Verify domain configuration safeguards
+        run: node tooling/tests/legacy-domain.mjs
       - run: npm ci
         working-directory: frozen/frontend
       - run: npm run build
@@ -79,14 +102,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frozen/frontend
           command: pages deploy dist --project-name soramimic-legacy --branch legacy
+      - name: Ensure legacy custom domain
+        if: github.event_name != 'pull_request'
+        run: node tooling/.github/scripts/ensure-legacy-domain.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Verify public legacy
         if: github.event_name != 'pull_request'
         run: |
-          curl --fail --retry 6 --retry-all-errors --retry-delay 5 https://soramimic-legacy.pages.dev/legacy-release.json -o legacy-live.json
+          curl --fail --retry 30 --retry-all-errors --retry-delay 10 https://legacy.soramimic.com/legacy-release.json -o legacy-live.json
           node --input-type=module -e '
             import fs from "node:fs";
             const actual = JSON.parse(fs.readFileSync("legacy-live.json", "utf8"));
             const expected = JSON.parse(fs.readFileSync("tooling/conf/legacy-release.json", "utf8"));
             if (actual.commit !== expected.commit) throw new Error("Frozen release mismatch");
           '
-          echo 'Legacy: https://soramimic-legacy.pages.dev/' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Legacy: https://legacy.soramimic.com/' >> "$GITHUB_STEP_SUMMARY"

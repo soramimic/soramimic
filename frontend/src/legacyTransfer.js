@@ -1,6 +1,7 @@
 import { createCustomWordlistRepository, CUSTOM_WORDLISTS_STORAGE_KEY } from "./customWordlists.js";
 
-export const LEGACY_ORIGIN = "https://soramimic-legacy.pages.dev";
+export const LEGACY_ORIGIN = "https://legacy.soramimic.com";
+export const LEGACY_ORIGINS = new Set([LEGACY_ORIGIN, "https://soramimic-legacy.pages.dev"]);
 export const TRANSFER_CHANNEL = "soramimic-legacy-wordlists-v1";
 export const SOURCE_ORIGINS = new Set([
 	"https://soramimic.com", "https://soramimic.pages.dev",
