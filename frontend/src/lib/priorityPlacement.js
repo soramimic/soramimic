@@ -29,9 +29,9 @@ const planKey = plan => JSON.stringify(plan.placements.map(item =>
 	[item.preference, item.line, item.word.period, item.word.surface]));
 const rankPlans = (a, b) => b.placements.length - a.placements.length || a.cost - b.cost;
 
-// Find several complete assignments, keeping the user's existing locks intact.
-// Generation later evaluates the remaining gaps for a small set of alternatives.
-export async function findPriorityPlans({ unitsList, wordlist, preferences, locks = [], param,
+// Choose placements by requested-word coverage, then phonetic and boundary cost.
+// Keep alternatives during the search, then generate the remaining gaps only once.
+export async function findPriorityPlan({ unitsList, wordlist, preferences, locks = [], param,
 	scoreRange, signal, onProgress }) {
 	const requested = normalizePriorityWords(preferences);
 	onProgress?.({ preferenceIndex: 0, preferenceCount: requested.length, lineIndex: 0, lineCount: unitsList.length });
@@ -69,7 +69,7 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 							await new Promise(resolve => setTimeout(resolve, 0));
 							yielded = performance.now();
 						}
-						if (signal?.aborted) return [];
+						if (signal?.aborted) return null;
 						const target = units.slice(start, end).map(unit => unit.pronunciation);
 						const word = scoreRange(subset, target, line, start, end);
 						if (!word || !Number.isFinite(word.sim)) continue;
@@ -101,7 +101,6 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 	// Scarce words go first, but retain alternative assignments and omission paths.
 	groups.sort((a, b) => a.candidates.length - b.candidates.length || a.preference - b.preference);
 	let beam = [{ placements: [], cost: 0 }];
-	const partials = [];
 	for (const group of groups) {
 		const next = [];
 		for (const plan of beam) {
@@ -116,15 +115,9 @@ export async function findPriorityPlans({ unitsList, wordlist, preferences, lock
 		const unique = new Map();
 		for (const plan of next) if (!unique.has(planKey(plan))) unique.set(planKey(plan), plan);
 		beam = [...unique.values()].slice(0, BEAM_SIZE);
-		partials.push(...beam);
 	}
-	const plans = [...beam.slice(0, 2)];
-	const bestCount = plans[0]?.placements.length || 0;
-	const partial = [...beam, ...partials].filter(plan => plan.placements.length < bestCount).sort(rankPlans)[0];
-	if (partial) plans.push(partial);
-	plans.push({ placements: [], cost: 0 });
-	const unique = new Map(plans.map(plan => [planKey(plan), plan]));
-	return [...unique.values()].map(plan => ({ ...plan,
+	const plan = beam[0];
+	return { ...plan,
 		locks: unitsList.map((_, line) => [...(locks[line] || []),
-			...plan.placements.filter(item => item.line === line).map(item => item.word)]) }));
+			...plan.placements.filter(item => item.line === line).map(item => item.word)]) };
 }
