@@ -48,6 +48,7 @@ function longWordGraph(units){
 
 // Equivalent algorithms: this switches representation, never drops alternatives.
 const MAX_ENUMERATED_VARIATIONS = 256;
+const MAX_EXPANDED_LYRIC_VARIANTS = 16;
 
 export class PronunciationSearch {
 	// Diagnostics may restrict alternatives without changing normal searches.
@@ -71,6 +72,7 @@ export class PronunciationSearch {
 			counts = next;
 		}
 		this.lengths = [...wanted].filter(n=>counts.has(n)).sort((a,b)=>a-b);
+		this.smallExpansionLengths = this.lengths.filter(n=>counts.get(n)<=MAX_EXPANDED_LYRIC_VARIANTS);
 		// Small-query enumeration also includes lengths absent from the dictionary.
 		this.compact = [...counts.values()].reduce((a,b)=>a+b,0)>MAX_ENUMERATED_VARIATIONS;
 		this.maximum = maximum;
@@ -166,8 +168,93 @@ export class PronunciationSearch {
 		return best;
 	}
 
+	// As with small ン/ッ queries, enumerate only the bounded lyric alternatives.
+	// The word stays compact: prefixes with the same expansion count share a score.
+	prepareExpandedVariants(length){
+		this.expandedVariants ||= new Map();
+		if(this.expandedVariants.has(length))return this.expandedVariants.get(length);
+		let prefixes = [{units:[],sources:[],cost:0}];
+		for(let level=0;level<this.levels.length;level++){
+			const {source,options} = this.levels[level];
+			const next = [];
+			for(const prefix of prefixes)for(const option of options){
+				const size = prefix.units.length+option.units.length;
+				if(size+this.suffixMin[level+1]>length || size+this.suffixMax[level+1]<length)continue;
+				next.push({units:[...prefix.units,...option.units],
+					sources:[...prefix.sources,...option.units.map(()=>source)],cost:prefix.cost+option.cost});
+			}
+			prefixes = next;
+		}
+		this.expandedVariants.set(length,prefixes);
+		return prefixes;
+	}
+
+	distanceExpandedSmall(pronunciation,length,extend,variationCost,wordCost,weights,plannedCost){
+		const extra = length-pronunciation.length;
+		if(extra<0)return Infinity;
+		const expansions = pronunciation.map(longVowelExpansion);
+		const remaining = new Uint32Array(pronunciation.length+1);
+		for(let i=pronunciation.length-1;i>=0;i--)remaining[i] = remaining[i+1]+Number(!!expansions[i]);
+		if(extra>remaining[0])return Infinity;
+		const singlePath = extra===0 || extra===remaining[0];
+		let current, next;
+		if(!singlePath){ current = new Float64Array(extra+1); next = new Float64Array(extra+1); }
+		const coarse = plannedCost!==null;
+		let best = Infinity;
+		for(const variant of this.prepareExpandedVariants(length)){
+			if(coarse && variationCost && variant.cost!==plannedCost)continue;
+			const initial = coarse ? (plannedCost+wordCost)*variationCost : 0;
+			const weightAt = position=>weights && typeof weights[variant.sources[position]]==="number"
+				? weights[variant.sources[position]] : 1;
+			if(singlePath){
+				let score = initial, position = 0;
+				for(let i=0;i<pronunciation.length;i++){
+					const units = extra ? expansions[i] : null;
+					if(units){
+						score = extend(score,variant.units[position],units[0],weightAt(position));
+						if(!Number.isFinite(score))break;
+						position++;
+						score = extend(score,variant.units[position],units[1],weightAt(position));
+					}else{
+						score = extend(score,variant.units[position],pronunciation[i],weightAt(position));
+					}
+					if(!Number.isFinite(score))break;
+					position++;
+				}
+				if(Number.isFinite(score))best = Math.min(best,coarse ? score : score+(variant.cost+wordCost)*variationCost);
+				continue;
+			}
+			current.fill(Infinity);
+			current[0] = initial;
+			for(let i=0;i<pronunciation.length;i++){
+				next.fill(Infinity);
+				for(let used=Math.max(0,extra-remaining[i]);used<=Math.min(extra,remaining[0]-remaining[i]);used++){
+					const score = current[used];
+					if(!Number.isFinite(score))continue;
+					const position = i+used;
+					if(used+remaining[i+1]>=extra){
+						const value = extend(score,variant.units[position],pronunciation[i],weightAt(position));
+						if(Number.isFinite(value) && value<next[used])next[used] = value;
+					}
+					if(expansions[i] && used<extra && used+1+remaining[i+1]>=extra){
+						const [head,vowel] = expansions[i];
+						const first = extend(score,variant.units[position],head,weightAt(position));
+						if(!Number.isFinite(first))continue;
+						const value = extend(first,variant.units[position+1],vowel,weightAt(position+1));
+						if(Number.isFinite(value) && value<next[used+1])next[used+1] = value;
+					}
+				}
+				[current,next] = [next,current];
+			}
+			best = Math.min(best,coarse ? current[extra] : current[extra]+(variant.cost+wordCost)*variationCost);
+		}
+		return best;
+	}
+
 	distanceExpanded(pronunciation,length,extend,variationCost,wordCost,weights,plannedCost=null){
 		if(!this.lengths.includes(length))return Infinity;
+		if(!this.compact && this.smallExpansionLengths.includes(length))return this.distanceExpandedSmall(pronunciation,length,extend,
+			variationCost,wordCost,weights,plannedCost);
 		this.graph ||= pronunciationGraph(this.levels);
 		const left = this.graph, right = longWordGraph(pronunciation);
 		const coarse = plannedCost!==null;
