@@ -1101,8 +1101,8 @@ export async function startApp() {
 							const line = progressInfo.lineIndex > 0 && progressInfo.lineCount > 1
 								? ` (${progressInfo.lineIndex}/${progressInfo.lineCount}行)` : "";
 							progressText.textContent = `${preference}配置候補を探索中...${line}`;
-						} else if (progressInfo.stage === "evaluating") {
-							progressText.textContent = `配置案 ${progressInfo.planIndex}/${progressInfo.planCount} を評価中 (${progressInfo.completedLines}/${progressInfo.lineCount}行)`;
+						} else if (progressInfo.stage === "generating") {
+							progressText.textContent = `残りを生成中 (${progressInfo.completedLines}/${progressInfo.lineCount}行)`;
 						} else {
 							progressText.textContent = `${progressInfo.completedLines}/${progressInfo.lineCount}`;
 						}
