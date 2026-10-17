@@ -2,7 +2,7 @@
 import { zip } from "./utils.js";
 import { PronunciationSearch } from "./pronunciationSearch.js";
 import { createPriorityReward, MAX_PRIORITY_WORDS, normalizePriorityWords } from "./priorityWords.js";
-import { findPriorityPlans, priorityMetrics } from "./priorityPlacement.js";
+import { findPriorityPlan, priorityMetrics } from "./priorityPlacement.js";
 
 /*
 ======================================================================
@@ -622,43 +622,38 @@ const SoramimiMaker = (kanaSimilarity, textAnalyzer, kana2phonon={})=>{
 				phase: "priority-placement", stage, lineCount: tokens_list.length, ...details,
 			});
 			reportProgress("searching", { preferenceIndex: 0, preferenceCount: parameter.PRIORITY_WORDS.length, lineIndex: 0 });
-			const plans = await findPriorityPlans({ unitsList, wordlist, preferences: parameter.PRIORITY_WORDS,
+			const plan = await findPriorityPlan({ unitsList, wordlist, preferences: parameter.PRIORITY_WORDS,
 				locks: locks || [], param, signal: controller.signal,
 				onProgress: details => reportProgress("searching", details),
 				scoreRange: (subset, target, line, start, end) => getSimilarWord(subset, target, matrix, 1,
 					param.VARIATION_COST, normalizedWeights[line]?.slice(start, end), 0, param.VOWEL_RATIO??0.8)[0] });
-			let best;
-			for(const [planIndex, plan] of plans.entries()){
+			if(controller.signal.aborted || !plan)return;
+			reportProgress("generating", { completedLines: 0 });
+			if(controller.signal.aborted)return;
+			const results = await new Promise(resolve => {
+				const abort = () => { handle.cancel(); resolve(null); };
+				const complete = results => { controller.signal.removeEventListener("abort", abort); resolve(results); };
+				const reserved = new Set(plan.locks.flat().filter(word => !word.filler).map(word => word.id));
+				handle = generateFromTokensCore(tokens_list, wordlist, param,
+					(_, lineIndex) => reportProgress("generating", { completedLines: lineIndex + 1 }),
+					complete, plan.locks, weights, reserved);
+				controller.signal.addEventListener("abort", abort, { once: true });
+			});
+			if(!results || controller.signal.aborted)return;
+			const metrics = priorityMetrics(results, parameter.PRIORITY_WORDS);
+			const score = results.flat().reduce((sum, word) => sum
+				+ (Number.isFinite(word.score) ? word.score : Number.isFinite(word.sim) ? word.sim : 0)
+				+ param.WORD_NUMBER_PENALTY, 0);
+			for(const [index, line] of results.entries()){
 				if(controller.signal.aborted)return;
-				reportProgress("evaluating", { planIndex: planIndex + 1, planCount: plans.length, completedLines: 0 });
-				const results = await new Promise(resolve => {
-					const abort = () => { handle.cancel(); resolve(null); };
-					const complete = results => { controller.signal.removeEventListener("abort", abort); resolve(results); };
-					const reserved = new Set(plan.locks.flat().filter(word => !word.filler).map(word => word.id));
-					handle = generateFromTokensCore(tokens_list, wordlist, param,
-						(_, lineIndex) => reportProgress("evaluating", {
-							planIndex: planIndex + 1, planCount: plans.length, completedLines: lineIndex + 1,
-						}), complete, plan.locks, weights, reserved);
-					controller.signal.addEventListener("abort", abort, { once: true });
+				updateFunc?.(line, index, unitsList, {
+					phase: "priority-placement", stage: "complete",
+					completedLines: index + 1, lineCount: unitsList.length,
 				});
-				if(!results || controller.signal.aborted)return;
-				const metrics = priorityMetrics(results, parameter.PRIORITY_WORDS);
-				const score = results.flat().reduce((sum, word) => sum
-					+ (Number.isFinite(word.score) ? word.score : Number.isFinite(word.sim) ? word.sim : 0)
-					+ param.WORD_NUMBER_PENALTY, 0);
-				if(!best || metrics.included.length > best.metrics.included.length
-					|| (metrics.included.length === best.metrics.included.length && metrics.fillerUnits < best.metrics.fillerUnits)
-					|| (metrics.included.length === best.metrics.included.length && metrics.fillerUnits === best.metrics.fillerUnits && score < best.score)){
-					best = { results, metrics, score };
-				}
 			}
-			if(controller.signal.aborted || !best)return;
-			best.results.forEach((line, index) => updateFunc?.(line, index, unitsList, {
-				phase: "priority-placement", stage: "complete", planIndex: plans.length,
-				planCount: plans.length, completedLines: index + 1, lineCount: unitsList.length,
-			}));
-			endFunc?.(best.results, { priority: best.metrics, evaluatedPlans: plans.length });
-			return best;
+			if(controller.signal.aborted)return;
+			endFunc?.(results, { priority: metrics, evaluatedPlans: 1 });
+			return { results, metrics, score };
 		})();
 		// Callers can handle async preparation errors without unhandled rejections.
 		finished.catch(() => {});
