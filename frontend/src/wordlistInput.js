@@ -8,15 +8,15 @@
 //    尊重する**(振り直さない): 書き出しJSONの results の id と、DB側の id が1対1で
 //    対応している契約(csvText契約)を壊さないため。
 // 2. かんたん形式(plain) — 従来の「見出し語,読み1,読み2…」。1列だけ(=読みが書かれていない)
-//    の行は、かな以外を含むときだけ形態素解析(kuromoji)で読みを推定して2列目に埋めてから
-//    lib の plainToCsv に渡す。
+//    の行は、かな以外を含むときだけ形態素解析(kuromoji)で読みを推定し、
+//    複数の読みがある行は読みごとに展開してCSVへ出力する。
 //
 // 読みの推定結果はCSVに焼き込む。こうしておくと、再変換・書き出しJSON・埋め込み先の行解決の
 // どこから見ても同じ読みになる(エンジンは読み欄が漢字のときも内部で推定するが、その結果は
 // CSVに残らないので、csvText を見る側とズレる)。
 //
 // lib/ の plainToCsv は同期の純関数のまま触らない方針なので、推定はここでやる。
-// 呼び出し側は初期化済みの app(textAnalyzer.getYomi と wordList.plainToCsv を持つ)を渡すだけ。
+// 呼び出し側は初期化済みの app(textAnalyzer.getYomi を持つ)を渡すだけ。
 
 // エンジンが名前で引く列。ヘッダ判定にもこの4つを使う
 export const BASE_COLUMNS = ["id", "original", "surface", "pronunciation"];
@@ -44,7 +44,7 @@ const COLUMN_ALIASES = {
 function normalizeColumn(name) {
 	const cleaned = String(name ?? "").replace(/\uFEFF/g, "").trim();
 	const comparable = /^[\x20-\x7e]*$/.test(cleaned) ? cleaned.toLowerCase() : cleaned;
-	return COLUMN_ALIASES[comparable] || comparable;
+	return Object.hasOwn(COLUMN_ALIASES, comparable) ? COLUMN_ALIASES[comparable] : comparable;
 }
 
 function cleanCell(value) {
@@ -123,22 +123,27 @@ function plainRows(text) {
 // 物理行ではなく実際にDBへ渡る行数を数える。
 export function countWordlistInputRows(text) {
 	const src = String(text ?? "");
-	const head = firstContentLine(src);
-	if (head && !head.trim().startsWith("#") && looksLikeTidyHeader(head)) {
-		return Math.max(0, parseCsvRows(src)
-			.map((row) => row.map(cleanCell))
-			.filter((row) => row.some((cell) => cell !== "")).length - 1);
+	if (isTidyInput(src)) {
+		return Math.max(0, tidyRows(src).length - 1);
 	}
 	return plainRows(src).reduce((count, row) =>
 		count + Math.max(1, row.slice(1).filter(Boolean).length), 0);
 }
 
-// 空行を飛ばした最初の行(ヘッダ判定に使う)
-function firstContentLine(text) {
+// 空行を飛ばし、最初の内容行で入力形式を判定する。
+function isTidyInput(text) {
 	for (const line of String(text ?? "").split(/\r\n|\n|\r/)) {
-		if (line.trim() !== "") return line;
+		if (line.trim() === "") continue;
+		// 列名を説明するコメントをヘッダと誤認しない。
+		return !line.trim().startsWith("#") && looksLikeTidyHeader(line);
 	}
-	return "";
+	return false;
+}
+
+function tidyRows(text) {
+	return parseCsvRows(text)
+		.map((row) => row.map(cleanCell))
+		.filter((cells) => cells.some((cell) => cell !== ""));
 }
 
 /**
@@ -215,9 +220,7 @@ function plainTextToCsv(text, getYomi) {
  * - 読みが空(または NA)の行は表記から読みを推定して埋める
  */
 export function tidyTextToCsv(text, getYomi) {
-	const rows = parseCsvRows(text)
-		.map((row) => row.map(cleanCell))
-		.filter((cells) => cells.some((c) => c !== ""));
+	const rows = tidyRows(text);
 	if (rows.length === 0) return BASE_COLUMNS.join(",");
 
 	const header = rows[0].map(normalizeColumn);
@@ -278,15 +281,13 @@ export function tidyTextToCsv(text, getYomi) {
 /**
  * 自作リストの入力テキスト → DB構築に使う正規化 tidy CSV。
  *
- * app は初期化済みの createSoramimic の返り値(wordList.plainToCsv と
- * textAnalyzer.getYomi を使う)。生成画面・編集ツールの両方でこれを通す。
+ * app は初期化済みの createSoramimic の返り値(textAnalyzer.getYomi を使う)。
+ * 生成画面・編集ツールの両方でこれを通す。
  */
 export function originalTextToCsv(text, app) {
 	const src = String(text ?? "");
 	const getYomi = app && app.textAnalyzer ? app.textAnalyzer.getYomi : undefined;
-	const head = firstContentLine(src);
-	// 先頭がコメント行のときは plain(列名をコメントで書いた説明行をヘッダと誤認しない)
-	if (!head.trim().startsWith("#") && looksLikeTidyHeader(head)) {
+	if (isTidyInput(src)) {
 		return tidyTextToCsv(src, getYomi);
 	}
 	return plainTextToCsv(src, getYomi);

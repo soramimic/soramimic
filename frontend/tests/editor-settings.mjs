@@ -1,6 +1,7 @@
-// 編集ツールの「変換のしかた」モーダル(ツールバーの⚙から開く)のE2E: 生成画面へ戻らずに
-// 変換パラメータ・単語重複・ファセット絞り込みを変えて再変換できること、
-// 再変換が「戻る」1回で取り消せること、位置別重み(weightsList)が
+import { regenerateAll, selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
+// 編集ツールの「変換のしかた」モーダル(三点メニューから開く)のE2E: 生成画面へ戻らずに
+// 設定の自動保存で今の歌詞を保持し、明示的な再生成だけで結果が変わること、
+// 設定変更と再生成を別々に取り消せること、位置別重み(weightsList)が
 // エンジンまで届くことを確認する。
 // 実行: npm run build && node tests/editor-settings.mjs
 import { spawn } from "node:child_process";
@@ -35,7 +36,7 @@ function assert(cond, message) {
 const readData = (page) => page.evaluate((k) => JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
 
 const wordsOf = (page) =>
-	page.$$eval(".chip-word-surface", (els) => els.map((e) => e.textContent).join("|"));
+	page.$$eval(".review-word-surface", (els) => els.map((e) => e.textContent).join("|"));
 
 const sliderValues = (page) =>
 	page.$$eval("#editor-param-area input[type=range]", (els) => els.map((e) => Number(e.value)));
@@ -55,15 +56,18 @@ const candidateSurfaces = (page) =>
 // 進捗はモーダルの外(ツールバー)に出るので、モーダルの開閉によらず見える
 function waitIdle(page) {
 	return page.waitForFunction(() => {
-		const btn = document.getElementById("btn-reconvert");
-		return btn && !btn.disabled && document.getElementById("reconvert-progress").hidden;
+		const btn = document.getElementById("btn-regenerate");
+		return btn && !btn.disabled && document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden;
 	}, undefined, { timeout: 180000 });
 }
 
-// ⚙でモーダルを開く(既に開いていれば何もしない)
+// 三点メニューからモーダルを開く(既に開いていれば何もしない)
 async function openSettings(page) {
 	const open = await page.$eval("#editor-settings", (d) => d.open);
-	if (!open) await page.click("#btn-settings");
+	if (!open) {
+		await closeSelection(page);
+		await menuAction(page, "#btn-settings");
+	}
 	await page.waitForFunction(() => document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
 }
@@ -101,40 +105,34 @@ try {
 	// ---- 生成画面: 変換して編集ツールを開く(既定は野球選手リスト) ----
 	await page.goto(`${BASE}/`);
 	await page.waitForFunction(
-		() => document.getElementById("btn-convert").textContent === "変換",
+		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
 	);
 	await page.fill("#input-text", "夢は今もめぐりて\n忘れがたきふるさと");
 	await page.click("#btn-convert");
-	await page.waitForFunction(
-		() => {
-			const out = document.getElementById("output-text");
-			return !document.getElementById("output-field").hidden && out.value.length > 0;
-		},
-		{ timeout: 120000 },
-	);
-	const [editor] = await Promise.all([
-		context.waitForEvent("page"),
-		page.click("#btn-open-editor"),
-	]);
-	editor.on("pageerror", (e) => pageErrors.push(e));
+	await page.waitForURL("**/editor.html", { timeout: 120000 });
+	const editor = page;
+
 	const warnings = [];
 	editor.on("console", (m) => {
 		if (m.type() === "warning") warnings.push(m.text());
 	});
 
-	await editor.waitForSelector(".editor-line .chip-unit", { timeout: 60000 });
+	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled,
+		() => !document.getElementById("btn-regenerate").disabled,
 		{ timeout: 120000 },
 	);
 
-	// ---- ⚙でモーダルが開く ----
+	// ---- 三点メニューからモーダルが開く ----
 	assert(!(await settingsOpen(editor)), "初期状態でモーダルが開いている");
 	await openSettings(editor);
-	await editor.waitForSelector("#editor-param-area input[type=range]", { timeout: 10000 });
+	await editor.waitForSelector("#editor-param-area input[type=range]", { state: "attached", timeout: 10000 });
+	assert(await editor.isVisible("#editor-preset-buttons"), "プリセットは最初から表示する");
+	assert(!await editor.isVisible("#editor-param-area"), "詳細パラメータは最初は閉じる");
+	assert(await editor.isVisible("#editor-duplicate-buttons"), "単語重複は最初から表示する");
 
-	// Escで閉じ、⚙で開き直せる(生成画面のダイアログと同じ操作)
+	// Escで閉じ、三点メニューから開き直せる(生成画面のダイアログと同じ操作)
 	await editor.keyboard.press("Escape");
 	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
@@ -156,65 +154,68 @@ try {
 		`単語の長さの初期値がparamと違う: ${initialValues[2]}`);
 	assert(await activePreset(editor) === "バランス",
 		"生成画面の既定(バランス)がプリセットに反映されていない");
+	const editorSelectAll = editor.getByRole("checkbox", { name: "種類をすべて選択" });
+	assert(await editorSelectAll.evaluate((el) => el.indeterminate),
+		"生成時の部分選択を復元しても、すべて選択が中間状態にならない");
 
-	// ---- パラメータ変更 → 再変換で結果が変わる ----
+	// ---- 設定は自動保存され、再生成するまで歌詞を保持する ----
 	const wordsBefore = await wordsOf(editor);
+	assert(await editor.locator("#btn-reconvert").count() === 0, "再変換ボタンが残っている");
 	await editor.click("#editor-preset-buttons button:has-text('長い単語')");
-	assert((await sliderValues(editor))[2] === 6, "プリセットでスライダーが動いていない");
-	await editor.click("#btn-reconvert");
-	// 押したらモーダルは閉じ、進捗はツールバー側(モーダルの外)で見える
-	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
-		undefined, { timeout: 10000 });
-	assert(await editor.isVisible("#reconvert-progress"),
-		"再変換の進捗がツールバーに出ていない");
 	await waitIdle(editor);
+	assert((await sliderValues(editor))[2] === 6, "プリセットでスライダーが動いていない");
 	const afterParam = await readData(editor);
-	assert(afterParam.param.WORD_NUMBER_PENALTY === 60,
-		"再変換後のparamが保存されていない: " + JSON.stringify(afterParam.param));
-	assert(afterParam.param.OUTPUT_FORMAT === initialData.param.OUTPUT_FORMAT,
-		"再変換でパネル外のパラメータ(OUTPUT_FORMAT)が失われた");
-	const wordsLongWord = await wordsOf(editor);
-	assert(wordsLongWord !== wordsBefore,
-		"パラメータを変えて再変換したのに結果が同じ: " + wordsLongWord);
+	assert(afterParam.param.WORD_NUMBER_PENALTY === 60, "設定が自動保存されていない");
+	assert(afterParam.param.OUTPUT_FORMAT === initialData.param.OUTPUT_FORMAT, "既存パラメータが失われた");
+	assert(JSON.stringify(afterParam.results) === JSON.stringify(initialData.results), "設定で歌詞が変わった");
+	assert(await settingsOpen(editor), "設定の変更でモーダルが閉じた");
+	await editor.click("#btn-settings-close");
+	assert(await wordsOf(editor) === wordsBefore, "閉じたときに再生成された");
+	await editor.reload();
+	await waitIdle(editor);
+	assert((await readData(editor)).param.WORD_NUMBER_PENALTY === 60, "再読み込みで設定が消えた");
+	assert(await wordsOf(editor) === wordsBefore, "再読み込みで歌詞が変わった");
+	await regenerateAll(editor);
+	await waitIdle(editor);
+	assert(await wordsOf(editor) !== wordsBefore, "明示的な再生成に設定が反映されない");
 
-	// ---- 戻る: 再変換前の結果とパラメータに戻る(ダイアログなしの1操作) ----
+	// 再生成だけ取り消しても新しい設定は残る。次の取り消しで設定が戻る。
 	await editor.click("#btn-undo");
-	await editor.waitForFunction(
-		() => !document.getElementById("btn-redo").disabled, { timeout: 10000 });
-	assert(await wordsOf(editor) === wordsBefore, "戻るで再変換前の結果に戻らない");
-	const undone = await readData(editor);
-	// 閉じている間の syncSettingsUi が、開き直したときに反映されていること
-	assert(!(await settingsOpen(editor)), "再変換でモーダルが閉じたままになっていない");
+	await waitIdle(editor);
+	assert(await wordsOf(editor) === wordsBefore, "再生成を取り消せない");
+	assert((await readData(editor)).param.WORD_NUMBER_PENALTY === 60, "再生成の取り消しが設定まで戻した");
+	await editor.click("#btn-undo");
+	await waitIdle(editor);
 	await openSettings(editor);
-	assert(undone.param.WORD_NUMBER_PENALTY === initialData.param.WORD_NUMBER_PENALTY,
-		"戻るでパラメータが元に戻らない: " + JSON.stringify(undone.param));
-	assert((await sliderValues(editor))[2] === initialValues[2],
-		"戻るでスライダー表示が元に戻らない");
-	assert(await activePreset(editor) === "バランス", "戻るでプリセット表示が元に戻らない");
+	assert((await readData(editor)).param.WORD_NUMBER_PENALTY === initialData.param.WORD_NUMBER_PENALTY,
+		"設定変更を取り消せない");
+	assert((await sliderValues(editor))[2] === initialValues[2], "設定の取り消しで表示が戻らない");
+	assert(await activePreset(editor) === "バランス", "プリセット表示が戻らない");
 
 	// ---- 単語重複の切り替え ----
 	await editor.click("#editor-duplicate-buttons button[data-value='true']");
-	await editor.click("#btn-reconvert");
 	await waitIdle(editor);
 	assert((await readData(editor)).param.DUPLICATE === true,
 		"単語重複ありが再変換のパラメータに反映されていない");
 	await openSettings(editor);
 	await editor.click("#editor-duplicate-buttons button[data-value='false']");
+	await waitIdle(editor);
 
 	// ---- ファセット絞り込み: 候補が絞られる ----
 	// モーダルを閉じないと本文のチップは押せない(モーダルダイアログのため)
 	await editor.click("#btn-settings-close");
 	await editor.waitForFunction(() => !document.getElementById("editor-settings").open,
 		undefined, { timeout: 10000 });
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	const candBefore = await candidateSurfaces(editor);
 	assert(candBefore.some((s) => !registeredSurfaces.has(s)),
 		"絞り込み前から登録名だけの候補になっている(前提が崩れている)");
 
-	// 「名字」「フルネーム」を外して「登録名」だけにする(変更即再変換)。
+	// 「名字」「フルネーム」を外して「登録名」だけにする。歌詞はそのまま。
 	// 絞り込みはモーダルを開いたまま走らせてよい(進捗はツールバー側に出る)
 	await openSettings(editor);
+	const beforeFilter = (await readData(editor)).results;
 	await editor.uncheck("#editor-facets input[value='family']");
 	await editor.uncheck("#editor-facets input[value='full']");
 	await editor.waitForFunction((k) => {
@@ -222,11 +223,12 @@ try {
 		return d && d.where === "((type=registered))";
 	}, EDITOR_KEY, { timeout: 180000 });
 	await waitIdle(editor);
-	// 選択即再変換ではモーダルは開いたまま(設定を続けて変えられる)
+	assert(JSON.stringify((await readData(editor)).results) === JSON.stringify(beforeFilter), "絞り込みで歌詞が変わった");
+	// 設定を続けて変えられる
 	assert(await settingsOpen(editor), "絞り込みの再変換でモーダルが閉じてしまった");
 	await editor.click("#btn-settings-close");
 
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates .candidate", { timeout: 30000 });
 	const candAfter = await candidateSurfaces(editor);
 	assert(candAfter.length > 0, "絞り込み後に候補が出ない");
@@ -235,9 +237,8 @@ try {
 
 	// 固定した単語は絞り込みの対象外になっても残る
 	await editor.click(".panel-candidates .candidate");
-	await editor.click(".panel-candidate-apply");
-	await editor.waitForSelector(".chip-word.locked", { timeout: 10000 });
-	const lockedSurface = await editor.textContent(".chip-word.locked .chip-word-surface");
+	await editor.waitForSelector(".review-word.locked", { timeout: 10000 });
+	const lockedSurface = await editor.textContent(".review-word.locked .review-word-surface");
 	await openSettings(editor);
 	await editor.check("#editor-facets input[value='family']");
 	await editor.waitForFunction((k) => {
@@ -246,7 +247,7 @@ try {
 	}, EDITOR_KEY, { timeout: 180000 });
 	await waitIdle(editor);
 	await editor.click("#btn-settings-close");
-	const lockedAfter = await editor.$$eval(".chip-word.locked .chip-word-surface",
+	const lockedAfter = await editor.$$eval(".review-word.locked .review-word-surface",
 		(els) => els.map((e) => e.textContent));
 	assert(lockedAfter.includes(lockedSurface),
 		`絞り込みの変更で固定単語が失われた: ${lockedSurface}`);
@@ -265,15 +266,17 @@ try {
 	}, EDITOR_KEY);
 	await editor.reload();
 	await editor.waitForFunction(
-		() => !document.getElementById("btn-reconvert").disabled, { timeout: 120000 });
+		() => !document.getElementById("btn-regenerate").disabled, { timeout: 120000 });
 	await openSettings(editor);
 	assert(await editor.isVisible("#editor-note-length-field"),
 		"生重みがあるのにノート長設定が表示されない");
 	assert(await editor.inputValue("#editor-note-length-alpha") === "0.25",
 		"ノート長αの初期値が復元されていない");
 	await editor.fill("#editor-note-length-alpha", "1");
+	await waitIdle(editor);
+	await editor.click("#btn-settings-close");
 	warnings.length = 0;
-	await editor.click("#btn-reconvert");
+	await regenerateAll(editor);
 	await waitIdle(editor);
 	const weighted = await editor.evaluate((k) =>
 		JSON.parse(sessionStorage.getItem(k)), EDITOR_KEY);
@@ -285,7 +288,7 @@ try {
 
 	// 候補計算(getCandidates)にも選択範囲ぶんの導出重みが渡ること
 	warnings.length = 0;
-	await editor.locator(".editor-line[data-line='0'] .chip-unit").first().click();
+	await selectRange(editor, 0, 0);
 	await editor.waitForSelector(".panel-candidates, .panel-note", { timeout: 30000 });
 	assert(warnings.some((w) => w.includes("getCandidates")),
 		"候補計算にノート長重みが届いていない: " + warnings.join(" / "));
@@ -293,7 +296,7 @@ try {
 	// ---- 書き出し: 生重みとαがラウンドトリップで消えない ----
 	const [download] = await Promise.all([
 		editor.waitForEvent("download"),
-		editor.click("#btn-export"),
+		menuAction(editor, "#btn-export"),
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
 	assert(Array.isArray(exported.noteLengthRawList)
@@ -305,6 +308,63 @@ try {
 		"旧版互換weightsListが現在のαで書き出されていない");
 	assert(exported.param && typeof exported.where === "string",
 		"書き出しJSONに param/where が含まれていない");
+
+	// A slow list request must not overwrite a later selection or block closing.
+	const entries = ["slow", "fast", "error"].map((value) => ({ value, text: value,
+		filepath: `wordlists/settings-${value}.csv`, dbtype: "tidy" }));
+	await editor.route("**/conf/setting.json", (route) => route.fulfill({ json: { wordlist: entries } }));
+	let releaseSlow, notifySlow;
+	const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
+	const slowStarted = new Promise((resolve) => { notifySlow = resolve; });
+	await editor.route("**/wordlists/settings-slow.csv", async (route) => {
+		notifySlow();
+		await slowGate;
+		await route.fulfill({ body: "id,original,surface,pronunciation\nshared,遅い語,遅い語,ユメ" });
+	});
+	await editor.route("**/wordlists/settings-fast.csv", (route) => route.fulfill({
+		body: "id,original,surface,pronunciation\nshared,新しい単語,新しい単語,ユメ" }));
+	await editor.route("**/wordlists/settings-error.csv", (route) => route.fulfill({ status: 500, body: "failed" }));
+	const retained = { id: "shared", surface: "保持する単語", kana: "ユメ", pronunciation: ["ユ", "メ"],
+		period: [0, 2], locked: true };
+	await editor.evaluate(({ key, seed, retained }) => {
+		seed.wordlist = { value: "ORIGINAL", text: "元のリスト",
+			csvText: "id,original,surface,pronunciation\nshared,保持する単語,保持する単語,ユメ" };
+		seed.results = [[retained], []];
+		seed.history = []; seed.future = []; seed.dirtyLines = [];
+		delete seed.where; delete seed.wordlistSource;
+		sessionStorage.setItem(key, JSON.stringify(seed));
+	}, { key: EDITOR_KEY, seed: initialData, retained });
+	await editor.reload();
+	await waitIdle(editor);
+	await openSettings(editor);
+	await editor.selectOption("#editor-wordlist", "slow");
+	await slowStarted;
+	assert(await editor.locator("#btn-regenerate").isDisabled(), "準備中に再生成できてしまう");
+	await editor.click("#btn-settings-close");
+	assert(!await settingsOpen(editor), "読み込み中に閉じられない");
+	assert(JSON.stringify((await readData(editor)).results) === JSON.stringify([[retained], []]), "読み込み中に歌詞が変わった");
+	await openSettings(editor);
+	await editor.selectOption("#editor-wordlist", "fast");
+	await waitIdle(editor);
+	const fast = await readData(editor);
+	assert(fast.wordlist.value === "fast", "後の選択が適用されない");
+	assert(fast.results[0][0].surface === retained.surface && fast.results[0][0].locked, "古い歌詞と固定を保持できない");
+	const slowResponse = editor.waitForResponse((response) => response.url().endsWith("settings-slow.csv"));
+	releaseSlow();
+	await slowResponse;
+	await editor.waitForTimeout(250);
+	assert((await readData(editor)).wordlist.value === "fast", "遅い古いリクエストが選択を上書きした");
+	await editor.selectOption("#editor-wordlist", "error");
+	await editor.waitForFunction(() => document.getElementById("editor-settings-status").textContent.includes("反映できませんでした"));
+	assert((await readData(editor)).wordlist.value === "fast", "失敗したリストが保存された");
+	assert(JSON.stringify((await readData(editor)).results) === JSON.stringify(fast.results), "読み込み失敗で歌詞が変わった");
+	await editor.click("#btn-settings-close");
+	await selectRange(editor, 1, 0, 1);
+	await editor.locator(".candidate").filter({ hasText: "新しい単語" }).first().click();
+	assert(!await editor.locator("#editor-assignment-dialog").evaluate((node) => node.open), "別リストの同じIDが固定の競合になった");
+	const placed = await readData(editor);
+	assert(placed.results[0][0].surface === retained.surface && placed.results[1].some((word) => word.surface === "新しい単語"),
+		"同じIDを持つ別リストの単語を共存できない");
 
 	if (pageErrors.length > 0) {
 		throw new Error("ページエラー: " + pageErrors.map((e) => e.message).join("; "));

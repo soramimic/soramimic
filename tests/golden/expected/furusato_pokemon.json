@@ -8,44 +8,43 @@
  "results": [
   [
    {
-    "id": "447",
-    "kana": "ルカリオ",
-    "original": "ルカリオ",
-    "original_surface": "うさぎ追",
-    "originalkana": "ウサギオ",
+    "id": "253",
+    "kana": "ジュカイン",
+    "original": "ジュカイン",
+    "original_surface": "うさぎ",
+    "originalkana": "ウサギ",
     "period": [
      0,
-     4
+     3
     ],
     "pronunciation": [
-     "ル",
+     "ジュ",
      "カ",
-     "リ",
-     "オ"
+     "イ"
     ],
-    "score": 62.72314042098397,
-    "sim": 42.72314042098397,
-    "surface": "ルカリオ",
-    "vcost": 0
+    "score": 59.07960511909961,
+    "sim": 59.07960511909961,
+    "surface": "ジュカイン",
+    "vcost": 1
    },
    {
-    "id": "469",
-    "kana": "リーフィア",
-    "original": "リーフィア",
-    "original_surface": "いしか",
-    "originalkana": "イシカ",
+    "id": "543",
+    "kana": "ホイーガ",
+    "original": "ホイーガ",
+    "original_surface": "追いしか",
+    "originalkana": "オイシカ",
     "period": [
-     4,
+     3,
      7
     ],
     "pronunciation": [
-     "リー",
-     "フィ",
-     "ア"
+     "ホ",
+     "イー",
+     "ガ"
     ],
-    "score": 79.0470844592094,
-    "sim": 59.047084459209394,
-    "surface": "リーフィア",
+    "score": 62.75110430639735,
+    "sim": 42.75110430639735,
+    "surface": "ホイーガ",
     "vcost": 0
    },
    {
@@ -111,9 +110,9 @@
     "vcost": 0
    },
    {
-    "id": "273",
-    "kana": "コノハナ",
-    "original": "コノハナ",
+    "id": "79",
+    "kana": "ヤドラン",
+    "original": "ヤドラン",
     "original_surface": "かの川",
     "originalkana": "カノカワ",
     "period": [
@@ -121,15 +120,14 @@
      10
     ],
     "pronunciation": [
-     "コ",
-     "ノ",
-     "ハ",
-     "ナ"
+     "ヤ",
+     "ド",
+     "ラー"
     ],
-    "score": 86.93179567077206,
-    "sim": 86.93179567077206,
-    "surface": "コノハナ",
-    "vcost": 0
+    "score": 74.4069631956707,
+    "sim": 74.4069631956707,
+    "surface": "ヤドラン",
+    "vcost": 1
    }
   ],
   [
@@ -217,9 +215,9 @@
     "vcost": 0
    },
    {
-    "id": "489",
-    "kana": "マナフィ",
-    "original": "マナフィ",
+    "id": "57",
+    "kana": "ガーディ",
+    "original": "ガーディ",
     "original_surface": "がたき",
     "originalkana": "ガタキ",
     "period": [
@@ -227,13 +225,12 @@
      6
     ],
     "pronunciation": [
-     "マ",
-     "ナ",
-     "フィ"
+     "ガー",
+     "ディ"
     ],
-    "score": 43.579816032711825,
-    "sim": 43.579816032711825,
-    "surface": "マナフィ",
+    "score": 28.66053825972992,
+    "sim": 28.66053825972992,
+    "surface": "ガーディ",
     "vcost": 0
    },
    {

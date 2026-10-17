@@ -1,0 +1,160 @@
+.about-page {
+	color-scheme: light dark;
+	--about-link: #1d4ed8;
+}
+
+.about-page .site-header {
+	max-width: 960px;
+	margin: 0 auto;
+	padding: 1.5rem 1.5rem 1rem;
+	border: 0;
+	background: transparent;
+}
+
+.about-page .brand-logo {
+	width: 12rem;
+}
+
+.about-main {
+	max-width: 960px;
+	padding: 0 1.5rem 2rem;
+}
+
+#tab-about {
+	padding: 0 2rem;
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	background: var(--panel);
+}
+
+.about-section {
+	display: grid;
+	grid-template-columns: 9rem minmax(0, 1fr);
+	gap: 1.5rem;
+	padding: 2rem 0;
+}
+
+.about-section + .about-section {
+	border-top: 1px solid var(--border);
+}
+
+#tab-about h1,
+#tab-about h2 {
+	margin: 0;
+	font-size: 1.1rem;
+	line-height: 1.9;
+}
+
+.about-section-content {
+	min-width: 0;
+	font-size: .95rem;
+	line-height: 1.95;
+	overflow-wrap: anywhere;
+}
+
+.about-section-content p {
+	margin: 0;
+}
+
+.about-section-content p + p {
+	margin-top: 1rem;
+}
+
+.about-credit-label {
+	display: block;
+	margin-bottom: .4rem;
+	font-size: .875rem;
+	font-weight: 600;
+}
+
+.about-donor {
+	display: inline-block;
+}
+
+.about-list-credit {
+	display: block;
+}
+
+.about-page a:not(.brand) {
+	color: var(--about-link);
+	text-underline-offset: .2em;
+}
+
+.about-page a:focus-visible {
+	outline: 3px solid var(--about-link);
+	outline-offset: 4px;
+	border-radius: 3px;
+}
+
+#changelog > div {
+	display: grid;
+	grid-template-columns: 6.25rem minmax(0, 1fr);
+	gap: 1rem;
+	padding: .85rem 0;
+	font-size: .875rem;
+}
+
+#changelog > div:first-child {
+	padding-top: 0;
+}
+
+#changelog > div:last-child {
+	padding-bottom: 0;
+}
+
+#changelog > div + div {
+	border-top: 1px solid var(--border);
+}
+
+#changelog time {
+	color: var(--muted);
+	font-size: .8rem;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.about-page .site-footer a {
+	display: inline-flex;
+	align-items: center;
+	min-height: 44px;
+}
+
+@media (max-width: 720px) {
+	.about-section {
+		grid-template-columns: 1fr;
+		gap: .85rem;
+	}
+}
+
+@media (max-width: 480px) {
+	.about-page .site-header {
+		padding: 1rem 1rem .75rem;
+	}
+
+	.about-page .brand-logo {
+		width: 10rem;
+	}
+
+	.about-main {
+		padding-inline: .75rem;
+	}
+
+	#tab-about {
+		padding-inline: 1.25rem;
+	}
+
+	.about-section {
+		padding-block: 1.5rem;
+	}
+
+	#changelog > div {
+		grid-template-columns: 1fr;
+		gap: .2rem;
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	.about-page {
+		--about-link: #93c5fd;
+	}
+}

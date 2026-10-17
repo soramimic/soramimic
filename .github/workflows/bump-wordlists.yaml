@@ -1,17 +1,8 @@
-# wordlists submodule を最新の main に追従させ、pin が動いたらデプロイする。
-#
-# soramimic-wordlists 側の更新(年次バッチや手動PRのマージ)は、この本体リポジトリ
-# の submodule pin(wordlists/)を自動では上げないため、更新がデプロイに届かない。
-# このワークフローがその伝播を担う。
-#
-# - 週次 + 手動(workflow_dispatch)で実行する
-# - 未承認の更新が本番へ直行しないよう、pin は開発ブランチ dev だけを更新する
-# - 変更があったときだけ preview.yaml を workflow_call で呼び、dev環境へ反映する
 name: bump-wordlists
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 22 * * 0" # 毎週月曜 07:00 JST 頃
+    - cron: "0 22 * * 0"
 
 permissions:
   contents: write
@@ -99,8 +90,6 @@ jobs:
           git push origin --delete "$CANDIDATE_BRANCH" || true
           echo "bumped=true" >> "$GITHUB_OUTPUT"
 
-  # 更新があったときだけdevへデプロイ(GITHUB_TOKEN の push は push トリガーを
-  # 起動しないため、automerge.yaml と同様に workflow_call で確実に回す)
   deploy-dev:
     needs: promote
     if: ${{ needs.promote.outputs.bumped == 'true' }}

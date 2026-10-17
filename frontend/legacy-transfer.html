@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+    <title>自作リストの引き継ぎ | Soramimic 旧版</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { max-width: 38rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.8; }
+      h1 { font-size: 1.4rem; }
+      a { display: inline-block; padding: .5rem 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>旧版へ自作リストを引き継ぎ</h1>
+      <p id="transfer-status" role="status">自作リストをコピーしています…</p>
+      <p>新版のリストは残ります。同じ内容のリストは重複して追加せず、旧版で編集したリストも残します。以後の編集はそれぞれに保存されます。</p>
+      <p><a href="/" rel="noopener" id="skip-transfer">引き継がずに旧版を開く</a></p>
+    </main>
+    <script type="module" src="/src/legacyReceiver.js"></script>
+  </body>
+</html>

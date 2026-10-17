@@ -91,15 +91,24 @@ export function unitsListFromTokens(app, tokensList) {
 
 // 単語リスト設定エントリ(conf/setting.json の wordlist 要素)からDBを構築する。
 // where を渡すとエントリ既定の entry.where を上書きする(ファセット絞り込み用)。
-export async function buildDatabase(app, entry, where, maxUnits) {
+export function buildDatabase(app, entry, where, maxUnits) {
 	// maxUnits は歌詞側が取りうる発音ユニット数の上限。これを超える単語側の
 	// バリエーションはDB構築時に捨てて、巨大リストの展開量を抑える。
+	return readWordlist(app, entry, where,
+		(text, query) => app.wordList.parseTidy(text, query, maxUnits));
+}
+
+// Search the same source and filters without expanding pronunciation variants.
+export function loadWordlistEntries(app, entry, where) {
+	return readWordlist(app, entry, where, app.wordList.entriesTidy);
+}
+
+async function readWordlist(app, entry, where, parseTidy) {
 	if (customWordlistId(entry.value)) {
 		if (typeof entry.csvText === "string") {
-			return app.wordList.parseTidy(entry.csvText, "", maxUnits);
+			return parseTidy(entry.csvText, "");
 		}
-		return app.wordList.parseTidy(
-			originalTextToCsv(entry.originalText || "", app), "", maxUnits);
+		return parseTidy(originalTextToCsv(entry.originalText || "", app), "");
 	}
 	if (entry.value === "ORIGINAL") {
 		// entry.csvText は自作リストの正規化済み tidy CSV(plainToCsv の出力)。
@@ -107,13 +116,15 @@ export async function buildDatabase(app, entry, where, maxUnits) {
 		// 読み込んでも localStorage に依存せず同じDB(=同じid)が組み直せる。
 		// parseTidy(csv, "") は parsePlain(text, maxUnits) と同一の経路(#37)
 		if (typeof entry.csvText === "string" && entry.csvText !== "") {
-			return app.wordList.parseTidy(entry.csvText, "", maxUnits);
+			return parseTidy(entry.csvText, "");
 		}
+		// 登録テキストは plain(かんたん形式)でもヘッダ付き tidy CSV でもよい。
+		// どちらも originalTextToCsv が正規化CSVにする(読みの推定込み)
 		const text = localStorage.getItem(ORIGINAL_STORAGE_KEY) || "";
-		return app.wordList.parseTidy(originalTextToCsv(text, app), "", maxUnits);
+		return parseTidy(originalTextToCsv(text, app), "");
 	}
 	const text = await fetchText(entry.filepath);
 	return entry.dbtype === "tidy"
-		? app.wordList.parseTidy(text, where !== undefined ? where : entry.where, maxUnits)
-		: app.wordList.parsePlain(text, maxUnits);
+		? parseTidy(text, where !== undefined ? where : entry.where)
+		: parseTidy(app.wordList.plainToCsv(text), "");
 }

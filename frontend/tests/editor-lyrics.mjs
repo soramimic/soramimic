@@ -1,3 +1,4 @@
+import { menuAction } from "./editor-ui.mjs";
 // セットアップ画面の「元歌詞(字幕用)」のE2E。
 // 埋め込み元(soramimic-video)は元歌詞を字幕に使うので、エディタで入力・確認でき、
 // 行ごとの対応づけ(originalLines)まで作って渡す、という契約を実ブラウザで確認する:
@@ -179,7 +180,7 @@ try {
 	// ---- 変換しても保持され、書き出しJSONにも載る ----
 	await waitSetupReady(page);
 	await page.click("#btn-setup-convert");
-	await page.waitForSelector(".editor-line .chip-word", { timeout: 180000 });
+	await page.waitForSelector(".editor-line .review-word", { timeout: 180000 });
 	const converted = await readData(page);
 	assert(converted.lyrics === NEXT_LYRICS, "変換で元歌詞が失われた");
 	assert(JSON.stringify(converted.originalLines)
@@ -187,7 +188,7 @@ try {
 		"変換で originalLines が失われた: " + JSON.stringify(converted.originalLines));
 	const [download] = await Promise.all([
 		page.waitForEvent("download"),
-		page.click("#btn-export"),
+		menuAction(page, "#btn-export"),
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
 	assert(exported.lyrics === NEXT_LYRICS, "書き出しJSONに元歌詞が入っていない");

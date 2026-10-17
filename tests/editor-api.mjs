@@ -6,7 +6,8 @@ import { buildApp } from "./golden/harness-lib.mjs";
 import { makeResultText } from "../frontend/src/convert.js";
 import { Kanji } from "../frontend/src/lib/character.js";
 import { KanaToSyllable } from "../frontend/src/lib/kanaToSyllable.js";
-import { createYomiApi } from "../frontend/src/yomiApi.js";
+import { createYomiApi, tokenizePhrasesWithYomiApi } from "../frontend/src/yomiApi.js";
+import { alignmentFromUnits } from "../frontend/src/lib/readingAlignment.js";
 
 const print = console.log.bind(console);
 
@@ -39,6 +40,7 @@ for (const [input, expectedSurface] of [
 	["don't stop", "don't stop"],
 	["I’m here", "I'm here"],
 	["夢は 今も", "夢は 今も"],
+	["｜love《ラブ》 you", "love you"],
 ]) {
 	const inputTokens = textAnalyzer.tokenizeTogether([input])[0];
 	const inputUnits = textAnalyzer.getYomiAndPhraseBreak(inputTokens);
@@ -52,7 +54,7 @@ for (const [input, expectedSurface] of [
 const englishResults = await h.generate(["I love you"], db, { ...PARAM });
 const englishFormat1 = makeResultText(englishResults, "1").split("\n");
 assert.equal(englishFormat1[1], "I love you", "format 1で英語歌詞の空白を保持すること");
-print("[ok] 元歌詞表記: 英語・連続空白・英日混在・アポストロフィ・行端を保持");
+print("[ok] 元歌詞表記: 英語・連続空白・英日混在・アポストロフィ・行端・ルビを保持");
 
 // v2読み推定APIは全行の権威となり、英語・空白・アポストロフィもAPI tokenの
 // 読みと表層をそのまま共通後処理へ渡す。
@@ -107,22 +109,26 @@ function mockV2ApiTokens(text) {
 	});
 }
 const yomiApiCalls = [];
-const phrasesForApi = [
-	"日本語", "I love you", "Hello world", "", "夢 は", "don't stop", "don’t stop",
-	"  I  love you  ", "I 愛 you", "I,  love!", "   ",
-];
-const rawApiTokens = await ({
+const routedTokens = await tokenizePhrasesWithYomiApi(textAnalyzer, {
 	async tokenize(texts) {
 		yomiApiCalls.push(texts);
 		return texts.map(mockV2ApiTokens);
 	},
-}).tokenize(phrasesForApi);
-const routedTokens = textAnalyzer.formatTokensList(rawApiTokens);
-assert.deepEqual(yomiApiCalls, [phrasesForApi], "全行をAPIへ渡すこと");
+}, [
+	"日本語", "I love you", "Hello world", "", "｜愛《アイ》", "｜love《ラブ》 you",
+	"夢 は", "don't stop", "don’t stop", "  I  love you  ", "I 愛 you", "I,  love!", "   ",
+]);
+assert.deepEqual(yomiApiCalls, [[
+	"日本語", "I love you", "Hello world", "", " you", "夢 は", "don't stop", "don’t stop",
+	"  I  love you  ", "I 愛 you", "I,  love!", "   ",
+]], "ルビ注釈以外の全行・全チャンクをAPIへ渡すこと");
 assert.deepEqual(
 	routedTokens.map((tokens) => tokens.map((token) => token.surface_form).join("")),
-	phrasesForApi,
-	"API・空行を混在させても行順と原文表層を保つこと",
+	[
+		"日本語", "I love you", "Hello world", "", "愛", "love you", "夢 は",
+		"don't stop", "don’t stop", "  I  love you  ", "I 愛 you", "I,  love!", "   ",
+	],
+	"API・空行・ルビを混在させても行順と原文表層を保つこと",
 );
 assert.equal(
 	textAnalyzer.getYomiAndPhraseBreak(routedTokens[1]).map((unit) => unit.pronunciation).join(""),
@@ -139,7 +145,7 @@ assert.equal(
 	"ハローワールド",
 	"複数英単語もAPI読みを使うこと",
 );
-for (const index of [5, 6]) {
+for (const index of [7, 8]) {
 	assert.equal(
 		textAnalyzer.getYomiAndPhraseBreak(routedTokens[index])
 			.map((unit) => unit.pronunciation).join(""),
@@ -158,7 +164,7 @@ assert.equal(
 assert.equal(
 	makeResultText(routedResults, "4").split("\n")[1].replaceAll("  ", ""),
 	"あいらゔゆー",
-	"API token経路の既定format 4で正しい読みを出すこと",
+	"API利用可能時も既定format 4へIの読みを出すこと",
 );
 print("[ok] 読み推定API v2: 全行API経路で読みと原文表層を保持");
 
@@ -361,6 +367,51 @@ assert.equal(
 );
 print("[ok] 複数漢字の読み修正: 漢字(ジュウ)");
 
+// 表記の対応だけを編集しても、撥音・拗音・長音を含む音節列を変えない。
+for (const [surface, reading, automatic, manual] of [
+	["赤とんぼ", "アカトンボ", [["赤", "アカ"], ["とん", "トン"], ["ぼ", "ボ"]],
+		[["赤", "ア"], ["とん", "カトン"], ["ぼ", "ボ"]]],
+	["赤ちゃん", "アカチャン", [["赤", "アカ"], ["ちゃん", "チャン"]],
+		[["赤", "ア"], ["ちゃん", "カチャン"]]],
+	["忘れ", "ワスレ", [["忘", "ワス"], ["れ", "レ"]],
+		[["忘", "ワ"], ["れ", "スレ"]]],
+	["東京", "トーキョー", [["東", "トー"], ["京", "キョー"]],
+		[["東京", "トーキョー"]]],
+]) {
+	const token = makeApiToken(surface, reading);
+	const before = textAnalyzer.getYomiAndPhraseBreak([token]);
+	assert.deepEqual(alignmentFromUnits(before), automatic);
+	token.manualAlign = manual;
+	const after = textAnalyzer.getYomiAndPhraseBreak([token]);
+	assert.deepEqual(alignmentFromUnits(after), manual, `${surface}: 手動対応を反映すること`);
+	assert.deepEqual(after.map((u) => u.pronunciation), before.map((u) => u.pronunciation),
+		`${surface}: 対応の変更で音節を結合・分割しないこと`);
+	assert.equal(after.map((u) => u.surface_form).join(""), surface);
+	for (let i = 1; i < after.length; i++) {
+		assert.equal(after[i].char_index === after[i - 1].char_index, !after[i].surface_form,
+			`${surface}: 同じ表記の読みの途中を単語境界にしないこと`);
+	}
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak(JSON.parse(JSON.stringify([token]))), after,
+		`${surface}: 保存した対応を復元できること`);
+	delete token.manualAlign;
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak([token]), before,
+		`${surface}: 自動へ戻すと元の対応に戻ること`);
+}
+for (const invalid of [
+	[["赤", "アカ"], ["と", "ト"], ["ん", "ン"], ["ぼ", "ボ"]], // 音節内部
+	[["赤", "ア"], ["とん", "カトン"]], // 表記・読みの欠落
+	[["赤", "アカ"], ["とん", "トン"], ["ぼ", "ポ"]], // 古い読み
+	[["赤", "アカ"], ["とんぼ", ""]],
+	[null],
+]) {
+	const token = makeApiToken("赤とんぼ", "アカトンボ");
+	const before = textAnalyzer.getYomiAndPhraseBreak([token]);
+	token.manualAlign = invalid;
+	assert.deepEqual(textAnalyzer.getYomiAndPhraseBreak([token]), before,
+		"不整合な手動対応で表記・音節を壊さないこと");
+}
+print("[ok] 音節と表記の対応: 複数文字・手動編集・保存・リセット・不整合な対応");
+
 // ---- 固定つき再生成 ----
 const phrases = ["カナダ カナダ カナダ"];
 const tokensList = textAnalyzer.tokenizeTogether(phrases);
@@ -423,6 +474,9 @@ for (const word of akatombo[0]) {
 		);
 	}
 }
+const akatomboOutput = makeResultText(akatombo, "4");
+assert.ok(akatomboOutput.includes("はたけ"), akatomboOutput);
+assert.ok(!akatomboOutput.includes("は  のけ"), akatomboOutput);
 print("[ok] 文字境界: 畑の読みを分割しない");
 
 print("編集ツールAPI: 全テスト通過");

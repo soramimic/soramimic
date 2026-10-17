@@ -5,6 +5,14 @@
 
 const REQUIRED_CAPABILITIES = ["lossless_surface", "english_reading"];
 
+// すべての未注釈部分をAPIへまとめて問い合わせる。v2 APIは英語読みと無音表層を含め、
+// token.surface_form の連結が入力そのものになることを保証する。
+export async function tokenizePhrasesWithYomiApi(textAnalyzer, yomiApi, phrases) {
+	const { chunks, plan } = textAnalyzer.splitByRuby(phrases);
+	const raw = await yomiApi.tokenize(chunks);
+	return textAnalyzer.formatTokensList(textAnalyzer.mergeRubyTokens(raw, plan));
+}
+
 export function createYomiApi(baseUrl, { timeoutMs = 8000 } = {}) {
 	const url = (baseUrl || "").replace(/\/$/, "");
 

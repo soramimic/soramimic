@@ -1,16 +1,30 @@
 // UIの配線。機能は旧 widget/(SettingArea, ConversionArea, NavigationButtons)と同等。
 import { fetchText, fetchJson } from "./api.js";
-import { loadEngine, buildDatabase } from "./appCore.js";
+import { validateEditorData } from "./editorData.js";
+import { createGenerationHistoryRepository } from "./generationHistory.js";
+import { bindResultCopy, createGenerationHistoryView } from "./generationHistoryView.js";
+import {
+	loadEngine, buildDatabase, unitsListFromTokens,
+} from "./appCore.js";
 import { textToPhrases, makeResultText } from "./convert.js";
-import { createYomiApi } from "./yomiApi.js";
+import { createYomiApi, tokenizePhrasesWithYomiApi } from "./yomiApi.js";
 import { originalTextToCsv } from "./wordlistInput.js";
 import {
 	createCustomWordlistRepository, customWordlistId, customWordlistValue,
 	CUSTOM_WORDLISTS_STORAGE_KEY,
 } from "./customWordlists.js";
 import { readCustomWordlistFile } from "./customWordlistFile.js";
+import { createLruCache } from "./lib/lruCache.js";
+import { createPriorityCatalogLoader, priorityContext } from "./priorityWordControls.js";
+import { maximumVariationLength } from "./lib/kanaToSyllable.js";
+import {
+	createParamControls,
+	renderFacets as renderFacetsIn, compileWhere as compileWhereIn,
+} from "./convertControls.js";
 
 const EDITOR_STORAGE_KEY = "soramimic-editor";
+const DATABASE_CACHE_LIMIT = 2;
+const RESULT_FORMAT = "4";
 
 // GA4カスタムイベント送信(本番以外・広告ブロック時はgtag未定義なので何もしない)
 function track(name, params) {
@@ -21,74 +35,7 @@ function $id(id) {
 	return document.getElementById(id);
 }
 
-// 単一選択のボタングループ
-function setupButtonGroup(container, onChange) {
-	container.addEventListener("click", (e) => {
-		const btn = e.target.closest("button");
-		if (!btn) return;
-		for (const b of container.querySelectorAll("button")) {
-			b.classList.toggle("active", b === btn);
-		}
-		if (onChange) onChange(btn);
-	});
-}
-
-function activeValue(container) {
-	const btn = container.querySelector("button.active");
-	return btn ? btn.dataset.value : null;
-}
-
-// 両端ラベル付きスライダーの1項目を作る(「音の合わせ方」「文節の区切り」「単語の長さ」で共通)。
-// val() は生のスライダー値(数値)を返す。ペナルティへの写像は呼び出し側で行う。
-function createSliderItem({ label, leftText, rightText, min, max, step, defaultValue, ariaLabel }) {
-	const item = document.createElement("div");
-	item.className = "param-item param-item-wide";
-	const title = document.createElement("h4");
-	title.className = "field-label";
-	title.textContent = label;
-	const row = document.createElement("div");
-	row.className = "slider-row";
-	const left = document.createElement("span");
-	left.className = "slider-end";
-	left.textContent = leftText;
-	const right = document.createElement("span");
-	right.className = "slider-end";
-	right.textContent = rightText;
-	const slider = document.createElement("input");
-	slider.type = "range";
-	slider.min = String(min);
-	slider.max = String(max);
-	slider.step = String(step);
-	slider.value = String(defaultValue);
-	slider.setAttribute("aria-label", ariaLabel || label);
-	row.append(left, slider, right);
-	item.append(title, row);
-	return {
-		element: item,
-		val: () => Number(slider.value),
-		set: (value) => { slider.value = String(value); },
-	};
-}
-
-function setupTabs() {
-	const links = document.querySelectorAll("[data-tab-link]");
-	for (const link of links) {
-		link.addEventListener("click", (e) => {
-			e.preventDefault();
-			const name = link.dataset.tabLink;
-			for (const page of document.querySelectorAll(".tabpage")) {
-				page.hidden = page.id !== `tab-${name}`;
-			}
-			for (const l of document.querySelectorAll(".tabs a")) {
-				l.classList.toggle("active", l.dataset.tabLink === name);
-			}
-		});
-	}
-}
-
 export async function startApp() {
-	setupTabs();
-
 	const btnConvert = $id("btn-convert");
 	const btnCancel = $id("btn-cancel");
 	const progress = $id("progress");
@@ -96,7 +43,8 @@ export async function startApp() {
 	const inputText = $id("input-text");
 	const outputField = $id("output-field");
 	const outputText = $id("output-text");
-	const formatSelect = $id("format-select");
+	const btnCopyResult = $id("btn-copy-result");
+	const copyResultStatus = $id("copy-result-status");
 	const duplicateButtons = $id("duplicate-buttons");
 	const wordlistButtons = $id("wordlist-buttons");
 	const wordlistFacets = $id("wordlist-facets");
@@ -117,8 +65,59 @@ export async function startApp() {
 	}
 	if (savedMain) {
 		if (typeof savedMain.text === "string") inputText.value = savedMain.text;
-		if (savedMain.format) formatSelect.value = savedMain.format;
 	}
+
+	const lyricsFile = $id("lyrics-file");
+	function isJsonInput() {
+		return inputText.value.trimStart().startsWith("{");
+	}
+	function updateConvertLabel() {
+		btnConvert.textContent = isJsonInput() ? "編集画面へ" : "生成";
+	}
+	function openEditorJson(text) {
+		if (new Blob([text]).size > 10 * 1024 * 1024) throw new Error("JSONは10MB以内にしてください");
+		const payload = JSON.parse(text.trim());
+		const problem = validateEditorData(payload);
+		if (problem) throw new Error(problem);
+		if (!payload.results.length) throw new Error("編集する生成結果がありません");
+		delete payload.format;
+		delete payload.setupFirst;
+		delete payload.host;
+		delete payload.hostRequest;
+		delete payload.generationHistoryId;
+		payload.history = [];
+		payload.future = [];
+		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
+		window.location.assign("editor.html");
+	}
+	// 同じファイルを選び直した場合も再読み込みする。
+	lyricsFile.addEventListener("click", () => { lyricsFile.value = ""; });
+	lyricsFile.addEventListener("change", async () => {
+		const file = lyricsFile.files?.[0];
+		if (!file) return;
+		const status = $id("lyrics-file-status");
+		status.hidden = false;
+		status.textContent = "読み込み中...";
+		setGenerationBusy(true);
+		try {
+			if (file.size > 10 * 1024 * 1024) throw new Error("10MB以内のファイルを選んでください");
+			const text = (await file.text()).replace(/^\uFEFF/, "");
+			if (/\.json$/i.test(file.name) || file.type === "application/json") {
+				openEditorJson(text);
+				return;
+			}
+			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
+			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
+			inputText.value = text;
+			saveMainState();
+			status.hidden = true;
+		} catch (error) {
+			lyricsFile.value = "";
+			status.textContent = "読み込めませんでした: " + error.message;
+		} finally {
+			setGenerationBusy(false);
+		}
+	});
 
 	// ---- MIDI取り込み ----
 	// XF形式(カラオケ歌詞入り)MIDIから歌唱行を抽出して入力欄に流し込む。
@@ -173,6 +172,12 @@ export async function startApp() {
 				if (aligned.matchedCount < lines.length) {
 					notes.push("対応づかなかった行は読みカナのまま");
 				}
+				// 元歌詞の1行をそのまま採れなかった行は区切りが推定なので、
+				// 「n/m行」だけ見て全行そのまま入ったと誤解しないよう明示する
+				const guessed = aligned.matchedCount - aligned.snappedCount;
+				if (guessed > 0) {
+					notes.push(`${guessed}行は元歌詞の行の途中で区切りました`);
+				}
 			}
 			inputText.value = (filled || lines.map((l) => l.kana)).join("\n");
 			saveMainState();
@@ -188,103 +193,13 @@ export async function startApp() {
 	});
 
 	// ---- 単語重複・パラメータ ----
-	setupButtonGroup(duplicateButtons, saveMainState);
-	const paramArea = $id("param-area");
-	// パラメータUIの再設計(#21 → #102)。monophoneタイブレーク行列(#102)に基づく:
-	// - 「音の合わせ方」= vowelRatio(r)。行列がコア音素タイブレーク方式になったので、
-	//   rは純粋な母音/子音の重み。既定 r=0.8 で「母音ロック・子音タイブレーク」
-	//   (旧既定相当だが子音一致率はむしろ良い)、左に振ると子音ロックへ滑らかに移る。
-	//   SAME_VOWEL/CONSONANT_REWARD の掛け算ハックは撤廃(#102 実測)。
-	// - 文節・単語長は3択トグルからスライダーへ。内部ペナルティは線形。
-	//   文節 0(無視)〜8(がっちり守る)、内部値は×20(=0〜160)。MIDスイープ実測
-	//   (furusato/umi/placeholder)で MID=160 が3入力とも文節内切断ゼロの飽和点で、
-	//   応答は単調・線形写像が最適(母音の犠牲は最大-7pt)。旧×5(上限40)では
-	//   編集距離換算2.5操作分で不足し「文節重視でも文節が無視される」ため再較正した
-	//   (1ステップ=編集距離1.25操作分)。「がっちり守る」でも候補枯渇時は切れる
-	//   (絶対切断ではない含意)。既定1(=20)。
-	//   単語長 0(細かめ)〜6(長め)、内部値は×10(=0〜60)。既定2(=20)。
-	// 既定値(r=0.8・文節1・単語長2)は本番「バランス」プリセットと同一。
-	const iptSound = createSliderItem({
-		label: "音の合わせ方", leftText: "子音重視", rightText: "母音重視",
-		min: 0.1, max: 0.9, step: 0.1, defaultValue: 0.8,
-		ariaLabel: "音の合わせ方(子音重視〜母音重視)",
-	});
-	const iptPhrasebreak = createSliderItem({
-		label: "文節の区切り", leftText: "無視", rightText: "がっちり守る",
-		min: 0, max: 8, step: 1, defaultValue: 1,
-		ariaLabel: "文節の区切り(無視〜がっちり守る)",
-	});
-	const iptWordnum = createSliderItem({
-		label: "単語の長さ", leftText: "細かめ", rightText: "長め",
-		min: 0, max: 6, step: 1, defaultValue: 2,
-		ariaLabel: "単語の長さ(細かめ〜長め)",
-	});
-	for (const p of [iptSound, iptPhrasebreak, iptWordnum]) {
-		paramArea.appendChild(p.element);
-	}
-
-	// プリセット: ワンタップで詳細設定(スライダー)へ値を流し込む。
-	// 全プリセット r=0.8(母音ロック)固定で、文節・単語長の強さだけ変える(#102):
-	//   バランス   MID20(文節1)/WNP20(音そっくりと文節重視の中間、既定)
-	//   音そっくり MID0/WNP0(音韻マックス)
-	//   文節重視   MID160(文節8=スライダー最大・実測の飽和点)/WNP20
-	//   長い単語   MID20(文節1)/WNP60(スライダー最大)
-	const PRESETS = [
-		{ name: "バランス", sound: 0.8, phrase: 1, wordnum: 2 },
-		{ name: "音そっくり", sound: 0.8, phrase: 0, wordnum: 0 },
-		{ name: "文節重視", sound: 0.8, phrase: 8, wordnum: 2 },
-		{ name: "長い単語", sound: 0.8, phrase: 1, wordnum: 6 },
-	];
-	const presetButtons = $id("preset-buttons");
-	for (const preset of PRESETS) {
-		const btn = document.createElement("button");
-		btn.className = "btn" + (preset.name === "バランス" ? " active" : "");
-		btn.textContent = preset.name;
-		btn.__preset = preset;
-		presetButtons.appendChild(btn);
-	}
-	function applyPreset(p) {
-		iptSound.set(p.sound);
-		iptPhrasebreak.set(p.phrase);
-		iptWordnum.set(p.wordnum);
-	}
-	applyPreset(PRESETS[0]); // 既定はバランス(詳細設定の初期値もここから決まる)
-	setupButtonGroup(presetButtons, (btn) => {
-		applyPreset(btn.__preset);
-		track("param_preset", { preset: btn.__preset.name });
-		saveMainState();
-	});
-	// 詳細設定を手で触ったらプリセットの選択表示を外す(値はカスタム扱い)
-	function clearPresetSelection() {
-		for (const b of presetButtons.querySelectorAll("button")) {
-			b.classList.remove("active");
-		}
-	}
-	paramArea.addEventListener("click", (e) => {
-		if (e.target.closest("button")) { clearPresetSelection(); saveMainState(); }
-	});
-	paramArea.addEventListener("input", () => { clearPresetSelection(); saveMainState(); });
+	// スライダー・プリセット・単語重複のUIは編集ツールと共有する(convertControls.js)。
+	// ここで足すのは生成画面固有の副作用(GA計測・状態保存)だけ
 
 	function getParam() {
-		return {
-			// SAME_VOWEL/CONSONANT_REWARD は撤廃(#102)。母音ロックは類似度行列自体が
-			// monophoneタイブレーク方式になったことで表現され、掛け算ハックは不要。
-			// 未指定なのでlib既定(=1、無効化)のまま。母音/子音の重みは VOWEL_RATIO で調整する。
-			VOWEL_RATIO: iptSound.val(),
-			// ン/ッ/ーの1変換操作コスト。母音準一致セル(名目20)相当を実効値として
-			// vowelRatio(=r)に連動させる(実効=20×r。行列は母音側が2r倍される)。#105
-			VARIATION_COST: 20 * Number(iptSound.val()),
-			// 文節つまみは「境界一致への報酬」ではなく「文節内で切ることへの
-			// ペナルティ」に写像する(#98)。報酬方式は30で飽和し、文節内分割を
-			// 抑止できなかったため置き換え。係数は×20(UI0〜8→内部0〜160)。
-			// MIDスイープ実測でMID=160が3入力とも文節内切断ゼロの飽和点・線形応答
-			// (1ステップ=編集距離1.25操作分)。旧×5(上限40)では文節重視でも切断が残った
-			SAME_PHRASE_BREAK_REWARD: 0,
-			MID_PHRASE_BREAK_PENALTY: iptPhrasebreak.val() * 20,
-			WORD_NUMBER_PENALTY: iptWordnum.val() * 10,
-			DUPLICATE: activeValue(duplicateButtons) === "true",
-			OUTPUT_FORMAT: formatSelect.value,
-		};
+		return Object.assign(paramControls.getParam(), {
+			OUTPUT_FORMAT: RESULT_FORMAT,
+		});
 	}
 
 	// ---- データ読み込みとアルゴリズム初期化 ----
@@ -315,12 +230,12 @@ export async function startApp() {
 	}
 
 	// 歌詞をトークナイズする(API優先・失敗時kuromoji)。
-	// 後処理(formatTokensList)はどちらの経路でも共通
+	// 後処理(formatTokensList)とルビ記法(｜表層《よみ》)の処理は
+	// どちらの経路でも共通。記法の区間はAPIに渡さず強制トークンにする
 	async function tokenizePhrases(phrases) {
 		if (yomiApiReady) {
 			try {
-				const raw = await yomiApi.tokenize(phrases);
-				return app.textAnalyzer.formatTokensList(raw);
+				return await tokenizePhrasesWithYomiApi(app.textAnalyzer, yomiApi, phrases);
 			} catch (err) {
 				console.warn("yomi api失敗、kuromojiにフォールバック:", err);
 			}
@@ -330,113 +245,50 @@ export async function startApp() {
 
 	// ---- 単語リスト ----
 	let selectedWordlist = null;
-	const dbCache = new Map();
+	// 現在と直前のDBだけを残す。ファセット・歌詞長・自作リスト内容が変わるたびに
+	// 巨大DBがMapへ蓄積し続けるのを防ぎつつ、設定を戻したときの再利用は効かせる。
+	const dbCache = createLruCache(DATABASE_CACHE_LIMIT);
 
-	// 設定の wordlist は「エントリ(=ボタン)」と「グループ {label, items}(=プルダウン)」の混在。
-	// 表示順・グループ分け・ラベルはすべて設定ファイル側で決める。
-	// プルダウンは「自前描画のチップ + 透明な<select>を重ねる」構造。
-	// (iOS Safariはplaceholder用optionをピッカーに出したり、未選択時の
-	//  表示を先頭項目にしたりとクセがあるため、表示はselectに任せない)
-	const wordlistSelects = []; // { sel, wrap, textEl, label }
-	const wordlistByValue = new Map(); // value → { entry, activate(=コントロールを選択状態にする) }
-
-	// ボタン・プルダウンをまたいで選択状態を排他にする
-	function setWordlistControl(activeEl) {
-		for (const b of wordlistButtons.querySelectorAll("button[data-value]")) {
-			b.classList.toggle("active", b === activeEl);
-		}
-		for (const s of wordlistSelects) {
-			const isActive = s.sel === activeEl;
-			if (!isActive) {
-				s.sel.selectedIndex = -1; // ピッカーのチェックも外す
-				s.textEl.textContent = s.label;
-				s.capEl.hidden = true;
-			}
-			s.wrap.classList.toggle("active", isActive);
-		}
-		if (customTrigger) {
-			const isCustomActive = customTrigger === activeEl;
-			customTrigger.classList.toggle("active", isCustomActive);
-			if (!isCustomActive) {
-				customTextEl.textContent = "自作リスト";
-				customCapEl.hidden = true;
-				for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
-					item.setAttribute("aria-checked", "false");
-				}
-			}
+	const wordlistByValue = new Map();
+	function setWordlistControl(entry) {
+		customTrigger.dataset.value = entry.value;
+		customTrigger.setAttribute("aria-label", `単語リスト: ${entry.text}`);
+		customTrigger.classList.toggle("active", !!customWordlistId(entry.value));
+		customTextEl.textContent = entry.text;
+		for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
+			item.setAttribute("aria-checked", String(item.__config.value === entry.value));
 		}
 	}
-
-	function addWordlistButton(entry) {
-		const btn = document.createElement("button");
-		btn.className = "btn" + (entry.active ? " active" : "");
-		btn.textContent = entry.text;
-		btn.dataset.value = entry.value;
-		btn.__config = entry;
-		wordlistButtons.appendChild(btn);
-		wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(btn) });
-		if (entry.active) selectedWordlist = entry;
-		return btn;
-	}
-
 	for (const item of config.wordlist) {
-		if (!item.items) {
-			addWordlistButton(item);
-			continue;
+		for (const entry of item.items || [item]) {
+			wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(entry) });
+			if (entry.active) selectedWordlist = entry;
 		}
-		const wrap = document.createElement("span");
-		wrap.className = "btn wordlist-select-wrap";
-		// 選択中はグループ名を小さく前置する(「架空 ファンタジー」)。
-		// 未選択時はグループ名だけを通常サイズで出す
-		const capEl = document.createElement("span");
-		capEl.className = "wordlist-select-caption";
-		capEl.textContent = item.label;
-		capEl.hidden = true;
-		const textEl = document.createElement("span");
-		textEl.textContent = item.label;
-		const sel = document.createElement("select");
-		sel.setAttribute("aria-label", item.label);
-		const optgroup = document.createElement("optgroup");
-		optgroup.label = item.label;
-		sel.appendChild(optgroup);
-		for (const entry of item.items) {
-			const opt = document.createElement("option");
-			opt.value = entry.value;
-			opt.textContent = entry.text;
-			opt.__config = entry;
-			optgroup.appendChild(opt);
-			wordlistByValue.set(entry.value, {
-				entry,
-				activate: () => {
-					sel.value = entry.value;
-					setWordlistControl(sel);
-					textEl.textContent = entry.text;
-					capEl.hidden = false;
-				},
-			});
-		}
-		sel.selectedIndex = -1; // 初期状態は未選択(チップにはグループ名を表示)
-		sel.addEventListener("change", () => {
-			const opt = sel.selectedOptions[0];
-			if (!opt) return;
-			setWordlistControl(sel);
-			textEl.textContent = opt.textContent;
-			capEl.hidden = false;
-			selectedWordlist = opt.__config;
-			renderFacets(selectedWordlist);
-			saveMainState();
-		});
-		wrap.append(capEl, textEl, sel);
-		wordlistButtons.appendChild(wrap);
-		wordlistSelects.push({ sel, wrap, textEl, capEl, label: item.label });
 	}
+
+	const paramControls = createParamControls({
+		paramArea: $id("param-area"),
+		presetArea: $id("preset-buttons"),
+		duplicateArea: duplicateButtons,
+		priorityArea: $id("priority-words"),
+		getPriorityContext: () => priorityContext(selectedWordlist),
+		getPriorityWords: createPriorityCatalogLoader(
+			async () => (await enginePromise).appFor(),
+			() => ({ entry: selectedWordlist, where: compileWhere(selectedWordlist) })),
+		onChange: (kind, preset) => {
+			if (kind === "preset") track("param_preset", { preset: preset.name });
+			saveMainState();
+		},
+	});
 
 	// 自作リストは名前付きで複数保存し、行ごとに選択・編集・削除できるメニューから選ぶ。
+	// 保存本文はentryにもスナップショットとして持たせ、変換・編集ツールが
+	// localStorageの「現在値」に依存しないようにする。
 	const customRepository = createCustomWordlistRepository(localStorage);
 	let customLists = [];
 	let customLoadError = null;
 	try {
-		customLists = customRepository.list();
+		customLists = customRepository.list(); // 旧originalWordlistの初回移行もここ
 	} catch (err) {
 		console.warn("自作リストの読み込みに失敗:", err);
 		customLoadError = err;
@@ -446,23 +298,20 @@ export async function startApp() {
 	customWrap.className = "custom-wordlist-picker";
 	const customTrigger = document.createElement("button");
 	customTrigger.type = "button";
+	customTrigger.id = "wordlist-trigger";
 	customTrigger.className = "btn custom-wordlist-trigger";
 	customTrigger.setAttribute("aria-haspopup", "menu");
 	customTrigger.setAttribute("aria-expanded", "false");
 	customTrigger.setAttribute("aria-controls", "custom-wordlist-menu");
-	const customCapEl = document.createElement("span");
-	customCapEl.className = "wordlist-select-caption";
-	customCapEl.textContent = "自作";
-	customCapEl.hidden = true;
 	const customTextEl = document.createElement("span");
-	customTextEl.textContent = "自作リスト";
+	customTextEl.textContent = selectedWordlist.text;
 	const customMenu = document.createElement("div");
 	customMenu.id = "custom-wordlist-menu";
 	customMenu.className = "custom-wordlist-menu";
 	customMenu.setAttribute("role", "menu");
-	customMenu.setAttribute("aria-label", "自作リスト");
+	customMenu.setAttribute("aria-label", "単語リスト");
 	customMenu.hidden = true;
-	customTrigger.append(customCapEl, customTextEl);
+	customTrigger.append(customTextEl);
 	customWrap.append(customTrigger, customMenu);
 	wordlistButtons.appendChild(customWrap);
 
@@ -494,34 +343,67 @@ export async function startApp() {
 		return svg;
 	}
 
+	function makeWordlistOption(entry, subitem = false) {
+		const choose = document.createElement("button");
+		choose.type = "button";
+		choose.className = "custom-wordlist-menu-select";
+		if (subitem) choose.classList.add("custom-wordlist-menu-subitem");
+		choose.setAttribute("role", "menuitemradio");
+		choose.setAttribute("aria-label", entry.text);
+		choose.setAttribute("aria-checked", String(entry.value === selectedWordlist?.value));
+		choose.textContent = entry.text;
+		choose.dataset.value = entry.value;
+		choose.__config = entry;
+		choose.addEventListener("click", () => {
+			const found = wordlistByValue.get(entry.value);
+			if (!found) return;
+			if (selectedWordlist?.value === entry.value) {
+				closeCustomMenu();
+				return;
+			}
+			found.activate();
+			selectedWordlist = found.entry;
+			renderFacets(selectedWordlist);
+			closeCustomMenu();
+			saveMainState();
+		});
+		return choose;
+	}
+
+	function addWordlistHeading(text) {
+		const heading = document.createElement("div");
+		heading.className = "custom-wordlist-menu-heading";
+		heading.setAttribute("role", "presentation");
+		heading.textContent = text;
+		customMenu.append(heading);
+	}
+
 	function renderCustomOptions() {
 		for (const value of [...wordlistByValue.keys()]) {
 			if (customWordlistId(value)) wordlistByValue.delete(value);
 		}
 		customMenu.replaceChildren();
-		const selectedValue = selectedWordlist && selectedWordlist.value;
+		for (const item of config.wordlist) {
+			if (item.items) addWordlistHeading(item.label);
+			for (const entry of item.items || [item]) customMenu.append(makeWordlistOption(entry, !!item.items));
+		}
+		addWordlistHeading("自作リスト");
+		const add = document.createElement("button");
+		add.type = "button";
+		add.className = "custom-wordlist-menu-new custom-wordlist-menu-subitem";
+		add.setAttribute("role", "menuitem");
+		add.textContent = "＋ 新しいリスト";
+		add.addEventListener("click", (event) => {
+			event.stopPropagation();
+			closeCustomMenu(false);
+			openOriginalDialog();
+		});
+		customMenu.appendChild(add);
 		for (const list of customLists) {
 			const entry = customEntry(list);
 			const row = document.createElement("div");
-			row.className = "custom-wordlist-menu-row";
-			const choose = document.createElement("button");
-			choose.type = "button";
-			choose.className = "custom-wordlist-menu-select";
-			choose.setAttribute("role", "menuitemradio");
-			choose.setAttribute("aria-label", entry.text);
-			choose.setAttribute("aria-checked", String(entry.value === selectedValue));
-			choose.textContent = entry.text;
-			choose.__config = entry;
-			choose.addEventListener("click", (event) => {
-				event.stopPropagation();
-				const found = wordlistByValue.get(entry.value);
-				if (!found) return;
-				found.activate();
-				selectedWordlist = found.entry;
-				renderFacets(selectedWordlist);
-				closeCustomMenu();
-				saveMainState();
-			});
+			row.className = "custom-wordlist-menu-row custom-wordlist-menu-subitem";
+			const choose = makeWordlistOption(entry);
 			const edit = document.createElement("button");
 			edit.type = "button";
 			edit.className = "custom-wordlist-menu-action";
@@ -545,38 +427,18 @@ export async function startApp() {
 			});
 			row.append(choose, edit, remove);
 			customMenu.appendChild(row);
-			wordlistByValue.set(entry.value, {
-				entry,
-				activate: () => {
-					setWordlistControl(customTrigger);
-					customTextEl.textContent = entry.text;
-					customCapEl.hidden = false;
-					for (const item of customMenu.querySelectorAll("[role='menuitemradio']")) {
-						item.setAttribute("aria-checked", String(item.__config.value === entry.value));
-					}
-				},
-			});
+			wordlistByValue.set(entry.value, { entry, activate: () => setWordlistControl(entry) });
 		}
-		const add = document.createElement("button");
-		add.type = "button";
-		add.className = "custom-wordlist-menu-new";
-		add.setAttribute("role", "menuitem");
-		add.textContent = "＋ 新しいリスト";
-		add.addEventListener("click", (event) => {
-			event.stopPropagation();
-			closeCustomMenu(false);
-			openOriginalDialog();
-		});
-		customMenu.appendChild(add);
 		positionCustomMenu();
 	}
 	renderCustomOptions();
+	setWordlistControl(selectedWordlist);
 
 	function positionCustomMenu() {
 		if (customMenu.hidden) return;
 		const triggerRect = customTrigger.getBoundingClientRect();
 		const gutter = 8;
-		const width = Math.min(352, window.innerWidth - gutter * 2);
+		const width = Math.min(Math.max(320, triggerRect.width), window.innerWidth - gutter * 2);
 		customMenu.style.width = `${width}px`;
 		customMenu.style.left = `${Math.max(gutter, Math.min(
 			triggerRect.left, window.innerWidth - width - gutter))}px`;
@@ -638,75 +500,25 @@ export async function startApp() {
 	});
 	window.addEventListener("resize", positionCustomMenu);
 	window.addEventListener("scroll", positionCustomMenu, true);
-
+	// 旧版で変換済みの結果をsessionStorageから復元する場合、選択値だけでなく
+	// 編集ツールへ渡す変換時リストも移行する。旧キーは新形式保存後に消えるため、
+	// ここを直さないと「編集ツールで開く」で候補DBが空になる。
 	if (savedMain && savedMain.lastConversion && savedMain.lastConversion.wordlist
 		&& savedMain.lastConversion.wordlist.value === "ORIGINAL"
+		&& typeof savedMain.lastConversion.wordlist.csvText !== "string"
 		&& customLists.length > 0) {
 		savedMain.lastConversion.wordlist = customEntry(customLists[0]);
 	}
 
-	// facet の1つの選択肢を where 断片に変換する。設定で述語を定義できる:
-	// - item.where があればそれをそのまま使う(任意の述語。SQL 的な自由度)
-	// - facet.columns(配列)があれば全列の or に展開する
-	//   (例: {columns:["type1","type2"]} で炎チェック→ type1=ほのお or type2=ほのお)
-	// - どちらも無ければ facet.column=値(従来互換)
-	function facetClause(f, item) {
-		if (item.where) return item.where;
-		const cols = f.columns || [f.column];
-		return "(" + cols.map((c) => `${c}=${item.v}`).join(" or ") + ")";
-	}
+	// ファセット絞り込み(描画・whereのコンパイル)も編集ツールと共有する。
+	// 共有関数はコンテナ引数を取るので、生成画面のコンテナを束ねただけのラッパにする
+	const renderFacets = (entry) => {
+		renderFacetsIn(wordlistFacets, entry);
+		paramControls.refreshPriority();
+	};
+	wordlistFacets.addEventListener("change", () => paramControls.refreshPriority());
+	const compileWhere = (entry) => compileWhereIn(wordlistFacets, entry);
 
-	// 選択中リストの facets(絞り込みチェックボックス)を描画する
-	function renderFacets(entry) {
-		wordlistFacets.innerHTML = "";
-		const facets = (entry && entry.facets) || [];
-		for (const f of facets) {
-			const group = document.createElement("div");
-			group.className = "facet-group";
-			const label = document.createElement("span");
-			label.className = "facet-label";
-			label.textContent = f.label || f.column || "";
-			group.appendChild(label);
-			for (const item of f.values) {
-				const lbl = document.createElement("label");
-				lbl.className = "facet-check";
-				const cb = document.createElement("input");
-				cb.type = "checkbox";
-				cb.value = item.v;
-				cb.checked = item.default === true;
-				// 各選択肢が担う where 断片を要素に持たせる(単一列に限らない)
-				cb.__where = facetClause(f, item);
-				lbl.append(cb, document.createTextNode(item.label || item.v));
-				group.appendChild(lbl);
-			}
-			wordlistFacets.appendChild(group);
-		}
-	}
-
-	// 現在のチェック状態を where 文字列にコンパイルする。
-	// 同一 facet 内は or、facet をまたぐと and。未チェックの facet は制約なし。
-	// 各選択肢の断片は facetClause() が決める(column= / columns の or / 任意の where)。
-	// facets 未定義のエントリは従来どおり entry.where を返す。
-	function compileWhere(entry) {
-		const facets = (entry && entry.facets) || [];
-		if (facets.length === 0) return entry ? entry.where : undefined;
-		const clauses = [];
-		for (const group of wordlistFacets.querySelectorAll(".facet-group")) {
-			const frags = [...group.querySelectorAll("input:checked")]
-				.map((cb) => cb.__where);
-			if (frags.length === 0) continue; // 制約なし
-			clauses.push("(" + frags.join(" or ") + ")");
-		}
-		return clauses.join(" and ");
-	}
-
-	setupButtonGroup(wordlistButtons, (btn) => {
-		if (!btn.__config) return;
-		setWordlistControl(btn); // プルダウン側の選択も解除する
-		selectedWordlist = btn.__config;
-		renderFacets(selectedWordlist);
-		saveMainState();
-	});
 	renderFacets(selectedWordlist);
 
 	let editingCustomId = null;
@@ -741,6 +553,7 @@ export async function startApp() {
 		try {
 			const loaded = await readCustomWordlistFile(file);
 			const engine = await enginePromise;
+			// 名前付き保存へ進む前に、選択したファイルが実際に正規化できるか確認する。
 			originalTextToCsv(loaded.text, engine.app);
 			originalText.value = loaded.text;
 			if (!editingCustomId && !originalName.value.trim()) originalName.value = loaded.name;
@@ -754,7 +567,7 @@ export async function startApp() {
 	originalDropzone.addEventListener("click", () => originalFile.click());
 	originalFile.addEventListener("change", () => {
 		const file = originalFile.files && originalFile.files[0];
-		originalFile.value = "";
+		originalFile.value = ""; // 同じファイルを選び直してもchangeを発火させる
 		loadOriginalFile(file);
 	});
 	let originalDragDepth = 0;
@@ -833,9 +646,9 @@ export async function startApp() {
 		try {
 			customRepository.remove(list.id);
 			customLists = customRepository.list();
-			const deletingSelected = customWordlistId(selectedWordlist && selectedWordlist.value) === list.id;
+			const wasSelected = customWordlistId(selectedWordlist && selectedWordlist.value) === list.id;
 			renderCustomOptions();
-			if (deletingSelected && defaultWordlist) {
+			if (wasSelected && defaultWordlist) {
 				const fallback = wordlistByValue.get(defaultWordlist.value);
 				if (fallback) fallback.activate();
 				selectedWordlist = defaultWordlist;
@@ -858,6 +671,8 @@ export async function startApp() {
 		if (deleteCustomWordlist(list)) originalDialog.close();
 	});
 
+	// 別タブでの作成・更新・削除を一覧へ反映する。編集中のtextareaは上書きせず、
+	// 保存時のupdatedAt比較で競合を検知してユーザーの入力を残す。
 	window.addEventListener("storage", (event) => {
 		if (event.key !== CUSTOM_WORDLISTS_STORAGE_KEY) return;
 		try {
@@ -880,100 +695,227 @@ export async function startApp() {
 		}
 	});
 
-	// ---- サンプル(歌詞 × 単語リスト) ----
-	// クリックで歌詞と単語リストをセットし、そのまま変換まで実行する
-	// (初見でも1クリックで結果に届く)。単語リストの登録は wordlistByValue に
-	// 依存するため、リスト構築後のここで配線する。変換実行中はボタンが
-	// disabledでclick()が効かないため、歌詞・リストの差し替えだけになる
-	$id("sample-buttons").addEventListener("click", async (e) => {
-		const btn = e.target.closest("button[data-path]");
-		if (!btn) return;
-		track("sample_select", { song: btn.dataset.path, wordlist: btn.dataset.wordlist });
-		const found = wordlistByValue.get(btn.dataset.wordlist);
-		if (found) {
-			found.activate();
-			selectedWordlist = found.entry;
-			renderFacets(selectedWordlist);
-		}
-		inputText.value = await fetchText(btn.dataset.path);
-		saveMainState();
-		btnConvert.click();
+	const sampleButton = $id("btn-sample-lyrics");
+	const samplePicker = $id("sample-picker");
+	const sampleStatus = $id("sample-status");
+	let sampleRequest = null;
+	sampleButton.addEventListener("click", () => {
+		sampleStatus.hidden = true;
+		samplePicker.showModal();
+		sampleButton.setAttribute("aria-expanded", "true");
 	});
+	$id("sample-close").addEventListener("click", () => samplePicker.close());
+	samplePicker.addEventListener("close", () => {
+		sampleButton.setAttribute("aria-expanded", "false");
+		sampleRequest?.abort();
+		if (!sampleRequest) sampleButton.focus();
+	});
+	samplePicker.addEventListener("click", async (event) => {
+		const choice = event.target.closest("button[data-path]");
+		if (!choice || sampleRequest) return;
+		const path = choice.dataset.path;
+		const request = new AbortController();
+		sampleRequest = request;
+		sampleStatus.hidden = false;
+		sampleStatus.textContent = "歌詞を読み込み中...";
+		for (const button of samplePicker.querySelectorAll("[data-path]")) button.disabled = true;
+		setGenerationBusy(true);
+		try {
+			const text = await fetchText(path, { signal: request.signal });
+			if (request.signal.aborted || !samplePicker.open) return;
+			inputText.value = text;
+			lyricsFile.value = "";
+			$id("lyrics-file-status").hidden = true;
+			saveMainState();
+			track("sample_select", { song: path });
+			samplePicker.close();
+		} catch (error) {
+			if (!request.signal.aborted) sampleStatus.textContent = "歌詞を読み込めませんでした: " + error.message;
+		} finally {
+			sampleRequest = null;
+			for (const button of samplePicker.querySelectorAll("[data-path]")) button.disabled = false;
+			setGenerationBusy(false);
+			if (!samplePicker.open) sampleButton.focus();
+		}
+	});
+
+
+	async function prepareConversion(text, param = getParam()) {
+		const phrases = textToPhrases(text);
+		let entry = selectedWordlist;
+		const where = compileWhere(entry);
+		const engine = await enginePromise;
+		app = engine.appFor(param.VOWEL_RATIO);
+		if (customWordlistId(entry?.value)) entry = { ...entry, originalText: undefined,
+			csvText: originalTextToCsv(entry.originalText, app) };
+		const tokensList = await tokenizePhrases(phrases);
+		const maxUnits = tokensList.reduce((max, tokens) => Math.max(max,
+			maximumVariationLength(app.textAnalyzer.getYomiAndPhraseBreak(tokens).map(unit => unit.pronunciation))), 0);
+		const db = await getDatabase(entry, where, maxUnits > 0 ? maxUnits : undefined);
+		return { app, phrases, tokensList, db, entry, where, param, sourceText: text };
+	}
 
 	async function getDatabase(entry, where, maxUnits) {
 		// 同じvalueでもwhere(ファセット絞り込み含む)が異なると別物なので、
-		// キーは内容と歌詞長上限で構成し、自作リストの編集後や別の長さの
-		// 歌詞で古いDBを使わない。
+		// キーは内容で構成し、自作リストの編集後に古いDBを使わない。
 		if (customWordlistId(entry.value)) {
-			const key = [entry.value, entry.originalText || "", maxUnits].join("|");
-			if (!dbCache.has(key)) {
-				dbCache.set(key, await buildDatabase(app, entry, undefined, maxUnits));
-			}
-			return dbCache.get(key);
+			const key = [entry.value, entry.csvText || entry.originalText || "", maxUnits].join("|");
+			return dbCache.getOrCreate(key,
+				() => buildDatabase(app, entry, undefined, maxUnits));
 		}
 		const key = [entry.filepath, entry.dbtype, where, maxUnits].join("|");
-		if (!dbCache.has(key)) {
-			dbCache.set(key, await buildDatabase(app, entry, where, maxUnits));
-		}
-		return dbCache.get(key);
+		return dbCache.getOrCreate(key,
+			() => buildDatabase(app, entry, where, maxUnits));
 	}
 
 	// ---- 変換 ----
 	let pastResult = null;
 	let lastConversion = null; // 直近の変換入力(編集ツールへの受け渡し用)
+	let editorPayload = null;
+	let selectedHistoryId = null;
+	let historyEntries = [];
+	let historyBusy = false;
+	const historyRepository = createGenerationHistoryRepository();
+	const currentResult = $id("current-result");
+	const historyView = createGenerationHistoryView({
+		container: $id("history-list"),
+		template: $id("history-card-template"),
+		onEdit: entry => {
+			selectHistoryEntry(entry);
+			openEditor().catch(showGenerationError);
+		},
+	});
+	const historyStatus = $id("history-status");
 
 	function saveMainState() {
 		try {
-			// activeなプリセット名(手で詳細設定を触った=カスタムのときはnull)
-			const activePreset = presetButtons.querySelector("button.active");
+			const values = paramControls.getValues();
 			sessionStorage.setItem(MAIN_STORAGE_KEY, JSON.stringify({
 				text: inputText.value,
-				format: formatSelect.value,
 				wordlistValue: selectedWordlist ? selectedWordlist.value : null,
-				preset: activePreset ? activePreset.textContent : null,
-				sound: iptSound.val(),
-				phrase: iptPhrasebreak.val(),
-				wordnum: iptWordnum.val(),
-				duplicate: activeValue(duplicateButtons),
-				pastResult,
-				lastConversion,
+				// activeなプリセット名(手で詳細設定を触った=カスタムのときはnull)
+				preset: paramControls.activePresetName(),
+				sound: values.sound,
+				phrase: values.phrase,
+				wordnum: values.wordnum,
+				duplicate: String(values.duplicate),
+				priorityWords: values.priorityWords,
+				priorityContext: values.priorityContext,
+				historyId: selectedHistoryId,
+				unsavedResult: !selectedHistoryId ? editorPayload : undefined,
+				pastResult: !selectedHistoryId && !editorPayload ? pastResult : undefined,
+				lastConversion: !selectedHistoryId && !editorPayload ? lastConversion : undefined,
 			}));
 		} catch (err) {
 			console.warn("生成画面の状態保存に失敗:", err);
 		}
 	}
-	inputText.addEventListener("input", saveMainState);
+	inputText.addEventListener("input", () => {
+		lyricsFile.value = "";
+		$id("lyrics-file-status").hidden = true;
+		updateConvertLabel();
+		saveMainState();
+	});
 
 	let convertMeta = null; // 変換1回分の計測情報(convertイベント用)
 
 	const btnOpenEditor = $id("btn-open-editor");
-	btnOpenEditor.addEventListener("click", async () => {
-		if (!pastResult || pastResult.length === 0 || !lastConversion) return;
+	async function makeEditorPayload(conversion = lastConversion, results = pastResult) {
+		const engine = await enginePromise;
+		return {
+			phrases: conversion.phrases,
+			tokensList: conversion.tokensList,
+			results,
+			param: conversion.param,
+			wordlist: conversion.wordlist,
+			where: conversion.where,
+			unitsList: unitsListFromTokens(engine.app, conversion.tokensList),
+		};
+	}
+	async function openEditor() {
+		if (!pastResult?.length) return;
+		const payload = structuredClone(editorPayload || await makeEditorPayload());
+		if (selectedHistoryId) payload.generationHistoryId = selectedHistoryId;
+		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
 		track("open_editor", {});
-		// 結果がある時点でエンジンはロード済みのはずだが、前回セッションの
-		// 結果復元直後だけは未ロードがあり得るため念のため待つ
-		// (sessionStorageは新タブ生成時にコピーされるため、window.openは
-		//  必ずデータを書き終えたあとに呼ぶこと)
-		({ app } = await enginePromise);
-		// 発音ユニット列(結果単語のperiodが指すインデックス列)も渡し、
-		// 編集画面が表示のためだけにトークナイザを再初期化しなくて済むようにする
-		const unitsList = lastConversion.tokensList.map((tokens) =>
-			app.textAnalyzer.getYomiAndPhraseBreak(tokens).map((u) => ({
-				surface_form: u.surface_form,
-				pronunciation: u.pronunciation,
-				phrase: u.phrase,
-			})));
-		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify({
-			phrases: lastConversion.phrases,
-			tokensList: lastConversion.tokensList,
-			results: pastResult,
-			param: lastConversion.param,
-			wordlist: lastConversion.wordlist,
-			where: lastConversion.where,
-			unitsList,
-		}));
-		window.open("editor.html");
-	});
+		window.location.assign("editor.html");
+	}
+
+	function showGenerationError(error) {
+		console.error(error);
+		const status = $id("generation-error");
+		status.textContent = "エラーが発生しました: " + error.message;
+		status.hidden = false;
+	}
+	btnOpenEditor.addEventListener("click", () => openEditor().catch(showGenerationError));
+
+	function showHistoryStatus(message) {
+		historyStatus.textContent = message;
+		historyStatus.hidden = !message;
+		if (message) { outputField.hidden = false; outputField.open = true; }
+	}
+	function renderHistory() {
+		historyView.render(historyEntries, historyBusy);
+		currentResult.hidden = Boolean(selectedHistoryId) || !outputText.textContent;
+		btnOpenEditor.disabled = historyBusy;
+		$id("history-count").textContent = historyEntries.length ? `（${historyEntries.length}件）` : "";
+	}
+	function selectHistoryEntry(entry) {
+		selectedHistoryId = entry?.id || null;
+		editorPayload = entry ? structuredClone(entry.payload) : null;
+		pastResult = editorPayload?.results || null;
+		outputText.textContent = "";
+		outputText.scrollTop = 0;
+		btnCopyResult.disabled = !outputText.textContent;
+		btnOpenEditor.hidden = !pastResult?.length;
+		outputField.hidden = !historyEntries.length && !editorPayload && historyStatus.hidden;
+		renderHistory();
+		saveMainState();
+	}
+
+	async function initializeHistory() {
+		if (savedMain?.unsavedResult?.results?.length) {
+			editorPayload = savedMain.unsavedResult;
+			pastResult = editorPayload.results;
+			outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
+			btnOpenEditor.hidden = false;
+			btnCopyResult.disabled = false;
+		}
+		try {
+			historyEntries = await historyRepository.list();
+			if (pastResult?.length && lastConversion) {
+				// 前回1件だけのセッション保存を、重複させずに永続履歴へ移す。
+				const payload = await makeEditorPayload();
+				const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
+				const id = "legacy-" + [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+				try {
+					const entry = await historyRepository.add(payload, payload.phrases.join("\n"), { id });
+					historyEntries = await historyRepository.list();
+					selectHistoryEntry(entry);
+				} catch {
+					editorPayload = payload;
+					showHistoryStatus("この結果を履歴に保存できませんでした。編集画面の「書き出し」で保存できます。");
+					renderHistory();
+				}
+				return;
+			}
+			if (savedMain?.unsavedResult?.results?.length) {
+				editorPayload = savedMain.unsavedResult;
+				pastResult = editorPayload.results;
+				outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
+				btnOpenEditor.hidden = false;
+				btnCopyResult.disabled = false;
+				showHistoryStatus("この結果は履歴に保存されていません。編集画面の「書き出し」で保存できます。");
+				renderHistory();
+				return;
+			}
+			const entry = historyEntries.find(item => item.id === savedMain?.historyId) || historyEntries[0];
+			selectHistoryEntry(entry);
+		} catch {
+			showHistoryStatus("過去の生成結果を読み込めませんでした。再読み込みしてお試しください。");
+			renderHistory();
+		}
+	}
 
 	// 変換の世代トークン。中止・再実行のたびに進め、エンジン・辞書ロード中
 	// (=生成チェーン開始前)に中止された変換が後から走り出すのを防ぐ。
@@ -982,10 +924,20 @@ export async function startApp() {
 	let convertHandle = null;
 
 	function resetConvertUi() {
+		setGenerationBusy(false);
 		progress.hidden = true;
 		btnCancel.hidden = true;
 		btnConvert.disabled = false;
-		btnConvert.textContent = "変換";
+		updateConvertLabel();
+	}
+
+	function setGenerationBusy(busy) {
+		historyBusy = busy;
+		for (const control of document.querySelectorAll(".generation-card button, .generation-card input, .generation-card textarea, .generation-card select")) {
+			if (control !== btnCancel) control.disabled = busy;
+		}
+		if (!busy) updateConvertLabel();
+		renderHistory();
 	}
 
 	btnCancel.addEventListener("click", () => {
@@ -1005,57 +957,74 @@ export async function startApp() {
 		resetConvertUi();
 	});
 
-	function setResult(result) {
+	async function setResult(result, gen) {
 		if (convertMeta) {
 			track("convert", {
 				text_length: convertMeta.textLength,
 				wordlist: convertMeta.wordlist,
-				output_format: formatSelect.value,
+				output_format: RESULT_FORMAT,
 				duration_ms: Date.now() - convertMeta.started,
 				success: result.length > 0,
 			});
 			convertMeta = null;
 		}
 		pastResult = result;
+		selectedHistoryId = null;
+		editorPayload = null;
 		outputField.hidden = false;
 		if (result.length === 0) {
-			outputText.value = "うまく変換できる単語を見つけられませんでした";
+			outputText.textContent = "うまく変換できる単語を見つけられませんでした";
 			btnOpenEditor.hidden = true;
+			outputField.open = true;
 		} else {
-			outputText.value = makeResultText(result, formatSelect.value);
+			outputText.textContent = makeResultText(result, RESULT_FORMAT);
 			btnOpenEditor.hidden = false;
 		}
+		btnCopyResult.disabled = outputText.textContent.length === 0;
+		if (result.length > 0) {
+			const conversion = lastConversion;
+			const payload = await makeEditorPayload(conversion, result);
+			try {
+				const entry = await historyRepository.add(payload, conversion.sourceText || conversion.phrases.join("\n"));
+				historyEntries = await historyRepository.list();
+				if (gen !== convertGen) return;
+				showHistoryStatus("");
+				selectHistoryEntry(entry);
+			} catch {
+				if (gen !== convertGen) return;
+				editorPayload = payload;
+				showHistoryStatus("この結果を履歴に保存できませんでした。編集画面の「書き出し」で保存できます。");
+				resetConvertUi();
+				saveMainState();
+				return;
+			}
+		}
+		if (gen !== convertGen) return;
 		resetConvertUi();
 		saveMainState();
+		if (result.length > 0) openEditor().catch(showGenerationError);
 	}
 
-	formatSelect.addEventListener("change", () => {
-		if (pastResult && pastResult.length > 0) {
-			outputText.value = makeResultText(pastResult, formatSelect.value);
-		}
-		saveMainState();
-	});
+	bindResultCopy(btnCopyResult, copyResultStatus, () => outputText.textContent,
+		() => historyBusy || !outputText.textContent);
 
 	// 前回の変換結果の復元(単語リストの選択状態も戻す)
 	if (savedMain) {
 		// 詳細設定・単語重複・プリセットの選択状態を復元する。
-		// 既定のバランスは applyPreset(PRESETS[0]) で適用済みなので、
-		// 保存値があるときだけ上書きする(旧セッションで欠けていれば既定のまま)
-		if (typeof savedMain.sound === "number") iptSound.set(savedMain.sound);
-		if (typeof savedMain.phrase === "number") iptPhrasebreak.set(savedMain.phrase);
-		if (typeof savedMain.wordnum === "number") iptWordnum.set(savedMain.wordnum);
-		if (savedMain.duplicate) {
-			for (const b of duplicateButtons.querySelectorAll("button")) {
-				b.classList.toggle("active", b.dataset.value === savedMain.duplicate);
-			}
-		}
+		// 既定(バランス)はUI構築時に適用済みなので、保存値があるときだけ
+		// 上書きする(旧セッションで欠けていれば既定のまま)
+		paramControls.setValues({
+			sound: savedMain.sound,
+			phrase: savedMain.phrase,
+			wordnum: savedMain.wordnum,
+			duplicate: savedMain.duplicate || undefined,
+		});
 		if ("preset" in savedMain) {
 			// 保存名に一致するプリセットをactive、null(カスタム)なら全部外す
-			for (const b of presetButtons.querySelectorAll("button")) {
-				b.classList.toggle("active", b.textContent === savedMain.preset);
-			}
+			paramControls.setPreset(savedMain.preset);
 		}
 		if (savedMain.wordlistValue) {
+			// 旧セッションのORIGINALは、移行済みの先頭リストへ読み替える。
 			const restoredValue = savedMain.wordlistValue === "ORIGINAL" && customLists.length > 0
 				? customWordlistValue(customLists[0].id) : savedMain.wordlistValue;
 			const found = wordlistByValue.get(restoredValue);
@@ -1065,18 +1034,34 @@ export async function startApp() {
 				renderFacets(selectedWordlist);
 			}
 		}
+		paramControls.setValues({ priorityWords: savedMain.priorityWords, priorityContext: savedMain.priorityContext });
 		if (savedMain.pastResult && savedMain.pastResult.length > 0 && savedMain.lastConversion) {
 			pastResult = savedMain.pastResult;
 			lastConversion = savedMain.lastConversion;
 			outputField.hidden = false;
-			outputText.value = makeResultText(pastResult, formatSelect.value);
+			outputText.textContent = makeResultText(pastResult, RESULT_FORMAT);
+			btnCopyResult.disabled = false;
 			btnOpenEditor.hidden = false;
 		}
 	}
+	await initializeHistory();
 
 	btnConvert.addEventListener("click", () => {
 		const text = inputText.value;
 		if (text.trim() === "") return;
+		$id("generation-error").hidden = true;
+		if (isJsonInput()) {
+			try {
+				openEditorJson(text);
+			} catch (error) {
+				showGenerationError(error);
+			}
+			return;
+		}
+		if (text.length > 10000) {
+			showGenerationError(new Error("歌詞は1万文字以内にしてください"));
+			return;
+		}
 		const phrases = textToPhrases(text);
 		const param = getParam();
 		convertMeta = {
@@ -1085,61 +1070,66 @@ export async function startApp() {
 			wordlist: selectedWordlist ? selectedWordlist.value : "unknown",
 		};
 
+		$id("generation-error").hidden = true;
 		const gen = ++convertGen;
+		setGenerationBusy(true);
 		btnConvert.disabled = true;
 		btnConvert.textContent = "準備中...";
 		btnCancel.hidden = false;
 		progress.hidden = false;
 		progressText.textContent = `0/${phrases.length}`;
-		outputText.value = "";
+		outputText.textContent = "";
+		btnCopyResult.disabled = true;
 
 		// UI描画を挟んでから重い処理に入る
 		setTimeout(async () => {
 			try {
-				// 初回はエンジン(データ+辞書)のロード完了をここで待つ。
-				// appは「音の合わせ方」(vowelRatio)に応じたインスタンスを使う
-				const engine = await enginePromise;
-				app = engine.appFor(param.VOWEL_RATIO);
-				// ファセットのチェック状態は変換後も操作できるため、
-				// DB構築に実際使ったwhereをここで確定して編集画面へ引き継ぐ
-				// 本文込みのentryを変換時点のスナップショットとして編集画面へ引き継ぐ。
-				const entry = customWordlistId(selectedWordlist && selectedWordlist.value)
-					? { ...selectedWordlist } : selectedWordlist;
-				const where = compileWhere(entry);
-				const tokensList = await tokenizePhrases(phrases);
-				// 歌詞に存在しない長さの駅名候補まで展開すると、大規模リストで
-				// DB構築が止まって見える。発音ユニット数の最大値を先に求め、
-				// 単語側の変種生成を必要な長さまでに限定する。
-				const maxUnits = tokensList.reduce((max, tokens) => Math.max(
-					max, app.textAnalyzer.getYomiAndPhraseBreak(tokens).length), 0);
 				progressText.textContent = "単語リストを準備中...";
-				const db = await getDatabase(
-					entry, where, maxUnits > 0 ? maxUnits : undefined);
+				const { tokensList, db, entry, where } = await prepareConversion(text, param);
 				if (gen !== convertGen) return; // ロード中に中止・再実行された
 				lastConversion = {
-					phrases, tokensList, param, wordlist: entry, where,
+					phrases, tokensList, param, wordlist: entry, where, sourceText: text,
 				};
-				btnConvert.textContent = "変換中...";
-				const updateFunc = (result, i) => {
+				btnConvert.textContent = "生成中...";
+				progressText.textContent = "候補を生成中...";
+				const updateFunc = (result, i, _tokens, progressInfo) => {
 					if (gen !== convertGen) return;
+					if (progressInfo?.phase === "priority-placement") {
+						if (progressInfo.stage === "searching") {
+							const preference = progressInfo.preferenceIndex > 0
+								? `優先語 ${progressInfo.preferenceIndex}/${progressInfo.preferenceCount} の` : "優先語の";
+							const line = progressInfo.lineIndex > 0 && progressInfo.lineCount > 1
+								? ` (${progressInfo.lineIndex}/${progressInfo.lineCount}行)` : "";
+							progressText.textContent = `${preference}配置候補を探索中...${line}`;
+						} else if (progressInfo.stage === "evaluating") {
+							progressText.textContent = `配置案 ${progressInfo.planIndex}/${progressInfo.planCount} を評価中 (${progressInfo.completedLines}/${progressInfo.lineCount}行)`;
+						} else {
+							progressText.textContent = `${progressInfo.completedLines}/${progressInfo.lineCount}`;
+						}
+						return;
+					}
 					progressText.textContent = `${i + 1}/${phrases.length}`;
 				};
 				convertHandle = app.soramimiMaker.generateFromTokens(tokensList, db, param, updateFunc, (result) => {
 					if (gen !== convertGen) return; // 中止済みの結果は捨てる
 					convertHandle = null;
-					setResult(result);
+					setResult(result, gen).catch(error => { showGenerationError(error); resetConvertUi(); });
+				});
+				convertHandle.finished?.catch(error => {
+					if (gen !== convertGen) return;
+					showGenerationError(error); resetConvertUi();
 				});
 			} catch (err) {
-				console.error(err);
 				if (gen !== convertGen) return;
-				outputField.hidden = false;
-				outputText.value = "エラーが発生しました: " + err.message;
+				showGenerationError(err);
 				resetConvertUi();
 			}
 		}, 50);
 	});
 
 	// 初期化完了
+	lyricsFile.disabled = false;
+	sampleButton.disabled = false;
 	btnConvert.disabled = false;
-	btnConvert.textContent = "変換";
+	updateConvertLabel();
 }

@@ -1,4 +1,5 @@
 // js/WordList.js から移植(ロジック無改変、ESモジュール化のみ)
+import { indexPronunciation } from "./pronunciationSearch.js";
 function Parser(){
 	function tokenize(query_str){
 		//query_str = query_str.replace(/(?<!!)=|!=|\(|\)/g," $& ");//後よみは使わない
@@ -142,7 +143,7 @@ function WordList(textAnalyzer){
 	}
 
 	
-	async function loadDatabaseCsvText(text, query_str, maxUnits){
+	async function entriesTidy(text, query_str){
 		//console.log("loadDatabaseCsvText",text);
 		//let text = loadTextFileSync(path);
 		// 改行を含む \s を使うと、末尾カラムが空の行(行末が ",")が次行を飲み込む
@@ -152,6 +153,7 @@ function WordList(textAnalyzer){
 		let df = [];
 		for(let i=1;i<lines.length;i++){
 			let row = lines[i].split(",");
+			// 末尾改行や途中の空行はCSVレコードとして扱わない
 			if(row.some(v=>v.trim() !== "")) df.push(row);
 		}
 		
@@ -185,8 +187,6 @@ function WordList(textAnalyzer){
 				kanji_pronunciation_id.push(i);
 			}
 		}
-		console.log("kanji_pronunciation",kanji_pronunciation);
-		
 		if(kanji_pronunciation.length > 0){
 			for(let start=0;start<kanji_pronunciation.length;start+=YIELD_BATCH_SIZE){
 				let end = Math.min(start + YIELD_BATCH_SIZE, kanji_pronunciation.length);
@@ -215,35 +215,37 @@ function WordList(textAnalyzer){
 		//console.timeEnd("mecab")
 		pronunciations = pronunciations2;
 		//console.log("pronunciations",pronunciations);
+		const entries = [];
+		for(let i=0;i<filterred_df.length;i++){
+			const line = filterred_df[i];
+			if(pronunciations[i])entries.push({
+				id: line[h2i.id], original: line[h2i.original],
+				surface: line[h2i.surface], kana: pronunciations[i],
+			});
+			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
+		}
+		return entries;
+	}
+
+	async function loadDatabaseCsvText(text, query_str, maxUnits){
+		const entries = await entriesTidy(text, query_str);
 				
 		const resultdb = {}
-		for(let i=0;i<filterred_df.length;i++){
-			let line = filterred_df[i];
-			let obj = {}
-			//id, surface, original, pronunciationはある前提
-			for(let i=0;i<header.length;i++){
-				obj[header[i]]=line[i];
-			}
-			//if(!obj.pronunciation || /^NA$|^na$/.test(obj.pronunciation)){
-			//	obj.pronunciation = textAnalyzer.getYomi(obj.surface);
-			//}
-			//surfaceから読みを推測してもなお空であればスキップ
-			obj.pronunciation = pronunciations[i];
-			if(!obj.pronunciation) continue;
+		for(let i=0;i<entries.length;i++){
+			const obj = entries[i];
 			
 			// maxUnits を変種生成まで渡し、長い読みの直積を作る途中で枝刈りする。
-			const pvariations = textAnalyzer.yomiToVariation(obj.pronunciation, maxUnits);
+			const pvariations = textAnalyzer.yomiToVariation(obj.kana, maxUnits, false);
 			for(let p of pvariations){
 				if(maxUnits !== undefined && p.length > maxUnits) continue;
-				if(p.length in resultdb === false)resultdb[p.length]=[];
-				resultdb[p.length].push({
+				indexPronunciation(resultdb, {
 					"surface":obj.surface,
 					"pronunciation":p,
-					"kana":obj.pronunciation,
+					"kana":obj.kana,
 					"id":obj.id,
 					"original":obj.original,
 					"vcost":p.vcost||0 //単語側の変種コスト(#105)
-				});
+				}, maxUnits);
 			}
 			if((i+1)%YIELD_BATCH_SIZE === 0) await yieldToBrowser();
 		}
@@ -384,6 +386,7 @@ function WordList(textAnalyzer){
 		//set: setWordList,
 		//setList: setList,
 		parseTidy: loadDatabaseCsvText,
+		entriesTidy,
 		parsePlain: loadDatabaseText,
 		// plain形式 → tidy CSV の正規化。parsePlain が内部で通しているのと同じ関数を
 		// そのまま公開しただけ(ロジック無改変)。自作リストのCSVを書き出しJSONへ
