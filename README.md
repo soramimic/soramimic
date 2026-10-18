@@ -41,6 +41,23 @@ node tests/streaming-exact.mjs               # 重複なし生成の省メモリ
 cd frontend && npm run test:smoke            # UIスモークテスト(実ブラウザ)
 ```
 
+PRの必須チェック `golden` では、通常生成（重複あり・なし）、長音を含む生成、
+優先単語つきの12行生成の処理時間も変更前後で比較する。同じマシンで実行順を交互に変え、
+各版を5回ずつ計測して中央値を取る。各回の直前には同じ処理でウォームアップする。
+実時間またはCPU時間が30％超悪化し、
+その増加が実時間100ms・CPU時間50msの許容幅も超えると失敗する。
+各回の計測値と比較結果はCIのSummaryと `generation-performance` artifactで確認できる。
+対象は辞書読み込み後の生成処理で、ブラウザ描画・通信・起動時間は含まない。
+
+手元では、比較元の別チェックアウトにも `frontend` の依存をインストールして実行する。
+両版に同じ固定単語リスト・入力を渡すため、比較元には本リポジトリの
+`tests/golden/harness-lib.mjs` が必要となる。
+
+```sh
+node tests/performance/compare.test.mjs
+node tests/performance/run.mjs --base /path/to/base-checkout --report /tmp/performance-results.json
+```
+
 ## ライセンス
 
 [Apache License 2.0](./LICENSE)。同梱・利用しているサードパーティソフトウェア・データの
