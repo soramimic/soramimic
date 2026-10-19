@@ -63,3 +63,8 @@ node tests/performance/run.mjs --base /path/to/base-checkout --report /tmp/perfo
 [Apache License 2.0](./LICENSE)。同梱・利用しているサードパーティソフトウェア・データの
 表示は [NOTICE](./NOTICE) を参照(kuromoji.js / mecab-ipadic 辞書のライセンスファイルは
 ビルド時に配信物 `frontend/public/kuromoji/` にもコピーされる)。
+
+### 歌詞入りMIDIの取り込み
+
+`?midi` 付きのURLで表示される「MIDIから取り込み」は、XF MIDIと標準の歌詞入りMIDIに対応します。
+標準MIDIの歌詞はUTF-8またはShift_JISで読み込みます。音符に対応する歌詞がないMIDIは取り込めません。

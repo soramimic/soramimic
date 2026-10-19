@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { build } from "vite";
 import { chromium } from "playwright";
 import { Parser } from "../src/lib/wordList.js";
-import { buildXfMidi } from "../../tests/xfmidi-fixture.mjs";
+import { buildXfMidi, buildLyricMidi } from "../../tests/xfmidi-fixture.mjs";
 
 const PORT = 4199;
 
@@ -586,6 +586,14 @@ try {
 	if (!midiStatus.includes("2行・5音符")) {
 		throw new Error("MIDI取り込みステータスが想定外: " + midiStatus);
 	}
+
+	// ---- Videoの歌詞入りMIDIと同じ、UTF-8の標準歌詞イベント ----
+	await page.fill("#input-text", "");
+	await page.setInputFiles("#midi-file", {
+		name: "lyrics.mid", mimeType: "audio/midi", buffer: Buffer.from(buildLyricMidi()),
+	});
+	await page.waitForFunction(() => document.getElementById("input-text").value === "ハル\nナツ");
+	assert.match(await page.textContent("#midi-status"), /2行・4音符/);
 
 	// ---- MIDI取り込み(元歌詞つき): 歌唱行と対応づけて表記ベースの行になる ----
 	await page.fill("#input-text", "私は沈むけど、とけない");
