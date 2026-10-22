@@ -71,3 +71,5 @@ jobs:
         run: node tests/app-bridge.mjs
       - name: 動画生成前の歌詞確認E2E
         run: node tests/editor-review.mjs
+      - name: 編集ファイル読込中の操作制限とキャンセル
+        run: node tests/editor-file-operations.mjs && EDITOR_FILES_BROWSER=webkit node tests/editor-file-operations.mjs

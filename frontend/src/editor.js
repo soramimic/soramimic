@@ -1920,38 +1920,61 @@ function countOriginalEntries(text) {
 // 選んだCSV/テキストを自作リストの編集欄に流し込む。ここでやるのは
 // textareaを埋めてinputを発火させるところまでで、正規化CSV(originalTextToCsv)も
 // localStorageへの保存も貼り付けたときとまったく同じハンドラに任せる
+let originalReadSequence = 0;
+let originalReading = false;
+
+function setOriginalReading(reading) {
+	originalReading = reading;
+	$id("editor-original-dialog").setAttribute("aria-busy", String(reading));
+	for (const id of ["editor-original-text", "btn-original-register", "btn-original-paste",
+		"btn-original-file", "original-file"]) $id(id).disabled = reading;
+}
+
+function cancelOriginalRead() {
+	++originalReadSequence;
+	setOriginalReading(false);
+}
+
 async function loadOriginalFile(file) {
+	if (originalReading) return;
 	if (file.size > ORIGINAL_FILE_MAX) {
 		setOriginalFileStatus(
 			`ファイルが大きすぎます(${(file.size / 1024 / 1024).toFixed(1)}MB)。`
 			+ `${ORIGINAL_FILE_MAX / 1024 / 1024}MBまでのCSV/テキストにしてください`);
 		return;
 	}
-	let text;
+	const sequence = ++originalReadSequence;
+	setOriginalReading(true);
+	setOriginalFileStatus("ファイルを読み込んでいます…");
 	try {
-		text = await file.text();
+		const text = await file.text();
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
+		const ta = $id("editor-original-text");
+		ta.value = text;
+		setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
+		ta.dispatchEvent(new Event("input", { bubbles: true }));
 	} catch (err) {
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		console.error(err);
 		setOriginalFileStatus("ファイルを読み込めませんでした: " + err.message);
-		return;
+	} finally {
+		if (sequence === originalReadSequence) setOriginalReading(false);
 	}
-	const ta = $id("editor-original-text");
-	ta.value = text;
-	// 先に成功の表示を出しておく。保存に失敗したときは input のハンドラが
-	// この表示を上書きするので、失敗のほうが残る
-	setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
-	ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 // 自作リスト欄へクリップボードのテキストを流し込む。Clipboard API が使えない
 // HTTP配置や権限拒否では、欄へフォーカスして通常の Ctrl/Cmd+V を案内する。
 async function pasteOriginalText() {
+	if (originalReading) return;
+	const sequence = ++originalReadSequence;
+	setOriginalReading(true);
 	const ta = $id("editor-original-text");
 	try {
 		if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
 			throw new Error("clipboard unavailable");
 		}
 		const text = await navigator.clipboard.readText();
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		if (!text) {
 			setOriginalFileStatus("クリップボードにテキストがありません");
 			return;
@@ -1960,9 +1983,13 @@ async function pasteOriginalText() {
 		setOriginalFileStatus(`クリップボードから${countOriginalEntries(text)}語を貼り付けました`);
 		ta.dispatchEvent(new Event("input", { bubbles: true }));
 	} catch (err) {
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		console.warn("クリップボードを読み取れませんでした:", err);
+		setOriginalReading(false);
 		ta.focus();
 		setOriginalFileStatus("入力欄に Ctrl+V（Macは⌘V）で貼り付けてください");
+	} finally {
+		if (sequence === originalReadSequence) setOriginalReading(false);
 	}
 }
 
@@ -2016,6 +2043,7 @@ let originalDraftEntry = null;
 // 自作リストは別モーダルで編集する。選択操作から開いた場合は、キャンセル時に
 // それまで適用されていた単語リストへセレクトを戻す。
 function openOriginalDialog(restoreValue = null) {
+	cancelOriginalRead();
 	if (engineMatches()) {
 		++settingsRevision;
 		setSettingsBusy(false);
@@ -2038,10 +2066,12 @@ function openOriginalDialog(restoreValue = null) {
 }
 
 function cancelOriginalDialog() {
+	cancelOriginalRead();
 	$id("editor-original-dialog").close();
 }
 
 function acceptOriginalDialog() {
+	if (originalReading) return;
 	const text = $id("editor-original-text").value;
 	if (!text.trim()) {
 		setOriginalFileStatus("単語を1つ以上入力してください");
@@ -2064,6 +2094,7 @@ function acceptOriginalDialog() {
 }
 
 function finishOriginalDialog() {
+	cancelOriginalRead();
 	if (!originalDialogAccepted && originalDialogRestoreValue) {
 		$id("editor-wordlist").value = originalDialogRestoreValue;
 		onWordlistChange();
@@ -2752,32 +2783,46 @@ function exportData() {
 	URL.revokeObjectURL(a.href);
 }
 
+let importReading = false;
+
 async function importFile(file) {
-	let obj;
+	if (importReading) return;
+	importReading = true;
+	const container = $id("app");
+	const wasInert = container.inert;
+	container.inert = true;
+	container.setAttribute("aria-busy", "true");
 	try {
-		obj = JSON.parse(await file.text());
-	} catch (err) {
-		alert("JSONの読み込みに失敗しました: " + err.message);
-		return;
+		let obj;
+		try {
+			obj = JSON.parse(await file.text());
+		} catch (err) {
+			alert("JSONの読み込みに失敗しました: " + err.message);
+			return;
+		}
+		const problem = validateEditorData(obj);
+		if (problem) {
+			alert("読み込めないファイルです: " + problem);
+			return;
+		}
+		// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
+		// 生成画面から開いたときと同じ起動フローに乗る
+		delete obj.format;
+		delete obj.generationHistoryId;
+		obj.history = [];
+		obj.future = [];
+		try {
+			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(obj));
+		} catch (err) {
+			alert("読み込んだデータの保存に失敗しました: " + err.message);
+			return;
+		}
+		location.reload();
+	} finally {
+		importReading = false;
+		container.inert = wasInert;
+		container.removeAttribute("aria-busy");
 	}
-	const problem = validateEditorData(obj);
-	if (problem) {
-		alert("読み込めないファイルです: " + problem);
-		return;
-	}
-	// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
-	// 生成画面から開いたときと同じ起動フローに乗る
-	delete obj.format;
-	delete obj.generationHistoryId;
-	obj.history = [];
-	obj.future = [];
-	try {
-		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(obj));
-	} catch (err) {
-		alert("読み込んだデータの保存に失敗しました: " + err.message);
-		return;
-	}
-	location.reload();
 }
 
 function setupImportExport() {
