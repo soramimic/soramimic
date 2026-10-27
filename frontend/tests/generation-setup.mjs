@@ -63,7 +63,7 @@ try {
 				const label = await page.locator('label[for="wordlist-trigger"]').boundingBox();
 				const picker = await page.locator("#wordlist-trigger").boundingBox();
 				assert(label.x + label.width <= picker.x && Math.abs(label.y + label.height / 2 - picker.y - picker.height / 2) < 2, "wordlist label and dropdown must share a row");
-				for (const id of ["#input-text", "#wordlist-trigger", "#lyrics-file", "#btn-convert"]) {
+				for (const id of ["#input-text", "#wordlist-trigger", "#btn-lyrics-upload", "#btn-convert"]) {
 					const bounds = await page.locator(id).boundingBox();
 					assert(bounds.height >= 44 && bounds.x >= 0 && bounds.x + bounds.width <= width, id);
 				}
@@ -171,14 +171,25 @@ try {
 			await page.setInputFiles("#lyrics-file", { name, mimeType: name.endsWith("json") ? "application/json" : "text/plain", buffer: Buffer.from(text) });
 		};
 		const inputBounds = await page.locator("#input-text").boundingBox();
-		const fileBounds = await page.locator("#lyrics-file").boundingBox();
+		const upload = page.getByRole("button", { name: "＋ 歌詞をアップロード", exact: true });
+		assert(await page.locator("#lyrics-file").isHidden());
+		const fileBounds = await upload.boundingBox();
 		assert(fileBounds.y >= inputBounds.y + inputBounds.height, "visible file picker follows the textarea");
+		await upload.focus();
+		const chooserPromise = page.waitForEvent("filechooser");
+		await page.keyboard.press("Enter");
+		const chooser = await chooserPromise;
+		await chooser.setFiles({ name: "キーボード.txt", mimeType: "text/plain", buffer: Buffer.from("青い空") });
+		await page.waitForFunction(() => !document.getElementById("btn-lyrics-upload").disabled);
+		assert.equal(await page.inputValue("#input-text"), "青い空");
 		for (const name of ["歌詞.txt", "歌詞.md", "歌詞.md"]) {
 			await load(name, "\uFEFF青い空\n白い雲");
 			await page.waitForFunction(() => !document.getElementById("lyrics-file").disabled);
 			assert(await page.locator("#lyrics-file-status").isHidden(), "successful file imports must not duplicate the file picker label");
 			assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲");
 			assert.equal(await page.locator("#lyrics-file").evaluate(input => input.files[0].name), name);
+			assert.equal(await page.locator("#lyrics-file-name").textContent(), name);
+			assert(await page.locator("#lyrics-file-name").isVisible());
 			assert(!page.url().endsWith("editor.html"));
 		}
 		await page.reload();
@@ -188,6 +199,7 @@ try {
 			await load(name, contents);
 			await page.waitForFunction(() => document.getElementById("lyrics-file-status").textContent.startsWith("読み込めませんでした"));
 			assert(await page.locator("#lyrics-file-status").isVisible());
+			assert(await page.locator("#lyrics-file-name").isHidden());
 			assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲");
 			assert(!page.url().endsWith("editor.html"));
 		}

@@ -201,25 +201,30 @@ main:has(#tab-home) {
 	margin-top: .25rem;
 }
 
-.generation-file-input {
+.btn.generation-upload {
 	display: block;
 	width: 100%;
 	min-width: 0;
 	min-height: 44px;
 	margin-top: .6rem;
-	padding: .55rem;
-	border: 1px dashed var(--border);
+	padding: .65rem;
+	border: 1px solid var(--accent);
 	border-radius: 8px;
-	background: var(--bg);
-	color: var(--text);
+	background: var(--panel);
+	color: var(--accent);
 	font: inherit;
-	font-size: .85rem;
+	font-weight: 600;
 }
 
-.generation-file-input::file-selector-button {
-	margin-right: .5rem;
-	font: inherit;
-	cursor: pointer;
+.generation-file-name {
+	margin-top: .35rem;
+	color: var(--muted);
+	font-size: .85rem;
+	overflow-wrap: anywhere;
+}
+
+.generation-file-name:not([hidden]) {
+	display: block;
 }
 
 .generation-source-link {

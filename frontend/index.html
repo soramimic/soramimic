@@ -58,9 +58,12 @@
             <div class="field">
               <textarea id="input-text" class="input" rows="7" aria-label="歌詞またはソラミミックの歌詞JSON"
                 placeholder="歌詞を行ごとに入力、またはソラミミックの歌詞JSONを貼り付け"></textarea>
-              <input id="lyrics-file" class="generation-file-input" type="file"
+              <button id="btn-lyrics-upload" class="btn generation-upload" type="button"
+                aria-describedby="lyrics-file-hint" disabled>＋ 歌詞をアップロード</button>
+              <input id="lyrics-file" type="file" hidden
                 accept=".txt,.md,.json,text/plain,text/markdown,application/json"
                 aria-label="歌詞またはJSONファイル" aria-describedby="lyrics-file-hint" disabled />
+              <span id="lyrics-file-name" class="generation-file-name" hidden></span>
               <div class="generation-input-actions">
                 <button id="btn-sample-lyrics" class="generation-source-link" type="button"
                   aria-controls="sample-picker" aria-haspopup="dialog" aria-expanded="false" disabled>サンプル歌詞で試す</button>
