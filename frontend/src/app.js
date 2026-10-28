@@ -69,11 +69,23 @@ export async function startApp() {
 
 	const lyricsFile = $id("lyrics-file");
 	const lyricsUpload = $id("btn-lyrics-upload");
-	const lyricsFileName = $id("lyrics-file-name");
+	function updateLyricsFileName(name = "") {
+		const dot = name.lastIndexOf(".");
+		$id("lyrics-file-stem").textContent = dot > 0 ? name.slice(0, dot) : name;
+		$id("lyrics-file-extension").textContent = dot > 0 ? name.slice(dot) : "";
+		$id("lyrics-upload-label").hidden = !!name;
+		$id("lyrics-upload-file").hidden = !name;
+		if (name) {
+			lyricsUpload.title = name;
+			lyricsUpload.setAttribute("aria-label", `歌詞ファイル「${name}」を変更`);
+		} else {
+			lyricsUpload.removeAttribute("title");
+			lyricsUpload.removeAttribute("aria-label");
+		}
+	}
 	function clearLyricsFile() {
 		lyricsFile.value = "";
-		lyricsFileName.textContent = "";
-		lyricsFileName.hidden = true;
+		updateLyricsFileName();
 	}
 	lyricsUpload.addEventListener("click", () => lyricsFile.click());
 	function isJsonInput() {
@@ -99,7 +111,7 @@ export async function startApp() {
 		window.location.assign("editor.html");
 	}
 	// 同じファイルを選び直した場合も再読み込みする。
-	lyricsFile.addEventListener("click", clearLyricsFile);
+	lyricsFile.addEventListener("click", () => { lyricsFile.value = ""; });
 	lyricsFile.addEventListener("change", async () => {
 		const file = lyricsFile.files?.[0];
 		if (!file) return;
@@ -117,8 +129,7 @@ export async function startApp() {
 			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
 			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
-			lyricsFileName.textContent = file.name;
-			lyricsFileName.hidden = false;
+			updateLyricsFileName(file.name);
 			saveMainState();
 			status.hidden = true;
 		} catch (error) {
