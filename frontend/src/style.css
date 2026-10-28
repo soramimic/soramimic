@@ -202,12 +202,14 @@ main:has(#tab-home) {
 }
 
 .btn.generation-upload {
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	width: 100%;
 	min-width: 0;
-	min-height: 44px;
+	height: 3rem;
 	margin-top: .6rem;
-	padding: .65rem;
+	padding: 0 .65rem;
 	border: 1px solid var(--accent);
 	border-radius: 8px;
 	background: var(--panel);
@@ -216,15 +218,50 @@ main:has(#tab-home) {
 	font-weight: 600;
 }
 
-.generation-file-name {
-	margin-top: .35rem;
-	color: var(--muted);
-	font-size: .85rem;
-	overflow-wrap: anywhere;
+.generation-upload-file:not([hidden]) {
+	display: flex;
+	align-items: center;
+	gap: .55rem;
+	width: 100%;
+	min-width: 0;
+	font-weight: 400;
 }
 
-.generation-file-name:not([hidden]) {
-	display: block;
+.generation-upload-file svg {
+	width: 1.1rem;
+	height: 1.1rem;
+	flex-shrink: 0;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.7;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	color: var(--muted);
+}
+
+.generation-file-name {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	color: var(--text);
+	font-size: .85rem;
+	text-align: left;
+}
+
+#lyrics-file-stem {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#lyrics-file-extension,
+.generation-file-change {
+	flex-shrink: 0;
+}
+
+.generation-file-change {
+	font-size: .8rem;
 }
 
 .generation-source-link {
