@@ -68,6 +68,26 @@ export async function startApp() {
 	}
 
 	const lyricsFile = $id("lyrics-file");
+	const lyricsUpload = $id("btn-lyrics-upload");
+	function updateLyricsFileName(name = "") {
+		const dot = name.lastIndexOf(".");
+		$id("lyrics-file-stem").textContent = dot > 0 ? name.slice(0, dot) : name;
+		$id("lyrics-file-extension").textContent = dot > 0 ? name.slice(dot) : "";
+		$id("lyrics-upload-label").hidden = !!name;
+		$id("lyrics-upload-file").hidden = !name;
+		if (name) {
+			lyricsUpload.title = name;
+			lyricsUpload.setAttribute("aria-label", `歌詞ファイル「${name}」を変更`);
+		} else {
+			lyricsUpload.removeAttribute("title");
+			lyricsUpload.removeAttribute("aria-label");
+		}
+	}
+	function clearLyricsFile() {
+		lyricsFile.value = "";
+		updateLyricsFileName();
+	}
+	lyricsUpload.addEventListener("click", () => lyricsFile.click());
 	function isJsonInput() {
 		return inputText.value.trimStart().startsWith("{");
 	}
@@ -109,10 +129,11 @@ export async function startApp() {
 			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
 			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
+			updateLyricsFileName(file.name);
 			saveMainState();
 			status.hidden = true;
 		} catch (error) {
-			lyricsFile.value = "";
+			clearLyricsFile();
 			status.textContent = "読み込めませんでした: " + error.message;
 		} finally {
 			setGenerationBusy(false);
@@ -724,7 +745,7 @@ export async function startApp() {
 			const text = await fetchText(path, { signal: request.signal });
 			if (request.signal.aborted || !samplePicker.open) return;
 			inputText.value = text;
-			lyricsFile.value = "";
+			clearLyricsFile();
 			$id("lyrics-file-status").hidden = true;
 			saveMainState();
 			track("sample_select", { song: path });
@@ -811,7 +832,7 @@ export async function startApp() {
 		}
 	}
 	inputText.addEventListener("input", () => {
-		lyricsFile.value = "";
+		clearLyricsFile();
 		$id("lyrics-file-status").hidden = true;
 		updateConvertLabel();
 		saveMainState();
@@ -1129,6 +1150,7 @@ export async function startApp() {
 
 	// 初期化完了
 	lyricsFile.disabled = false;
+	lyricsUpload.disabled = false;
 	sampleButton.disabled = false;
 	btnConvert.disabled = false;
 	updateConvertLabel();
