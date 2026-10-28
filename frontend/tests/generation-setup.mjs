@@ -171,7 +171,8 @@ try {
 			await page.setInputFiles("#lyrics-file", { name, mimeType: name.endsWith("json") ? "application/json" : "text/plain", buffer: Buffer.from(text) });
 		};
 		const inputBounds = await page.locator("#input-text").boundingBox();
-		const upload = page.getByRole("button", { name: "＋ 歌詞をアップロード", exact: true });
+		const upload = page.locator("#btn-lyrics-upload");
+		assert(await page.getByRole("button", { name: "＋ 歌詞をアップロード", exact: true }).isVisible());
 		assert(await page.locator("#lyrics-file").isHidden());
 		const fileBounds = await upload.boundingBox();
 		assert(fileBounds.y >= inputBounds.y + inputBounds.height, "visible file picker follows the textarea");
@@ -182,6 +183,11 @@ try {
 		await chooser.setFiles({ name: "キーボード.txt", mimeType: "text/plain", buffer: Buffer.from("青い空") });
 		await page.waitForFunction(() => !document.getElementById("btn-lyrics-upload").disabled);
 		assert.equal(await page.inputValue("#input-text"), "青い空");
+		const cancelChooserPromise = page.waitForEvent("filechooser");
+		await upload.click();
+		await (await cancelChooserPromise).setFiles([]);
+		assert.equal(await page.locator("#lyrics-file-name").textContent(), "キーボード.txt", "canceling a replacement keeps the loaded filename");
+		assert.equal(await page.inputValue("#input-text"), "青い空");
 		for (const name of ["歌詞.txt", "歌詞.md", "歌詞.md"]) {
 			await load(name, "\uFEFF青い空\n白い雲");
 			await page.waitForFunction(() => !document.getElementById("lyrics-file").disabled);
@@ -190,7 +196,32 @@ try {
 			assert.equal(await page.locator("#lyrics-file").evaluate(input => input.files[0].name), name);
 			assert.equal(await page.locator("#lyrics-file-name").textContent(), name);
 			assert(await page.locator("#lyrics-file-name").isVisible());
+			assert(await page.getByRole("button", { name: `歌詞ファイル「${name}」を変更`, exact: true }).isVisible());
 			assert(!page.url().endsWith("editor.html"));
+		}
+		for (const colorScheme of ["light", "dark"]) {
+			await page.emulateMedia({ colorScheme });
+			for (const width of [320, 390, 1200]) {
+				await page.setViewportSize({ width, height: 844 });
+				await page.locator("#input-text").fill("青い空\n白い雲");
+				assert(await page.locator("#lyrics-file-name").isHidden(), "editing lyrics resets the filename");
+				assert(await page.getByRole("button", { name: "＋ 歌詞をアップロード", exact: true }).isVisible());
+				const before = await upload.boundingBox();
+				const sampleBefore = await page.locator("#btn-sample-lyrics").boundingBox();
+				const longName = "idol.lyrics.original-version-2026-".repeat(4) + ".txt";
+				await load(longName, "青い空\n白い雲");
+				await page.waitForFunction(() => !document.getElementById("btn-lyrics-upload").disabled);
+				assert.deepEqual(await upload.boundingBox(), before, "upload button keeps its size and position");
+				assert.deepEqual(await page.locator("#btn-sample-lyrics").boundingBox(), sampleBefore, "uploading does not move following controls");
+				assert.equal(await upload.getAttribute("title"), longName, "full name remains available");
+				assert.equal(await page.locator("#lyrics-file-extension").textContent(), ".txt");
+				const stem = page.locator("#lyrics-file-stem");
+				assert(await stem.evaluate(el => el.scrollWidth > el.clientWidth), "long filenames are truncated");
+				const extension = await page.locator("#lyrics-file-extension").boundingBox();
+				const change = await page.locator(".generation-file-change").boundingBox();
+				assert(extension.x + extension.width <= change.x && change.x + change.width <= before.x + before.width, "extension and change action stay inside the button");
+				assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+			}
 		}
 		await page.reload();
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
