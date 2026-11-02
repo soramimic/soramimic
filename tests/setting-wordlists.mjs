@@ -48,12 +48,12 @@ for (const name of ["YOUTUBER", "VTUBER"]) {
     sum + parser.filter(facetClause(bands, value), header, rows).length, 0), rows.length);
   assert.ok(bands.values.every((value) => value.default));
   assert.ok(images.values.every((value) => value.default));
-  const band = bands.values.find((value) => value.v === "1m_plus");
+  const band = bands.values.find((value) => value.v === "100k_plus");
   const image = images.values.find((value) => value.v === "yes");
   const filtered = parser.filter(`${facetClause(bands, band)} and ${facetClause(images, image)}`, header, rows);
   assert.ok(filtered.length > 0);
   assert.deepEqual(filtered, rows.filter((row) =>
-    Number(row[header.indexOf("subscribers")]) >= 1000000 && row[header.indexOf("has_image")] === "yes"));
+    Number(row[header.indexOf("subscribers")]) >= 100000 && row[header.indexOf("has_image")] === "yes"));
 }
 
 console.log("setting wordlists: OK");
