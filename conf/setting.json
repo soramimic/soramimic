@@ -429,10 +429,8 @@
      "column": "subscriber_band",
      "label": "登録者数",
      "values": [
-      { "v": "under_10k", "label": "1万人未満", "default": true },
-      { "v": "10k_to_100k", "label": "1万〜10万人未満", "default": true },
-      { "v": "100k_to_1m", "label": "10万〜100万人未満", "default": true },
-      { "v": "1m_plus", "label": "100万人以上", "default": true },
+      { "v": "100k_plus", "label": "10万人以上", "where": "(subscriber_band=100k_to_1m or subscriber_band=1m_plus)", "default": true },
+      { "v": "under_100k", "label": "10万人未満", "where": "(subscriber_band=under_10k or subscriber_band=10k_to_100k)", "default": true },
       { "v": "unknown", "label": "不明", "default": true }
      ]
     },
@@ -473,10 +471,8 @@
      "column": "subscriber_band",
      "label": "登録者数",
      "values": [
-      { "v": "under_10k", "label": "1万人未満", "default": true },
-      { "v": "10k_to_100k", "label": "1万〜10万人未満", "default": true },
-      { "v": "100k_to_1m", "label": "10万〜100万人未満", "default": true },
-      { "v": "1m_plus", "label": "100万人以上", "default": true },
+      { "v": "100k_plus", "label": "10万人以上", "where": "(subscriber_band=100k_to_1m or subscriber_band=1m_plus)", "default": true },
+      { "v": "under_100k", "label": "10万人未満", "where": "(subscriber_band=under_10k or subscriber_band=10k_to_100k)", "default": true },
       { "v": "unknown", "label": "不明", "default": true }
      ]
     },
