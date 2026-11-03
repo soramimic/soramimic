@@ -14,7 +14,7 @@ const preview = spawn(process.execPath, [
 	fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
 	"preview", "--host", "127.0.0.1", "--port", "4624", "--strictPort",
 ], { cwd: new URL("..", import.meta.url), stdio: "ignore", detached: true });
-let browser;
+let browser, context;
 try {
 	for (let i = 0; ; i++) {
 		try { if ((await fetch(local)).ok) break; } catch {}
@@ -22,7 +22,7 @@ try {
 		await new Promise((resolve) => setTimeout(resolve, 250));
 	}
 	browser = await (process.env.BRIDGE_BROWSER === "webkit" ? webkit : chromium).launch();
-	const context = await browser.newContext();
+	context = await browser.newContext();
 	const errors = [];
 	context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
 	await context.route("**/*", async (route) => {
@@ -36,7 +36,7 @@ try {
 			<button id="send">歌詞を編集</button><p id="status"></p><script>${bridge}</script><script>
 			SoramimicBridge.receive(SoramimicBridge.peer("editor"), data => {window.received = data;});
 			document.getElementById("send").onclick = async () => {
-				await SoramimicBridge.send(SoramimicBridge.peer("editor"), () => window.payload);
+				await SoramimicBridge.send(SoramimicBridge.peer("editor"), () => window.payload, {allowSetup:true});
 				document.getElementById("status").textContent = "accepted";
 			};</script>` });
 		}
@@ -76,6 +76,7 @@ try {
 		songTitle: payload.videoMetadata.songTitle, songCredit: payload.videoMetadata.songCredit,
 		thumbnailWordlistLabel: payload.videoMetadata.thumbnailWordlistLabel,
 	});
+	assert.equal(await target.locator("#btn-svs").isVisible(), false, "text-only lyrics must not expose SVS");
 	assert.equal(received.host, undefined);
 	assert.equal(received.hostRequest, undefined);
 	assert.notDeepEqual(received.history, ["old"]);
@@ -175,6 +176,8 @@ try {
 	await source.evaluate(({nonce,payload,editor}) => window.pending.postMessage({type:"soramimic:lyrics-transfer/1", action:"data", nonce, payload},editor), {nonce,payload,editor});
 	await pending.waitForFunction(() => JSON.parse(sessionStorage.getItem("soramimic-editor"))?.lyrics === "沈む");
 	assert.equal(await pending.evaluate(() => window.opener), null);
+	await waitForReceivedEditor(pending);
+	await pending.close();
 
 	// Start at the real conversion screen. Long annotations and separators in
 	// their surface must preserve the supplied reading all the way to Video.
@@ -202,6 +205,43 @@ try {
 	assert.deepEqual(annotatedResult.tokensList.map((row) => row.map((t) => t.surface_form).join("")),
 		["未来".repeat(10), "雲/空", "キ空"]);
 	console.log("[ok] annotated lyrics keep reading and spelling from conversion to Video");
+	await annotatedEditor.close();
+	await annotatedVideo.close();
+
+	// SVS can hand off an unconverted score directly, without visiting Video's form.
+	const scoreContext = {format: "soramimic-score-context/1", moras: [
+		{line:0, text:"シ", pitch:60, start:1, end:1.5},
+		{line:0, text:"ズ", pitch:62, start:1.5, end:2},
+		{line:0, text:"ム", pitch:64, start:2, end:2.5},
+	], lineTexts:{0:"沈む"}, song:{ticks_per_beat:480, tempo_map:[[0,500000]],
+		time_signatures:[[0,4,4]], audio_path:"must-not-transfer"}, secret:"must-not-transfer"};
+	const seed = {...payload, setupFirst:true, results:[], unitsList:[], scoreContext};
+	await source.evaluate(data => {window.payload = data;}, seed);
+	const svsOpened = context.waitForEvent("page");
+	await source.click("#send");
+	const fromSvs = await svsOpened;
+	await fromSvs.waitForFunction(() => !document.getElementById("editor-setup").hidden &&
+		!document.getElementById("btn-setup-convert").disabled);
+	assert.deepEqual(await fromSvs.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results), []);
+	await fromSvs.click("#btn-setup-convert");
+	await fromSvs.waitForFunction(() => !document.getElementById("editor-toolbar").hidden &&
+		!document.getElementById("btn-regenerate").disabled);
+	await fromSvs.locator(".review-menu-toggle").click();
+	await fromSvs.locator("#btn-svs").waitFor({state:"visible"});
+	const svsBack = context.waitForEvent("page");
+	await fromSvs.click("#btn-svs");
+	const originalEditor = await svsBack;
+	await originalEditor.waitForFunction(() => window.received);
+	assert.equal(new URL(originalEditor.url()).pathname, "/score-editor");
+	const scoreReturned = await originalEditor.evaluate(() => window.received);
+	assert.equal(scoreReturned.scoreContext.moras[1].pitch, 62);
+	assert.equal(scoreReturned.scoreContext.song.audio_path, undefined);
+	assert.equal(scoreReturned.scoreContext.secret, undefined);
+	assert.equal(scoreReturned.results.length, 1);
+	assert(!JSON.stringify(scoreReturned).includes("must-not-transfer"));
+	console.log("[ok] unconverted SVS score opens setup, converts, and returns to original-score editing");
+	await fromSvs.close();
+	await originalEditor.close();
 
 	await target.evaluate(() => { window.open = () => null; });
 	await target.click("#btn-video");
@@ -229,6 +269,7 @@ try {
 	console.log("[ok] received lyrics persist, edits update one item, duplicate/return trips reuse it, old receipts and storage failure preserve edits");
 	console.log("[ok] cross-origin editor roundtrip, portable custom list, size and sender validation");
 } finally {
+	await context?.unrouteAll({behavior:"ignoreErrors"});
 	await browser?.close();
 	try { process.kill(-preview.pid); } catch {}
 }

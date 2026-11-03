@@ -95,6 +95,7 @@ export function setupReviewToolbar(review, onSearchViewportChange) {
 		body.append(copy);
 	}
 	const displaySettings = document.getElementById("btn-display-settings");
+	body.prepend(document.getElementById("btn-svs"));
 	if (review) body.prepend(displaySettings);
 	else body.querySelector("#btn-settings").after(displaySettings);
 	for (const button of body.querySelectorAll("button")) {
