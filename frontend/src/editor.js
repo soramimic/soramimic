@@ -5,6 +5,7 @@
 import "./style.css";
 import "./editor.css";
 import "./appBridge.js";
+import { retainScoreLines } from "./editorScore.js";
 import { validateEditorData } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
 import { setupEditorDisplay } from "./editorDisplay.js";
@@ -36,6 +37,7 @@ import {
 } from "./convertControls.js";
 
 const videoPeer = window.SoramimicBridge.peer("video", import.meta.env.VITE_SORAMIMIC_VIDEO_URL);
+const svsPeer = videoPeer ? new URL("/score-editor", videoPeer) : null;
 
 export const EDITOR_STORAGE_KEY = "soramimic-editor";
 const GROUP_PAGE = 30; // 「もっと見る」1回で増える候補グループ数
@@ -2749,6 +2751,9 @@ async function setupConvert() {
 			data.tokensList = tokensList;
 			data.unitsList = unitsList;
 			data.results = results.map((words) => generatedWords(words, data.wordlistSource));
+			retainScoreLines(data, tokensList, unitsList, data.results);
+			if (data.scorePrevious) data.scoreArchive = data.scorePrevious;
+			delete data.scorePrevious;
 			data.dirtyLines = []; // 変換直後はどの行も編集済みでない
 			data.history = [];
 			data.future = [];
@@ -2852,6 +2857,9 @@ function exportPayload() {
 	if (Array.isArray(data.originalLines)) payload.originalLines = data.originalLines;
 	if (data.song?.title) payload.song = { title: data.song.title };
 	if (data.videoMetadata) payload.videoMetadata = data.videoMetadata;
+	if (data.scoreContext) payload.scoreContext = data.scoreContext;
+	if (data.scorePrevious) payload.scorePrevious = data.scorePrevious;
+	if (data.scoreArchive) payload.scoreArchive = data.scoreArchive;
 	return payload;
 }
 
@@ -2922,6 +2930,19 @@ function setupImportExport() {
 	}
 	const exportBtn = $id("btn-export");
 	if (exportBtn) exportBtn.addEventListener("click", exportData);
+	const svsBtn = $id("btn-svs");
+	svsBtn.hidden = !svsPeer || !data?.scoreContext || window.parent !== window;
+	svsBtn.addEventListener("click", async () => {
+		const status = $id("bridge-status");
+		status.hidden = false;
+		status.textContent = "元歌の楽譜を渡しています…";
+		svsBtn.disabled = true;
+		try {
+			await window.SoramimicBridge.send(svsPeer, () => exportPayload());
+			status.textContent = "SVSで元歌を修正できます。この画面の替え歌も引き続き編集できます。";
+		} catch (error) { status.textContent = error.message; }
+		finally { svsBtn.disabled = false; }
+	});
 	const videoBtn = $id("btn-video");
 	videoBtn.hidden = !videoPeer || window.parent !== window;
 	videoBtn.addEventListener("click", async () => {
@@ -2956,6 +2977,7 @@ async function start({ saveReceivedResult = false } = {}) {
 		empty.hidden = false;
 		return;
 	}
+	$id("btn-svs").hidden = !svsPeer || !data.scoreContext || window.parent !== window;
 	// 変換済みの results があれば従来どおり編集画面から開く(後方互換)。
 	// 無ければ phrases(行ごとの歌詞)からブラウザで変換するセットアップ画面から始める。
 	// ホストが setupFirst を立てていれば、results があってもセットアップ画面から
@@ -3141,8 +3163,20 @@ const initialization = (async () => {
 			const problem = validateEditorData(payload);
 			if (problem) throw new Error(problem);
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
-		});
-		if (received) status.textContent = "ビデオの歌詞を読み込みました。";
+		}, { allowSetup: true });
+		if (received) {
+			const payload = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));
+			status.textContent = payload.scoreContext ? "元歌の楽譜と歌詞を読み込みました。" : "ビデオの歌詞を読み込みました。";
+			if (payload.scorePrevious) {
+				try {
+					await generationHistory.add(payload.scorePrevious, payload.scorePrevious.lyrics || (payload.scorePrevious.phrases || []).join("\n"), { deduplicate: true });
+					status.textContent += " 修正前の替え歌は「過去の結果」に保存しました。";
+				} catch {
+					status.textContent += " 修正前の替え歌を履歴に保存できませんでした。書き出しJSONに残します。";
+				}
+				status.textContent += " 変換すると、読みと設定が同じ行の替え歌を引き継ぎます。";
+			}
+		}
 	} catch (error) {
 		status.hidden = false;
 		status.textContent = error.message;

@@ -6,7 +6,8 @@ export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 export function generationHistoryPayload(data) {
 	const payload = {};
 	for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "wordlistSource",
-		"where", "unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines"]) {
+		"where", "unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines",
+		"scoreContext", "scorePrevious", "scoreArchive"]) {
 		if (data[key] !== undefined) payload[key] = data[key];
 	}
 	if (data.song?.title) payload.song = { title: data.song.title };
