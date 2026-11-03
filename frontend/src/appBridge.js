@@ -40,7 +40,7 @@
 		const tempo = song.tempo_map ?? [[0, 500000]];
 		const signatures = song.time_signatures ?? [[0, 4, 4]];
 		if (!Number.isInteger(ticks) || ticks < 1 || ticks > 32767 ||
-			!Array.isArray(tempo) || !tempo.length || tempo.length > 10000 ||
+			!Array.isArray(tempo) || tempo.length > 10000 ||
 			tempo.some((row, i) => !Array.isArray(row) || row.length !== 2 ||
 				!Number.isInteger(row[0]) || row[0] < 0 || (i && row[0] < tempo[i - 1][0]) ||
 				!Number.isInteger(row[1]) || row[1] < 1 || row[1] > 0xffffff) ||
