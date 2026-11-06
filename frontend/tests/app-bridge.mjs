@@ -5,14 +5,15 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 
-const local = "http://127.0.0.1:4624";
+const testPort = process.env.BRIDGE_TEST_PORT || "4624";
+const local = `http://127.0.0.1:${testPort}`;
 const editor = "https://dev.soramimic.pages.dev";
 const video = "https://dev-video.soramimic.com";
 const bridge = await readFile(new URL("../src/appBridge.js", import.meta.url), "utf8");
 const historySource = await readFile(new URL("../src/generationHistory.js", import.meta.url), "utf8");
 const preview = spawn(process.execPath, [
 	fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
-	"preview", "--host", "127.0.0.1", "--port", "4624", "--strictPort",
+	"preview", "--host", "127.0.0.1", "--port", testPort, "--strictPort",
 ], { cwd: new URL("..", import.meta.url), stdio: "ignore", detached: true });
 let browser;
 try {
@@ -51,6 +52,8 @@ try {
 		results: [[{ id: "0", surface: "清水", kana: "シミズ", pronunciation: "シミズ", originalkana: "シミズ", period: [0, 3], locked: true }]],
 		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", textOnly: true,
 			csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
+		originalReadingAlignments: [{ format: "soramimic-lyric-alignment/1", text: "沈む", reading: "シズム",
+			spans: [{ surface: [0, 2], reading: [0, 3], exact: true }] }],
 		lyrics: "沈む", originalLines: ["沈む"], song: { title: "テスト曲" },
 		videoMetadata: {songTitle: "手入力の曲名", songCredit: "作詞・作曲: テスト\n許諾表記", thumbnailWordlistLabel: "表示用の名前", secret: "not portable"},
 		host: { review: true }, hostRequest: { secret: true }, history: ["old"],
@@ -72,6 +75,7 @@ try {
 	const received = await target.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	assert.deepEqual(received.results, payload.results);
 	assert.deepEqual(received.unitsList, payload.unitsList);
+	assert.deepEqual(received.originalReadingAlignments, payload.originalReadingAlignments);
 	assert.deepEqual(received.videoMetadata, {
 		songTitle: payload.videoMetadata.songTitle, songCredit: payload.videoMetadata.songCredit,
 		thumbnailWordlistLabel: payload.videoMetadata.thumbnailWordlistLabel,
@@ -125,6 +129,7 @@ try {
 	const returned = await back.evaluate(() => window.received);
 	assert.deepEqual(returned.results, [[{ ...payload.results[0][0], locked: false }]]);
 	assert.deepEqual(returned.unitsList, payload.unitsList);
+	assert.deepEqual(returned.originalReadingAlignments, payload.originalReadingAlignments);
 	assert.equal(returned.lyrics, payload.lyrics);
 	assert.equal(returned.song.title, payload.song.title);
 	assert.deepEqual(returned.videoMetadata, received.videoMetadata);
@@ -157,6 +162,11 @@ try {
 		catch { return true; }
 		return false;
 	}), true);
+	assert.equal(await target.evaluate(() => {
+		const portable = SoramimicBridge.portable({ results: [[]], unitsList: [[]], lyrics: "歌詞",
+			originalReadingAlignments: [{ extra: "x".repeat(4 * 1024 * 1024) }] });
+		return portable.lyrics === "歌詞" && !portable.originalReadingAlignments;
+	}), true, "optional derived maps cannot prevent transferring otherwise compatible lyrics");
 
 	// Invalid origin, nonce and WindowProxy must never replace the editor's data.
 	const nonce = "11111111-2222-4333-8444-555555555555";

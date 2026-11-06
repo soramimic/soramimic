@@ -54,6 +54,10 @@ try {
 		if (review) {
 			session.host = { review: true };
 			session.originalLines = ["あ、空", "空", "", "風"];
+			session.originalReadingAlignments = [{ format: "soramimic-lyric-alignment/1", text: "あ、空", reading: "アソラ",
+				spans: [{ surface: [0, 1], reading: [0, 1], exact: true },
+					{ surface: [1, 2], reading: [1, 1], exact: false },
+					{ surface: [2, 3], reading: [1, 3], exact: true }] }, null, null, null];
 		}
 		await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), session);
 		await page.reload();
@@ -70,14 +74,22 @@ try {
 		const firstMatch = page.locator('[data-line="0"] .reverse-word-match[data-start="1"][data-end="3"]');
 		assert(await firstMatch.isVisible(), "the matching parody word is highlighted");
 		assert.equal(await firstMatch.getAttribute("aria-current"), "true");
+		assert.equal(await page.locator('[data-line="0"] .review-reading mark.reverse-current').textContent(), "そら",
+			"the matching reading stays highlighted even when host spelling differs");
 		await page.click("#reverse-next");
 		await page.click("#reverse-previous");
 		assert.equal(await firstMatch.getAttribute("aria-current"), "true", "navigation also works without mapped source spelling");
 		if (review) {
-			assert.equal(await page.locator('[data-line="0"] .reverse-highlight').count(), 0,
-				"different host spelling must not highlight the entire line");
+			assert.equal(await page.locator('[data-line="0"] .review-original .reverse-highlight').textContent(), "空",
+				"display punctuation does not prevent mapping the matching reading to its surface");
+			await page.fill("#reverse-word", "あそら");
+			await searchDone();
+			assert.equal(await page.locator('[data-line="0"] .review-original .reverse-highlight').textContent(), "あ、空",
+				"a saved Video correspondence highlights a phrase across silent punctuation");
+			await page.fill("#reverse-word", "ソラ");
+			await searchDone();
 		} else {
-			assert.equal(await page.locator('[data-line="0"] mark.reverse-highlight').textContent(), "空");
+			assert.equal(await page.locator('[data-line="0"] .review-original mark.reverse-highlight').textContent(), "空");
 		}
 		assert.equal(await page.locator("button.reverse-highlight").count(), 0, "source highlights are not edit buttons");
 		assert.equal(await page.locator('[data-line="0"] .review-original').textContent(), review ? "あ、空" : "あ空");
@@ -230,9 +242,18 @@ try {
 			assert.equal(await page.evaluate(() => scrollY), 0, "hit navigation must not scroll the page behind the header");
 			assert.deepEqual(await page.evaluate(() => window.navigationScrolls), [], "navigation must not move the page even temporarily");
 			assert.equal(await page.textContent("#reverse-count"), `${index} / 3`);
-			const current = page.locator("mark.reverse-current");
+			const current = page.locator(".review-original mark.reverse-current");
 			assert.equal(await current.count(), 1, "only the active source hit is emphasized");
 			assert.equal(await current.textContent(), "空");
+			const currentReading = page.locator(".review-reading mark.reverse-current");
+			assert.equal(await currentReading.count(), 1, "only the active reading hit is emphasized");
+			assert.equal(await currentReading.textContent(), "そら");
+			assert.equal(await currentReading.evaluate((node) => Number(node.closest(".editor-line").dataset.line)), line);
+			assert.equal(await currentReading.evaluate((node) => {
+				let length = 0;
+				for (let sibling = node.previousSibling; sibling; sibling = sibling.previousSibling) length += sibling.textContent.length;
+				return length;
+			}), character * 2, "adjacent reading hits follow navigation independently");
 			assert.equal(await current.evaluate((node) => Number(node.closest(".editor-line").dataset.line)), line);
 			assert.equal(await current.evaluate((node) => {
 				let length = 0;
@@ -394,12 +415,14 @@ try {
 		const beforeSearch = await state();
 		await page.fill("#reverse-word", "ゆうや");
 		await searchDone();
-		assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents())
+		assert((await page.locator('[data-line="0"] .review-original mark.reverse-highlight').allTextContents())
 			.some((text) => text.startsWith("夕焼")), "ゆうや highlights 夕焼 despite ending inside 焼");
 		await page.fill("#reverse-word", "たけ");
 		await searchDone();
-		assert.equal(await page.locator('[data-line="1"] mark.reverse-highlight').textContent(), "畑",
+		assert.equal(await page.locator('[data-line="1"] .review-original mark.reverse-highlight').textContent(), "畑",
 			"たけ highlights 畑 despite starting inside its reading");
+		assert.equal(await page.locator('[data-line="1"] .review-reading mark.reverse-current').textContent(), "たけ",
+			"reading highlights preserve the exact match inside a kanji");
 		assert.deepEqual(await state(), beforeSearch, "partial reading search changes no saved editor state");
 	}
 	// Longer, worse matches must not crowd a closer short range out of the top ten.
@@ -414,15 +437,15 @@ try {
 	await page.click("#reverse-search > summary");
 	await page.fill("#reverse-word", "か");
 	await searchDone();
-	assert.equal(await page.locator('[data-line="10"] mark.reverse-highlight').textContent(), "キ",
+	assert.equal(await page.locator('[data-line="10"] .review-original mark.reverse-highlight').textContent(), "キ",
 		"longer ranges with more deletion penalties must not displace the closer short match");
-	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10",
+	assert.equal(await page.locator(".review-original mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10",
 		"navigation starts with the best-scoring hit even when it appears last in the lyrics");
 	await page.click("#reverse-next");
-	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "0",
+	assert.equal(await page.locator(".review-original mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "0",
 		"next visits the next-best score, with tied scores in lyric order");
 	await page.click("#reverse-previous");
-	assert.equal(await page.locator("mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10");
+	assert.equal(await page.locator(".review-original mark.reverse-current").evaluate((node) => node.closest(".editor-line").dataset.line), "10");
 	await page.click("#reverse-previous");
 	assert.equal(await page.textContent("#reverse-count"), "10 / 10",
 		"previous wraps from the best score to the last hit in the ranked shortlist");
@@ -450,7 +473,7 @@ try {
 	const sourceReading = page.locator('[data-line="0"] .review-reading');
 	assert.match(await sourceReading.textContent(), /^ことーげ/,
 		"the displayed hiragana reading follows source reading corrections");
-	const correctedHighlights = await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents();
+	const correctedHighlights = await page.locator('[data-line="0"] .review-original mark.reverse-highlight').allTextContents();
 	assert(correctedHighlights.some((text) => text.startsWith("負わ")));
 	assert(correctedHighlights.every((text) => text.length < source.length), "reading edit must not highlight the whole line");
 	assert(await page.locator('.reverse-word-match').count() > 0, "parody highlights are recomputed after reading edits");
@@ -463,7 +486,7 @@ try {
 	await ready();
 	await searchDone();
 	assert.match(await sourceReading.textContent(), /^ことーげ/, "redo restores the corrected reading");
-	assert((await page.locator('[data-line="0"] mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
+	assert((await page.locator('[data-line="0"] .review-original mark.reverse-highlight').allTextContents()).every((text) => text.length < source.length));
 	assert.deepEqual(errors, []);
 	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, visual viewport resizing/panning, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
