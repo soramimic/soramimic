@@ -760,3 +760,8 @@ html.editor-free-input-open .editor-toolbar {
 		grid-template-columns: 1fr;
 	}
 }
+
+.save-failed {
+	color: var(--error, #c94636);
+	font-weight: 600;
+}

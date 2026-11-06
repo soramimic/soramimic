@@ -652,9 +652,19 @@ try {
 		menuAction(editor, "#btn-export"),
 	]);
 	const exportPath = await download.path();
-	// 空の編集画面(sessionStorageなし)から読み込んで再開できること
-	await editor.evaluate(() => sessionStorage.clear());
-	await editor.reload();
+	// With neither a session nor a persistent checkpoint/history, file import is
+	// still available. Session loss alone now resumes the automatically saved edit.
+	await editor.goto(`http://localhost:${PORT}/about.html`);
+	await editor.evaluate(async () => {
+		sessionStorage.clear();
+		localStorage.removeItem("soramimic-editor-recovery");
+		await new Promise((resolve, reject) => {
+			const request = indexedDB.deleteDatabase("soramimic-generation-history");
+			request.onsuccess = resolve;
+			request.onerror = () => reject(request.error);
+		});
+	});
+	await editor.goto(`http://localhost:${PORT}/editor.html`);
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });

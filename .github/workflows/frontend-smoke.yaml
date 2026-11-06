@@ -41,6 +41,8 @@ jobs:
         run: node tests/static-assets.mjs
       - name: 編集ツールE2E(読み修正・差し替え・再生成・undo・コピー)
         run: node tests/editor-smoke.mjs
+      - name: 編集内容の自動保存・タブ消失後の復元(Chromium・WebKit)
+        run: node tests/editor-recovery.mjs
       - name: 編集画面のレイアウト・キーボード操作
         run: node tests/editor-layout.mjs
       - name: 編集画面の可視化・判定・修正後の更新

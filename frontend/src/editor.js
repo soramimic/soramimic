@@ -11,6 +11,7 @@ import { setupVisualization } from "./editorVisualization.js";
 import { setupEditorDisplay } from "./editorDisplay.js";
 import "./editorVisualization.css";
 import { createGenerationHistoryRepository } from "./generationHistory.js";
+import { recoverEditorData, saveEditorRecovery } from "./editorRecovery.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -185,30 +186,55 @@ function setupEmbedNavigation() {
 	});
 }
 
-let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
 const generationHistory = createGenerationHistoryRepository();
 const pendingHistoryWrites = new Set();
-let historyFailureNotified = false;
+let saveRevision = 0;
 
-function saveGenerationHistory() {
-	if (!data?.generationHistoryId) return;
-	const write = generationHistory.update(data.generationHistoryId, data);
-	pendingHistoryWrites.add(write);
-	write.then(() => { pendingHistoryWrites.delete(write); }, () => {
-		pendingHistoryWrites.delete(write);
-		if (historyFailureNotified) return;
-		historyFailureNotified = true;
-		alert("編集内容を履歴に保存できませんでした。「書き出し」でファイルに保存してください。");
-	});
+function showSaveStatus(saved) {
+	if (window.parent !== window) return;
+	const status = $id("editor-save-status");
+	status.hidden = false;
+	status.textContent = saved === null ? "端末に保存しています…" : saved
+		? "この端末に自動保存しました。"
+		: "端末への自動保存ができません。「書き出し」でファイルに保存してください。";
+	status.classList.toggle("save-failed", saved === false);
 }
 
-// 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
-// それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
-// 黙って落とすと、編集し続けたあとでリロードして全部消える
+function saveGenerationHistory() {
+	if (!data?.generationHistoryId) return null;
+	const write = generationHistory.update(data.generationHistoryId, data);
+	pendingHistoryWrites.add(write);
+	write.then(() => { pendingHistoryWrites.delete(write); }, error => {
+		pendingHistoryWrites.delete(write);
+		console.warn("編集内容を履歴に保存できませんでした:", error);
+	});
+	return write;
+}
+
+// Save each destination independently: a full sessionStorage must not prevent a
+// persistent checkpoint or history update. Checkpoint writes are synchronous and
+// happen on every committed edit, without waiting for a background/unload event.
 function saveData() {
+	const revision = ++saveRevision;
+	data.editorSessionId ||= crypto.randomUUID();
+	data.editorSavedAt = Math.max(Date.now(), (data.editorSavedAt || 0) + 1);
+	let recoverySaved = false;
+	if (window.parent === window) {
+		try {
+			recoverySaved = saveEditorRecovery(data);
+		} catch (error) { console.warn("編集内容の復元用保存に失敗:", error); }
+	}
+	const historyWrite = saveGenerationHistory();
+	showSaveStatus(recoverySaved ? true : historyWrite ? null : false);
+	if (historyWrite) {
+		historyWrite.then(saved => {
+			if (revision === saveRevision) showSaveStatus(recoverySaved || saved);
+		}, () => {
+			if (revision === saveRevision) showSaveStatus(recoverySaved);
+		});
+	}
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
-		saveGenerationHistory();
 		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
@@ -217,16 +243,9 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
-			saveGenerationHistory();
 			return true;
 		} catch (err2) {
 			console.error(err2);
-			if (!saveFailureNotified) {
-				saveFailureNotified = true;
-				alert("編集内容をブラウザに保存できませんでした(保存容量オーバー)。"
-					+ "自作リストが大きすぎるかもしれません。リストを小さくするか、"
-					+ "「書き出し」でファイルに保存してください。");
-			}
 			return false;
 		}
 	}
@@ -2910,6 +2929,8 @@ async function importFile(file) {
 		// 生成画面から開いたときと同じ起動フローに乗る
 		delete obj.format;
 		delete obj.generationHistoryId;
+		delete obj.editorSessionId;
+		delete obj.editorSavedAt;
 		obj.history = [];
 		obj.future = [];
 		try {
@@ -2980,6 +3001,17 @@ async function start({ saveReceivedResult = false } = {}) {
 	} catch (err) {
 		console.error("編集データの読み込みに失敗:", err);
 	}
+	// Embedded jobs keep their host's context. Standalone recovery also detects a
+	// stale session left by a failed write, without replacing fresh incoming data.
+	if (window.parent === window) {
+		const restored = await recoverEditorData(data, generationHistory);
+		data = restored.data;
+		if (restored.recovered) {
+			const status = $id("editor-recovery-status");
+			status.hidden = false;
+			status.textContent = "この端末に保存した編集内容を復元しました。";
+		}
+	}
 	if (!data || typeof data !== "object") {
 		data = null; // 壊れたデータで編集操作が動かないように
 		empty.hidden = false;
@@ -3046,8 +3078,9 @@ async function start({ saveReceivedResult = false } = {}) {
 			|| !data.originalLines.every((line) => typeof line === "string")) {
 			syncOriginalLines();
 		}
-		saveData();
 	}
+	// Establish the synchronous checkpoint before waiting for any database work.
+	saveData();
 	if (saveReceivedResult) {
 		try {
 			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "", { deduplicate: true });
@@ -3071,6 +3104,15 @@ async function start({ saveReceivedResult = false } = {}) {
 			status.textContent = "ビデオの歌詞を読み込みましたが、過去の結果に保存できませんでした。「書き出し」でファイルに保存してください。";
 		}
 	}
+	// JSON imports and older sessions also need a durable history entry, rather
+	// than only results that originated on the generation screen or in Video.
+	if (converted && !data.generationHistoryId && !saveReceivedResult) {
+		try {
+			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "");
+			data.generationHistoryId = entry.id;
+		} catch (error) { console.warn("編集内容を履歴に追加できませんでした:", error); }
+	}
+	saveData();
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する
 	renderAll();
