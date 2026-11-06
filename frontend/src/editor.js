@@ -420,8 +420,13 @@ function renderLine(line) {
 	const reading = document.createElement("p");
 	reading.className = "review-reading";
 	reading.setAttribute("aria-label", "元歌詞の読み");
-	reading.textContent = rangeKana(line, 0, unitsOf(line).length).replace(/[ァ-ヶ]/g,
-		(char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+	// Map sounds directly so highlights stay precise even when source spelling
+	// differs, or a match covers only part of a kanji's reading.
+	const readingUnits = unitsOf(line).map((unit) => ({
+		surface_form: unit.pronunciation.replace(/[ァ-ヶ]/g,
+			(char) => String.fromCharCode(char.charCodeAt(0) - 0x60)),
+	}));
+	reading.textContent = readingUnits.map((unit) => unit.surface_form).join("");
 	const regenerateButton = document.createElement("button");
 	regenerateButton.type = "button";
 	regenerateButton.className = "btn btn-ghost line-regenerate";
@@ -455,7 +460,10 @@ function renderLine(line) {
 		actions.append(lock, regenerateButton);
 		heading.append(actions);
 	} else heading.append(regenerateButton);
-	if (matches.length) highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
+	if (matches.length) {
+		highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
+		if (editorDisplay.originalReading) highlightOriginal(reading, readingUnits, matches, [], current);
+	}
 	return row;
 }
 
