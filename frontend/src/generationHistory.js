@@ -1,6 +1,12 @@
 export const GENERATION_HISTORY_LIMIT = 50;
 export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 
+export function makeStorageId() {
+	if (crypto.randomUUID) return crypto.randomUUID();
+	// getRandomValues is also available on private HTTP preview origins.
+	return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // 履歴とJSON書き出しに必要な編集データだけを保存する。
 // undoやホストとの通信状態は、別の編集セッションには持ち込まない。
 export function generationHistoryPayload(data) {
@@ -27,7 +33,7 @@ export function createGenerationHistoryRepository({
 	databaseName = GENERATION_HISTORY_DATABASE,
 	provider,
 	now = () => Date.now(),
-	makeId = () => crypto.randomUUID(),
+	makeId = makeStorageId,
 } = {}) {
 	let databasePromise;
 	function open() {

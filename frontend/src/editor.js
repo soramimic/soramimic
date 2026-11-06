@@ -10,7 +10,7 @@ import { validateEditorData } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
 import { setupEditorDisplay } from "./editorDisplay.js";
 import "./editorVisualization.css";
-import { createGenerationHistoryRepository } from "./generationHistory.js";
+import { createGenerationHistoryRepository, makeStorageId } from "./generationHistory.js";
 import { recoverEditorData, saveEditorRecovery } from "./editorRecovery.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
@@ -216,7 +216,7 @@ function saveGenerationHistory() {
 // happen on every committed edit, without waiting for a background/unload event.
 function saveData() {
 	const revision = ++saveRevision;
-	data.editorSessionId ||= crypto.randomUUID();
+	data.editorSessionId ||= makeStorageId();
 	data.editorSavedAt = Math.max(Date.now(), (data.editorSavedAt || 0) + 1);
 	let recoverySaved = false;
 	if (window.parent === window) {

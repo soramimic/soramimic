@@ -61,6 +61,8 @@ try {
 	for (const engine of [chromium, webkit]) {
 		browser = await engine.launch();
 		const context = await browser.newContext();
+		// HTTP origins may expose getRandomValues without randomUUID.
+		await context.addInitScript(() => Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true }));
 		await context.route(url => url.hostname !== "localhost", route => route.abort());
 		const errors = [];
 		context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
