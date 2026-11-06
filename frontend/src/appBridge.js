@@ -29,7 +29,7 @@
 		}
 		const result = { format: "soramimic-editor/1" };
 		for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "where",
-			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "song"]) {
+			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "originalReadingAlignments", "song"]) {
 			if (data[key] !== undefined) result[key] = data[key];
 		}
 		const entry = result.wordlist;
@@ -51,6 +51,8 @@
 			}
 			result.videoMetadata = metadata;
 		}
+		// Derived optional maps must not make a previously transferable song too large.
+		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) delete result.originalReadingAlignments;
 		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) {
 			throw new Error("歌詞データが4MBを超えるため開けません。");
 		}
