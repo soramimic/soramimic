@@ -7,32 +7,15 @@ import { regenerateAll, menuAction, clearSavedEditor } from "./editor-ui.mjs";
 //   results ありのシード → 従来どおり編集画面から(後方互換)。
 //   setupFirst:true → results があってもセットアップ画面から始まり、離脱もできる。
 // 実行: npm run build && node tests/editor-setup.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4602;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
 
 // ホスト(soramimic-video等)が渡すのと同じ形のシード: 歌詞の行だけ
 const PHRASES = ["夢は今もめぐりて", "忘れがたきふるさと"];
 const SONG_TITLE = "ふるさと";
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -72,16 +55,10 @@ async function seed(page, obj) {
 	await page.reload();
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
 
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -277,13 +254,6 @@ try {
 	}
 
 	console.log("[ok] editor setup test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

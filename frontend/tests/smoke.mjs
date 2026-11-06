@@ -2,46 +2,23 @@
 // 「歌詞入力 → 変換 → 結果表示」と「MIDI取り込み」の導線が生きていることを確認する。
 // 実行: npm run build && node tests/smoke.mjs
 // 形態素解析はkuromoji.jsでブラウザ内完結(外部API通信なし)。
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import assert from "node:assert/strict";
 import { build } from "vite";
 import { chromium } from "playwright";
 import { Parser } from "../src/lib/wordList.js";
 import { buildXfMidi, buildLyricMidi } from "../../tests/xfmidi-fixture.mjs";
 
-const PORT = 4199;
+const { url: base, close: closePreview } = await startPreview();
 
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
-
-// detached + プロセスグループkillで、子のviteプロセスも確実に始末する
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`http://localhost:${PORT}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const page = await browser.newPage();
 	const pageErrors = [];
 	page.on("pageerror", (e) => pageErrors.push(e));
 
-	await page.goto(`http://localhost:${PORT}/`);
+	await page.goto(`${base}/`);
 
 	// 初期化完了(データ読み込み後、ボタンが「変換」になる)を待つ。失敗表示なら即エラー
 	await page.waitForFunction(
@@ -405,7 +382,7 @@ try {
 	const fields = page.locator("#wordlist-facets .facet-group").filter({ hasText: "理学（専攻未詳）" });
 	const economics = fields.locator("input.facet-value[value='経済学']");
 	assert(!await economics.isChecked(), "分野の経済学が既定で選ばれている");
-	const config = await (await fetch(`http://localhost:${PORT}/conf/setting.json`)).json();
+	const config = await (await fetch(`${base}/conf/setting.json`)).json();
 	const scientist = config.wordlist.find((entry) => entry.value === "SCIENTIST");
 	const controlsBundle = await build({
 		configFile: false, logLevel: "silent",
@@ -419,7 +396,7 @@ try {
 		const { compileWhere } = await import(moduleUrl);
 		return compileWhere(document.querySelector("#wordlist-facets"), scientist);
 	}, { moduleUrl, scientist });
-	const csv = await (await fetch(`http://localhost:${PORT}/wordlists/scientist.csv`)).text();
+	const csv = await (await fetch(`${base}/wordlists/scientist.csv`)).text();
 	const [header, ...rows] = csv.trimEnd().split(/\r?\n/).map((line) => line.split(","));
 	const flagIndex = header.indexOf("celebrity_doctorate");
 	assert(flagIndex >= 0, "配信CSVに著名人博士フラグがない");
@@ -636,13 +613,6 @@ try {
 	}
 
 	console.log("[ok] smoke test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }
