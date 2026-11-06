@@ -25,6 +25,7 @@ import { writeClipboard } from "./clipboard.js";
 import { absorbSmallKana } from "./lib/kanaToSyllable.js";
 import { alignmentFromUnits, countsForAlignment } from "./lib/readingAlignment.js";
 import { findPlacements, highlightOriginal } from "./reverseSearch.js";
+import { syncOriginalReadingAlignments } from "./editorLyricAlignment.js";
 import { lineRegenerationInput } from "./editorRegeneration.js";
 import { lockPanelViewport } from "./editorPanelViewport.js";
 import { wordlistKey, wordlistSource, isCurrentWord, generationLock, generatedWords } from "./editorWordIdentity.js";
@@ -206,6 +207,7 @@ function saveGenerationHistory() {
 // それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
 // 黙って落とすと、編集し続けたあとでリロードして全部消える
 function saveData() {
+	syncOriginalReadingAlignments(data, app);
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
 		saveGenerationHistory();
@@ -240,6 +242,7 @@ function snapshotState() {
 		results: data.results,
 		tokensList: data.tokensList,
 		unitsList: data.unitsList,
+		originalReadingAlignments: data.originalReadingAlignments,
 		// 設定変更も歌詞編集とは別の操作として取り消せる。
 		// where は undefined(=エントリ既定)と区別するため null にして持つ
 		param: data.param,
@@ -254,6 +257,7 @@ function restoreState(s) {
 	data.results = s.results;
 	data.tokensList = s.tokensList;
 	data.unitsList = s.unitsList;
+	data.originalReadingAlignments = s.originalReadingAlignments;
 	// 旧セッションの履歴には設定が入っていないので、あるときだけ戻す
 	if (s.param) data.param = s.param;
 	if (s.wordlist) data.wordlist = s.wordlist;
@@ -461,7 +465,8 @@ function renderLine(line) {
 		heading.append(actions);
 	} else heading.append(regenerateButton);
 	if (matches.length) {
-		highlightOriginal(original, searchUnits(line), matches, data.tokensList[line], current);
+		highlightOriginal(original, searchUnits(line), matches, data.tokensList?.[line], current,
+			data.originalReadingAlignments?.[line]);
 		if (editorDisplay.originalReading) highlightOriginal(reading, readingUnits, matches, [], current);
 	}
 	return row;
@@ -475,6 +480,7 @@ function rerenderLine(line) {
 }
 
 function renderAll() {
+	syncOriginalReadingAlignments(data, app);
 	const container = $id("editor-lines");
 	container.textContent = "";
 	data.results.forEach((_, i) => container.appendChild(renderLine(i)));
@@ -1084,6 +1090,7 @@ function applyReadingFix(line, span, newYomiRaw, alignMode = "untouched", draftA
 	pushHistory();
 	markDirty(line);
 	data.tokensList[line] = tokens;
+	if (Array.isArray(data.originalReadingAlignments)) data.originalReadingAlignments[line] = null;
 	const delta = newSpanEnd - span.unitEnd;
 	data.unitsList[line] = newUnits;
 	scheduleReverseSearch();
@@ -2845,6 +2852,7 @@ export { validateEditorData } from "./editorData.js";
 // ホスト固有の一時情報(host / hostRequest)は載せない。書き出しJSONは
 // 単体の編集ツールでも読み直せる自己完結した内容だけにする
 function exportPayload() {
+	syncOriginalReadingAlignments(data, app);
 	const payload = {
 		format: EXPORT_FORMAT,
 		phrases: data.phrases,
@@ -2855,6 +2863,7 @@ function exportPayload() {
 		wordlistSource: data.wordlistSource,
 		where: data.where,
 		unitsList: data.unitsList,
+		originalReadingAlignments: data.originalReadingAlignments,
 		// 生ノート長があるときは現在のαで再計算し、旧版向け互換値も古くしない。
 		weightsList: noteLengthWeights(),
 		noteLengthRawList: data.noteLengthRawList || null,

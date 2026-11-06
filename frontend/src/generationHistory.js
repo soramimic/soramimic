@@ -6,7 +6,7 @@ export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 export function generationHistoryPayload(data) {
 	const payload = {};
 	for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "wordlistSource",
-		"where", "unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines",
+		"where", "unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "originalReadingAlignments",
 		"scoreContext", "scorePrevious", "scoreArchive"]) {
 		if (data[key] !== undefined) payload[key] = data[key];
 	}
@@ -16,7 +16,7 @@ export function generationHistoryPayload(data) {
 
 function contentSignature(payload) {
 	// Source diagnostics are derived locally and are not sent by Video.
-	const { wordlistSource, ...content } = payload;
+	const { wordlistSource, originalReadingAlignments, ...content } = payload;
 	return JSON.stringify(content, (_key, value) => {
 		if (!value || typeof value !== "object" || Array.isArray(value)) return value;
 		return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));

@@ -192,6 +192,12 @@ try {
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
 	assert(exported.lyrics === NEXT_LYRICS, "書き出しJSONに元歌詞が入っていない");
+	assert(exported.format === "soramimic-editor/1", "既存の編集JSON形式を維持する");
+	assert(exported.originalReadingAlignments.every((alignment, i) =>
+		alignment?.format === "soramimic-lyric-alignment/1"
+		&& alignment.text === exported.originalLines[i]
+		&& alignment.reading === exported.unitsList[i].map(u => u.pronunciation).join("")),
+		"元歌詞と確定済みの読みの対応をJSONへ保存する");
 	assert(Array.isArray(exported.originalLines)
 		&& exported.originalLines.length === exported.phrases.length,
 		"書き出しJSONの originalLines が phrases と同じ長さでない: "
