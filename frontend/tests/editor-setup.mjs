@@ -1,4 +1,4 @@
-import { regenerateAll, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, menuAction, clearSavedEditor } from "./editor-ui.mjs";
 // セットアップ画面(第1ステップ)のE2E。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけ、という契約を
 // 実ブラウザで確認する:
@@ -260,7 +260,13 @@ try {
 		}
 	}
 
-	// ---- 壊れたシード(phrasesもresultsも無い)は従来どおり空表示 ----
+	// A corrupt session resumes the last saved edit; only a browser with no
+	// persistent edit left should show the empty/import screen.
+	await seed(page, { param: {} });
+	await waitEditor(page);
+	assert(await page.isVisible("#editor-recovery-status"), "壊れたシードから保存済みの編集を復元できない");
+	await checkBoundaries();
+	await clearSavedEditor(page);
 	await seed(page, { param: {} });
 	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
 	assert(await isHidden(page, "#editor-setup"),
