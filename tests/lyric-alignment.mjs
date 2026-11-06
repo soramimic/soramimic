@@ -43,4 +43,8 @@ assert.deepEqual(lyricAlignmentRanges(emoji, emoji.text, [{ pronunciation: "ユ"
 const uncertain = fixtures.find(f => f.name === "unmatched").expected;
 assert.deepEqual(lyricAlignmentRanges(uncertain, uncertain.text, [{ pronunciation: "ソラ" }],
 	[{ start: 0, end: 1 }]), [], "estimated subtitle timing is not asserted as an exact search highlight");
+const silent = alignLyricTokens("あ、空", "アソラ", [["あ", "ア"], ["、", ""], ["空", "ソラ"]]);
+assert.deepEqual(lyricAlignmentRanges(silent, silent.text,
+	[{ pronunciation: "ア" }, { pronunciation: "ソ" }, { pronunciation: "ラ" }], [{ start: 0, end: 3 }]),
+	[[0, 3]], "silent punctuation between aligned reading spans cannot suppress a phrase highlight");
 print("[ok] shared lyric spans, old/new/unknown JSON, source preservation, stale map invalidation and UTF-16");
