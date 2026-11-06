@@ -113,7 +113,8 @@ export function lyricAlignmentRanges(alignment, text, units, matches) {
 	const ranges = [];
 	for (const match of matches) {
 		const start = offsets[match.start], end = offsets[match.end];
-		const spans = alignment.spans.filter(s => s.reading[0] < end && start < s.reading[1]);
+		const spans = alignment.spans.filter(s => s.reading[0] < s.reading[1]
+			&& s.reading[0] < end && start < s.reading[1]);
 		let cursor = start;
 		for (const span of spans) {
 			if (!span.exact || span.reading[0] > cursor) break;

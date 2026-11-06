@@ -54,6 +54,10 @@ try {
 		if (review) {
 			session.host = { review: true };
 			session.originalLines = ["あ、空", "空", "", "風"];
+			session.originalReadingAlignments = [{ format: "soramimic-lyric-alignment/1", text: "あ、空", reading: "アソラ",
+				spans: [{ surface: [0, 1], reading: [0, 1], exact: true },
+					{ surface: [1, 2], reading: [1, 1], exact: false },
+					{ surface: [2, 3], reading: [1, 3], exact: true }] }, null, null, null];
 		}
 		await page.evaluate((value) => sessionStorage.setItem("soramimic-editor", JSON.stringify(value)), session);
 		await page.reload();
@@ -78,6 +82,12 @@ try {
 		if (review) {
 			assert.equal(await page.locator('[data-line="0"] .review-original .reverse-highlight').textContent(), "空",
 				"display punctuation does not prevent mapping the matching reading to its surface");
+			await page.fill("#reverse-word", "あそら");
+			await searchDone();
+			assert.equal(await page.locator('[data-line="0"] .review-original .reverse-highlight').textContent(), "あ、空",
+				"a saved Video correspondence highlights a phrase across silent punctuation");
+			await page.fill("#reverse-word", "ソラ");
+			await searchDone();
 		} else {
 			assert.equal(await page.locator('[data-line="0"] .review-original mark.reverse-highlight').textContent(), "空");
 		}
