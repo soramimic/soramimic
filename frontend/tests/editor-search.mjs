@@ -74,8 +74,8 @@ try {
 		await page.click("#reverse-previous");
 		assert.equal(await firstMatch.getAttribute("aria-current"), "true", "navigation also works without mapped source spelling");
 		if (review) {
-			assert.equal(await page.locator('[data-line="0"] .reverse-highlight').count(), 0,
-				"different host spelling must not highlight the entire line");
+			assert.equal(await page.locator('[data-line="0"] .reverse-highlight').textContent(), "空",
+				"different host spelling maps the matching reading to its displayed surface");
 		} else {
 			assert.equal(await page.locator('[data-line="0"] mark.reverse-highlight').textContent(), "空");
 		}

@@ -1,5 +1,6 @@
 import { syllableVariations } from "./lib/kanaToSyllable.js";
 import { indexPronunciation } from "./lib/pronunciationSearch.js";
+import { lyricAlignmentRanges } from "./lyricAlignment.js";
 
 // Use the same pronunciation variants, distances and note weights as replacement.
 // Bound the query's variant expansion before allocating its one-word dictionary.
@@ -72,7 +73,7 @@ function compare(a, b) {
 
 // Reading edits can change the character alignment. Map each token separately,
 // and leave unaligned characters unmarked instead of highlighting the whole line.
-export function originalHighlightRanges(source, units, matches, tokens = []) {
+export function originalHighlightRanges(source, units, matches, tokens = [], alignment = null) {
 	let spans = [];
 	if (units.map((unit) => unit.surface_form).join("") === source) {
 		let offset = 0;
@@ -99,7 +100,7 @@ export function originalHighlightRanges(source, units, matches, tokens = []) {
 			offset += token.surface_form.length;
 		}
 	} else {
-		return [];
+		return lyricAlignmentRanges(alignment, source, units, matches) || [];
 	}
 	// A kanji's spelling is stored on its first reading unit; later units can
 	// have empty surfaces. Give every unit the whole character's display span.
@@ -129,11 +130,11 @@ export function originalHighlightRanges(source, units, matches, tokens = []) {
 	return merged;
 }
 
-export function highlightOriginal(node, units, matches, tokens, current = null) {
+export function highlightOriginal(node, units, matches, tokens, current = null, alignment = null) {
 	const source = node.textContent;
-	const ranges = originalHighlightRanges(source, units, matches, tokens);
+	const ranges = originalHighlightRanges(source, units, matches, tokens, alignment);
 	if (!ranges.length) return;
-	const active = current ? originalHighlightRanges(source, units, [current], tokens) : [];
+	const active = current ? originalHighlightRanges(source, units, [current], tokens, alignment) : [];
 	let cursor = 0;
 	node.textContent = "";
 	for (const [start, end] of ranges) {

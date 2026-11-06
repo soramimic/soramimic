@@ -29,7 +29,7 @@
 		}
 		const result = { format: "soramimic-editor/1" };
 		for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "where",
-			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "song"]) {
+			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "originalReadingAlignments", "song"]) {
 			if (data[key] !== undefined) result[key] = data[key];
 		}
 		const entry = result.wordlist;
@@ -41,6 +41,7 @@
 			if (entry.textOnly === true) result.wordlist.textOnly = true;
 		}
 		if (result.song) result.song = { title: String(result.song.title || "") };
+		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) delete result.originalReadingAlignments;
 		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) {
 			throw new Error("歌詞データが4MBを超えるため開けません。");
 		}
