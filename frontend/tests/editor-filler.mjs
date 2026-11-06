@@ -4,11 +4,10 @@ import { regenerateAll, selectRange, menuAction } from "./editor-ui.mjs";
 // filler チップ(破線)になり、行が空にならないこと。filler をタップすれば通常どおり
 // 候補パネルが開き、実単語に差し替えると filler ではなくなることを確認する。
 // 実行: npm run build && node tests/editor-filler.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4601;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
 
 // 歌詞「夢は今もめぐりて」(ユメワイマモメグリテ=10ユニット)に対し、
@@ -20,22 +19,6 @@ const ORIGINAL_PLAIN = [
 	"モ",
 	"ミ",
 ].join("\n");
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -52,16 +35,10 @@ function waitIdle(page) {
 	}, undefined, { timeout: 180000 });
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
 
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -169,13 +146,6 @@ try {
 	}
 
 	console.log(`[ok] editor filler test passed (filler ${fillers.length}件 → ${picked} に差し替え)`);
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

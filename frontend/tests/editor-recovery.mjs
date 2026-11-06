@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium, webkit } from "playwright";
-const port = Number(process.env.EDITOR_RECOVERY_PORT || 4817);
-const base = `http://localhost:${port}`;
+const { url: base, close: closePreview } = await startPreview({ port: Number(process.env.EDITOR_RECOVERY_PORT || 0) });
 const key = "soramimic-editor-recovery";
 const fixture = {
 	phrases: ["アオイソラ"], lyrics: "青い空", originalLines: ["青い空"],
@@ -13,7 +12,6 @@ const fixture = {
 	results: [[{ id: "1", surface: "青森", kana: "アオモリ", pronunciation: ["ア", "オ", "モ", "リ"], period: [0, 5], locked: false }]],
 	videoMetadata: { title: "保存した動画設定" },
 };
-const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], { stdio: "ignore", detached: true });
 let browser;
 async function ready(page, surface = "青森") {
 	await page.waitForFunction(surface => document.querySelector(".review-word-surface")?.textContent === surface
@@ -53,11 +51,6 @@ async function denyWrites(page, destination) {
 	}, destination);
 }
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise(resolve => setTimeout(resolve, 300));
-	}
 	for (const engine of [chromium, webkit]) {
 		browser = await engine.launch();
 		const context = await browser.newContext();
@@ -144,5 +137,5 @@ try {
 		await browser.close(); browser = null;
 	}
 } finally {
-	await browser?.close(); try { process.kill(-server.pid, "SIGTERM"); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

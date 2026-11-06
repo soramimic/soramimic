@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium, webkit } from "playwright";
 import { menuAction, regenerateAll } from "./editor-ui.mjs";
 
-const base = "http://localhost:4797";
-const server = spawn("npx", ["vite", "preview", "--port", "4797", "--strictPort"], { stdio: "ignore", detached: true });
+const { url: base, close: closePreview } = await startPreview();
 const csv = "id,original,surface,pronunciation,type,category,scope\n0,通常,通常,カ,family,player,jleague\n1,指定語,近い表記,サ,family,player,jleague\n1,指定語,別表記,カ,full,player,jleague\n1,指定語,近い表記,サー,family,player,jleague\n2,非対象,名前だけ,ナマエ,given,player,jleague\n"
 	+ ["キ", "ク", "ケ", "コ", "ヌ", "ム"].map((kana, i) => `${i + 3},追加語${i + 1},追加語${i + 1},${kana},family,player,jleague\n`).join("");
 const readData = page => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
@@ -12,11 +11,6 @@ const idle = page => page.waitForFunction(() => !document.getElementById("btn-re
 	&& document.getElementById("settings-progress").hidden && document.getElementById("regen-progress").hidden);
 let browser;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise(resolve => setTimeout(resolve, 300));
-	}
 	for (const engine of [chromium, webkit]) {
 		browser = await engine.launch();
 		const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -262,6 +256,5 @@ try {
 		await browser.close(); browser = null;
 	}
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

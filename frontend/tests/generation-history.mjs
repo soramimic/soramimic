@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 
-const base = "http://localhost:4803";
 const source = await readFile(new URL("../src/generationHistory.js", import.meta.url), "utf8");
-const server = spawn("npx", ["vite", "preview", "--port", "4803", "--strictPort"], { stdio: "ignore", detached: true });
+const { url: base, close: closePreview } = await startPreview();
 const fixture = {
 	phrases: ["沈む"],
 	tokensList: [[{ surface_form: "沈む", pronunciation: "シズム", reading: "シズム", basic_form: "沈む", pos: "動詞", token_index: 0 }]],
@@ -33,11 +32,6 @@ async function outputBounds(card) {
 	}));
 }
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview did not start");
-		await new Promise(resolve => setTimeout(resolve, 300));
-	}
 	for (const engine of [chromium, webkit]) {
 		browser = await engine.launch();
 		const context = await contextFor(engine);
@@ -276,6 +270,5 @@ try {
 		browser = null;
 	}
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

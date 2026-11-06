@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 import { buildApp } from "../../tests/golden/harness-lib.mjs";
@@ -50,17 +50,9 @@ const seed = { phrases, tokensList, unitsList, param: { DUPLICATE: false },
 			pronunciation: app.textAnalyzer.yomiToSyllable("チェイス"), period: [0, 1], locked: true },
 	]],
 };
-const port = 4667, base = `http://localhost:${port}`;
-const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], {
-	stdio: "ignore", detached: true,
-});
+const { url: base, close: closePreview } = await startPreview();
 let browser;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-	}
 	browser = await (process.env.EDITOR_WORDLIST_SEARCH_BROWSER === "webkit" ? webkit : chromium).launch();
 	const context = await browser.newContext({ viewport: { width: 390, height: 740 }, hasTouch: true });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -184,6 +176,5 @@ try {
 	assert.deepEqual(errors, []);
 	print("[ok] list search: full filtered DB, spelling/name/kana, bounded results, duplicate IDs, IME, keyboard, responsive layout, saved replacement and undo/redo");
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

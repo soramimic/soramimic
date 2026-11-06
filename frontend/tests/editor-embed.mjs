@@ -1,41 +1,18 @@
 // editorのナビゲーション契約:
 // 単体起動では従来どおり生成画面へのリンク、video埋め込み時は親へのclose request。
 // 実行: npm run build && node tests/editor-embed.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4610;
-const BASE = `http://localhost:${PORT}`;
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
+const { url: BASE, close: closePreview } = await startPreview();
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const page = await browser.newPage();
 
 	// 単体起動は既存の生成画面リンクを維持する。
@@ -79,13 +56,6 @@ try {
 		=== "soramimic:request-close", "close requestのメッセージ名が違う");
 
 	console.log("[ok] editor embed navigation test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }
