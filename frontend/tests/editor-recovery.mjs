@@ -82,7 +82,7 @@ try {
 		await page.goto(`${base}/editor.html`); await ready(page);
 		assert(await page.locator("#editor-recovery-status").isVisible());
 		const restored = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
-		for (const field of ["results", "unitsList", "videoMetadata", "wordlist", "generationHistoryId"]) assert.deepEqual(restored[field], saved[field]);
+		for (const field of ["results", "unitsList", "originalReadingAlignments", "videoMetadata", "wordlist", "generationHistoryId"]) assert.deepEqual(restored[field], saved[field]);
 		assert.equal((await history(page)).length, 1, "recovery must not duplicate history");
 
 		const other = structuredClone(fixture); other.results[0][0].surface = "別の編集";
