@@ -291,5 +291,79 @@
         }
       ]
     }
+  },
+  {
+    "name": "unsupported-reading-is-estimated",
+    "text": "アイカウ",
+    "reading": "カ",
+    "tokens": [
+      [
+        "ア",
+        "ア"
+      ],
+      [
+        "イ",
+        "イ"
+      ],
+      [
+        "カ",
+        "カ"
+      ],
+      [
+        "ウ",
+        "ウ"
+      ]
+    ],
+    "expected": {
+      "format": "soramimic-lyric-alignment/1",
+      "text": "アイカウ",
+      "reading": "カ",
+      "spans": [
+        {
+          "surface": [
+            0,
+            1
+          ],
+          "reading": [
+            0,
+            0
+          ],
+          "exact": false
+        },
+        {
+          "surface": [
+            1,
+            2
+          ],
+          "reading": [
+            0,
+            0
+          ],
+          "exact": false
+        },
+        {
+          "surface": [
+            2,
+            3
+          ],
+          "reading": [
+            0,
+            1
+          ],
+          "exact": false
+        },
+        {
+          "surface": [
+            3,
+            4
+          ],
+          "reading": [
+            1,
+            1
+          ],
+          "exact": false
+        }
+      ]
+    }
   }
 ]

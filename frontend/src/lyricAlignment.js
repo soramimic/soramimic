@@ -19,7 +19,8 @@ export function normalizeAlignmentReading(text) {
 
 // SequenceMatcher's longest contiguous matches, with autojunk disabled, as in
 // Video's subtitle alignment. Keep the same earliest-source/target tie breaks.
-export function readingPositions(source, target) {
+export function readingPositions(source, target, support = {}) {
+	support.aligned = !!source && source === target;
 	if (!source) return [0];
 	if (source === target) return Array.from({ length: source.length + 1 }, (_, i) => i);
 	if (source.length * target.length > 4_000_000) return null;
@@ -57,7 +58,8 @@ export function readingPositions(source, target) {
 		if (a === b) { positions[a] = d; return; }
 		for (let i = a; i <= b; i++) positions[i] = c + round((i - a) * (d - c) / (b - a));
 	};
-	if (blocks.reduce((n, b) => n + b[2], 0) < source.length * .35) {
+	support.aligned = blocks.reduce((n, b) => n + b[2], 0) >= source.length * .35;
+	if (!support.aligned) {
 		fill(0, source.length, 0, target.length);
 		return positions;
 	}
@@ -92,7 +94,8 @@ export function alignLyricTokens(text, reading, tokens) {
 	const readings = tokens.map(t => normalizeAlignmentReading(t[1]));
 	const source = normalizeAlignmentReading(readings.join("")), target = normalizeAlignmentReading(reading);
 	if (target.length !== reading.length) return null;
-	const positions = readingPositions(source, target);
+	const support = {};
+	const positions = readingPositions(source, target, support);
 	if (!positions) return null;
 	let surface = 0, offset = 0;
 	const spans = tokens.map(([part], i) => {
@@ -100,7 +103,7 @@ export function alignLyricTokens(text, reading, tokens) {
 		surface += part.length; offset += readings[i].length;
 		const d = positions[offset];
 		return { surface: [a, surface], reading: [c, d],
-			exact: d > c && source.slice(from, offset) === target.slice(c, d) };
+			exact: support.aligned && d > c && source.slice(from, offset) === target.slice(c, d) };
 	});
 	return { format: LYRIC_ALIGNMENT_FORMAT, text, reading, spans };
 }
