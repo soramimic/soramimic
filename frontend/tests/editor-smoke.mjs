@@ -1,4 +1,4 @@
-import { regenerateAll, openLine, selectRange, selectReading, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, openLine, selectRange, selectReading, menuAction, clearSavedEditor } from "./editor-ui.mjs";
 // 編集ツール(#17)のE2Eスモークテスト: ビルド済みアプリを実ブラウザで駆動し、
 // 「変換 → 編集ツールを開く → 読み修正 → 候補差し替え → 再生成 → 戻る → コピー」
 // の編集フロー一式が生きていることを確認する。
@@ -652,9 +652,9 @@ try {
 		menuAction(editor, "#btn-export"),
 	]);
 	const exportPath = await download.path();
-	// 空の編集画面(sessionStorageなし)から読み込んで再開できること
-	await editor.evaluate(() => sessionStorage.clear());
-	await editor.reload();
+	// With neither a session nor a persistent checkpoint/history, file import is
+	// still available. Session loss alone now resumes the automatically saved edit.
+	await clearSavedEditor(editor);
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });

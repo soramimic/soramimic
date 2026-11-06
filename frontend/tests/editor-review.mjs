@@ -38,6 +38,8 @@ try {
 	await page.waitForSelector(".review-word", { timeout: 60000 });
 	const seed = await page.evaluate(() => {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		// Later cases copy this as a new incoming review, not a stale saved edit.
+		delete data.generationHistoryId; delete data.editorSessionId; delete data.editorSavedAt;
 		data.host = { review: true, songs: [], canUploadSong: false };
 		data.lyrics = "青い空を見上げて\n白い雲を追いかける\n小さな風を感じて";
 		data.originalLines = ["青い空を見上げて", "白い雲を追いかける", "小さな風を感じて"];

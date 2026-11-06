@@ -1,3 +1,21 @@
+// Leave the editor before clearing IndexedDB so its open connection cannot block
+// deletion. A missing session alone intentionally recovers persistent edits.
+export async function clearSavedEditor(page) {
+	const base = new URL(page.url());
+	await page.goto(new URL("/about.html", base).href);
+	await page.evaluate(async () => {
+		sessionStorage.removeItem("soramimic-editor");
+		localStorage.removeItem("soramimic-editor-recovery");
+		await new Promise((resolve, reject) => {
+			const request = indexedDB.deleteDatabase("soramimic-generation-history");
+			request.onsuccess = resolve;
+			request.onerror = () => reject(request.error);
+			request.onblocked = () => reject(new Error("editor history is still open"));
+		});
+	});
+	await page.goto(new URL("/editor.html", base).href);
+}
+
 export async function openLine(page, line = 0) {
 	const panel = page.locator("#editor-panel");
 	if (await panel.evaluate((node) => node.classList.contains("open"))) {

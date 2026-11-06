@@ -1,4 +1,4 @@
-import { regenerateAll, selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
+import { regenerateAll, selectRange, menuAction, closeSelection, clearSavedEditor } from "./editor-ui.mjs";
 // 編集ツールの設定モーダルにある「単語リスト」選択のE2E。
 // リストを切り替えても今の歌詞と固定を保持し、新しい候補を使えること、
 // 設定変更を戻る1回で取り消せること、
@@ -395,11 +395,8 @@ try {
 		"csvTextの中身が想定と違う:\n" + exported.wordlist.csvText.slice(0, 200));
 
 	// ---- 読み込み: localStorage が空でも csvText からDBが組める ----
-	await editor.evaluate((k) => {
-		sessionStorage.clear();
-		localStorage.removeItem(k);
-	}, ORIGINAL_KEY);
-	await editor.reload();
+	await clearSavedEditor(editor);
+	await editor.evaluate(k => localStorage.removeItem(k), ORIGINAL_KEY);
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });

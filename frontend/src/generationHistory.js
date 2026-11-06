@@ -1,13 +1,19 @@
 export const GENERATION_HISTORY_LIMIT = 50;
 export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 
+export function makeStorageId() {
+	if (crypto.randomUUID) return crypto.randomUUID();
+	// getRandomValues is also available on private HTTP preview origins.
+	return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // 履歴とJSON書き出しに必要な編集データだけを保存する。
 // undoやホストとの通信状態は、別の編集セッションには持ち込まない。
 export function generationHistoryPayload(data) {
 	const payload = {};
 	for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "wordlistSource",
 		"where", "unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "originalReadingAlignments",
-		"scoreContext", "scorePrevious", "scoreArchive"]) {
+		"scoreContext", "scorePrevious", "scoreArchive", "videoMetadata"]) {
 		if (data[key] !== undefined) payload[key] = data[key];
 	}
 	if (data.song?.title) payload.song = { title: data.song.title };
@@ -27,7 +33,7 @@ export function createGenerationHistoryRepository({
 	databaseName = GENERATION_HISTORY_DATABASE,
 	provider,
 	now = () => Date.now(),
-	makeId = () => crypto.randomUUID(),
+	makeId = makeStorageId,
 } = {}) {
 	let databasePromise;
 	function open() {
@@ -66,6 +72,25 @@ export function createGenerationHistoryRepository({
 	}
 
 	return {
+		get(id) {
+			return transaction("readonly", (store, result) => {
+				const request = store.get(id);
+				request.onsuccess = () => result(request.result || null);
+			});
+		},
+		latest(accept = () => true) {
+			return transaction("readonly", (store, result) => {
+				let latest = null;
+				const request = store.openCursor();
+				request.onsuccess = () => {
+					const cursor = request.result;
+					if (!cursor) { result(latest); return; }
+					const entry = cursor.value;
+					if (accept(entry) && (!latest || entry.updatedAt > latest.updatedAt)) latest = entry;
+					cursor.continue();
+				};
+			});
+		},
 		list() {
 			return transaction("readonly", (store, result) => {
 				const request = store.getAll();
@@ -109,11 +134,17 @@ export function createGenerationHistoryRepository({
 		},
 		async update(id, data) {
 			const payload = generationHistoryPayload(data);
+			// The timestamp describes this snapshot, not when a queued transaction
+			// happens to finish. Recovery must not mistake an older queued write for
+			// an edit newer than the synchronous checkpoint.
+			const updatedAt = Number.isFinite(data.editorSavedAt) ? data.editorSavedAt : now();
+			const editorSessionId = data.editorSessionId;
 			return transaction("readwrite", (store, result) => {
 				const request = store.get(id);
 				request.onsuccess = () => {
 					if (!request.result) { result(false); return; }
-					store.put({ ...request.result, payload, updatedAt: Math.max(now(), request.result.createdAt) });
+					store.put({ ...request.result, payload, editorSessionId,
+						updatedAt: Math.max(updatedAt, request.result.createdAt) });
 					result(true);
 				};
 			});

@@ -64,7 +64,8 @@ try {
 
 	const frame = page.frameLocator("#editor-frame");
 	const brand = frame.locator("#editor-brand");
-	await brand.waitFor();
+	// The initial HTML still has the standalone link until the module runs.
+	await frame.locator('#editor-brand[role="button"]').waitFor();
 	assert(await brand.getAttribute("href") === null,
 		"埋め込み時にも通常の ./ リンクが残っている");
 	assert(await brand.textContent() === "← 動画作成に戻る",

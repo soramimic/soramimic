@@ -105,6 +105,8 @@ export async function startApp() {
 		delete payload.host;
 		delete payload.hostRequest;
 		delete payload.generationHistoryId;
+		delete payload.editorSessionId;
+		delete payload.editorSavedAt;
 		payload.history = [];
 		payload.future = [];
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));

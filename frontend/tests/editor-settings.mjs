@@ -262,6 +262,7 @@ try {
 		d.noteLengthAlpha = 0.25;
 		d.history = [];
 		d.future = [];
+		delete d.editorSessionId; delete d.editorSavedAt;
 		sessionStorage.setItem(k, JSON.stringify(d));
 	}, EDITOR_KEY);
 	await editor.reload();
@@ -332,6 +333,8 @@ try {
 		seed.results = [[retained], []];
 		seed.history = []; seed.future = []; seed.dirtyLines = [];
 		delete seed.where; delete seed.wordlistSource;
+		// This is a new fixture, not an older checkpoint of the previous edit.
+		delete seed.generationHistoryId; delete seed.editorSessionId; delete seed.editorSavedAt;
 		sessionStorage.setItem(key, JSON.stringify(seed));
 	}, { key: EDITOR_KEY, seed: initialData, retained });
 	await editor.reload();
