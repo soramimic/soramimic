@@ -1,4 +1,4 @@
-import { regenerateAll, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, menuAction, clearSavedEditor } from "./editor-ui.mjs";
 // セットアップ画面(第1ステップ)のE2E。
 // エディタがゼロから変換するのに要るのは phrases(行ごとの歌詞)だけ、という契約を
 // 実ブラウザで確認する:
@@ -7,32 +7,15 @@ import { regenerateAll, menuAction } from "./editor-ui.mjs";
 //   results ありのシード → 従来どおり編集画面から(後方互換)。
 //   setupFirst:true → results があってもセットアップ画面から始まり、離脱もできる。
 // 実行: npm run build && node tests/editor-setup.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4602;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
 
 // ホスト(soramimic-video等)が渡すのと同じ形のシード: 歌詞の行だけ
 const PHRASES = ["夢は今もめぐりて", "忘れがたきふるさと"];
 const SONG_TITLE = "ふるさと";
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -72,16 +55,10 @@ async function seed(page, obj) {
 	await page.reload();
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
 
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -260,7 +237,12 @@ try {
 		}
 	}
 
-	// ---- 壊れたシード(phrasesもresultsも無い)は従来どおり空表示 ----
+	// An unidentified session must offer history/import even with saved edits.
+	await seed(page, { param: {} });
+	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
+	assert(await isHidden(page, "#editor-recovery-status"), "別の保存内容を自動で復元している");
+	assert(await page.isVisible("#editor-history-link"), "過去の結果への案内がない");
+	await clearSavedEditor(page);
 	await seed(page, { param: {} });
 	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
 	assert(await isHidden(page, "#editor-setup"),
@@ -271,13 +253,6 @@ try {
 	}
 
 	console.log("[ok] editor setup test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

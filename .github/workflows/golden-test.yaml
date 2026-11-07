@@ -77,3 +77,27 @@ jobs:
         run: node tests/branch-promotion-policy.mjs
       - name: Markdown-only PR policy tests
         run: node tests/main-pr-policy.cjs
+      - name: 性能劣化の判定ロジック
+        run: node tests/performance/compare.test.mjs
+      - name: 性能比較用の変更前コード
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .performance-base
+          persist-credentials: false
+      - name: 変更前コードの依存インストール
+        if: github.event_name == 'pull_request'
+        run: npm ci
+        working-directory: .performance-base/frontend
+      - name: 変更前後の生成時間・CPU時間の比較
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 10
+        run: node tests/performance/run.mjs --base .performance-base --report performance-results.json
+      - name: 性能比較レポート
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: generation-performance
+          path: performance-results.json
+          if-no-files-found: ignore

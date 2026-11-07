@@ -105,6 +105,8 @@ export async function startApp() {
 		delete payload.host;
 		delete payload.hostRequest;
 		delete payload.generationHistoryId;
+		delete payload.editorSessionId;
+		delete payload.editorSavedAt;
 		payload.history = [];
 		payload.future = [];
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(payload));
@@ -121,12 +123,17 @@ export async function startApp() {
 		setGenerationBusy(true);
 		try {
 			if (file.size > 10 * 1024 * 1024) throw new Error("10MB以内のファイルを選んでください");
+			if (/\.(mid|midi)$/i.test(file.name) || /^audio\/(x-)?midi$/i.test(file.type)) {
+				status.textContent = await importMidiLyrics(file);
+				updateLyricsFileName(file.name);
+				return;
+			}
 			const text = (await file.text()).replace(/^\uFEFF/, "");
 			if (/\.json$/i.test(file.name) || file.type === "application/json") {
 				openEditorJson(text);
 				return;
 			}
-			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・JSONファイルを選んでください");
+			if (!/\.(txt|md)$/i.test(file.name)) throw new Error("TXT・Markdown・歌詞入りMIDI・JSONファイルを選んでください");
 			if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
 			inputText.value = text;
 			updateLyricsFileName(file.name);
@@ -139,19 +146,6 @@ export async function startApp() {
 			setGenerationBusy(false);
 		}
 	});
-
-	// ---- MIDI取り込み ----
-	// XF形式(カラオケ歌詞入り)MIDIから歌唱行を抽出して入力欄に流し込む。
-	// 入力欄に元歌詞が貼ってあれば、歌唱行と対応づけて表記(漢字)ベースの行にできる
-	// (読みカナだけだとトークナイザが文節を取れず、変換の文節スコアが効かないため)。
-	// 主機能ではないため、?midi 付きのURLで開いたときだけボタンを表示する。
-	// パーサ等はMIDIを使うときだけ動的importする(初期バンドルを増やさない)
-	if (!new URLSearchParams(location.search).has("midi")) {
-		$id("btn-midi-import").hidden = true;
-	}
-	const midiStatus = $id("midi-status");
-	const midiFile = $id("midi-file");
-	$id("btn-midi-import").addEventListener("click", () => midiFile.click());
 
 	// 入力欄のテキストを元歌詞として使うかをダイアログで確認する
 	function askUseLyrics() {
@@ -174,44 +168,38 @@ export async function startApp() {
 		});
 	}
 
-	midiFile.addEventListener("change", async () => {
-		const file = midiFile.files && midiFile.files[0];
-		midiFile.value = "";
-		if (!file) return;
-		try {
-			const { parseXfMidi } = await import("./xfMidi.js");
-			const { lines, noteCount, warnings } = parseXfMidi(await file.arrayBuffer());
-			const notes = [`${file.name}: ${lines.length}行・${noteCount}音符を取り込みました`];
+	// 歌詞入りMIDI(XF・標準)を選んだときだけ解析処理を読み込む。
+	async function importMidiLyrics(file) {
+		const { parseXfMidi } = await import("./xfMidi.js");
+		const { lines, noteCount, warnings } = parseXfMidi(await file.arrayBuffer());
+		if (!lines.length) throw new Error("MIDIに読み込める歌詞が見つかりません");
+		const notes = [`${lines.length}行・${noteCount}音符から歌詞を取り込みました`];
 
-			const lyricsText = inputText.value.trim();
-			let filled = null;
-			if (lyricsText && await askUseLyrics()) {
-				const { alignLyrics } = await import("./xfAlign.js");
-				const aligned = alignLyrics(lines, lyricsText);
-				filled = aligned.lines.map((l) => l.text);
-				notes.push(`元歌詞と対応づけ: ${aligned.matchedCount}/${lines.length}行`);
-				if (aligned.matchedCount < lines.length) {
-					notes.push("対応づかなかった行は読みカナのまま");
-				}
-				// 元歌詞の1行をそのまま採れなかった行は区切りが推定なので、
-				// 「n/m行」だけ見て全行そのまま入ったと誤解しないよう明示する
-				const guessed = aligned.matchedCount - aligned.snappedCount;
-				if (guessed > 0) {
-					notes.push(`${guessed}行は元歌詞の行の途中で区切りました`);
-				}
+		const lyricsText = inputText.value.trim();
+		let filled = null;
+		if (lyricsText && await askUseLyrics()) {
+			const { alignLyrics } = await import("./xfAlign.js");
+			const aligned = alignLyrics(lines, lyricsText);
+			filled = aligned.lines.map((l) => l.text);
+			notes.push(`元歌詞と対応づけ: ${aligned.matchedCount}/${lines.length}行`);
+			if (aligned.matchedCount < lines.length) {
+				notes.push("対応づかなかった行は読みカナのまま");
 			}
-			inputText.value = (filled || lines.map((l) => l.kana)).join("\n");
-			saveMainState();
-			if (warnings.length > 0) notes.push(...warnings);
-			midiStatus.textContent = notes.join(" / ");
-			midiStatus.hidden = false;
-			track("midi_import", { lines: lines.length, notes: noteCount, lyrics: !!filled });
-		} catch (err) {
-			console.error(err);
-			midiStatus.textContent = `MIDIの取り込みに失敗しました: ${err.message}`;
-			midiStatus.hidden = false;
+			// 元歌詞の1行をそのまま採れなかった行は区切りが推定なので、
+			// 「n/m行」だけ見て全行そのまま入ったと誤解しないよう明示する
+			const guessed = aligned.matchedCount - aligned.snappedCount;
+			if (guessed > 0) {
+				notes.push(`${guessed}行は元歌詞の行の途中で区切りました`);
+			}
 		}
-	});
+		const text = (filled || lines.map((l) => l.kana)).join("\n");
+		if (text.length > 10000) throw new Error("歌詞は1万文字以内にしてください");
+		inputText.value = text;
+		saveMainState();
+		if (warnings.length > 0) notes.push(...warnings);
+		track("midi_import", { lines: lines.length, notes: noteCount, lyrics: !!filled });
+		return notes.join(" / ");
+	}
 
 	// ---- 単語重複・パラメータ ----
 	// スライダー・プリセット・単語重複のUIは編集ツールと共有する(convertControls.js)。
@@ -1066,6 +1054,17 @@ export async function startApp() {
 		}
 	}
 	await initializeHistory();
+	function openLinkedHistory() {
+		if (location.hash !== "#output-field") return;
+		if (!historyEntries.length && !editorPayload && historyStatus.hidden) {
+			showHistoryStatus("保存された生成結果はありません。");
+		}
+		outputField.hidden = false;
+		outputField.open = true;
+		outputField.scrollIntoView({ block: "start" });
+	}
+	openLinkedHistory();
+	window.addEventListener("hashchange", openLinkedHistory);
 
 	btnConvert.addEventListener("click", () => {
 		const text = inputText.value;

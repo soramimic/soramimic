@@ -1,9 +1,9 @@
-// XF MIDI(カラオケ歌詞入りMIDI)から歌唱行(読みカナ)を抽出する。
+// 歌詞入りMIDI(XF・標準lyricsイベント)から歌唱行(読みカナ)を抽出する。
 // soramimic-video の xfparse.py と同じ解析方針のJS移植(秒変換は行わない):
 //   - XFKMチャンクの歌詞イベント(`表記[かな` / `かな]` / `かな`、`/`=改行、`<`=改ページ)
 //   - $Lyrcヘッダのメロディチャンネル(なければ歌詞と音符の一致率で自動判定)
 //   - 歌詞イベントと音符開始tickのペアリング(1音符複数モーラは直前に結合)
-// 歌詞テキストのエンコーディングはXF仕様のShift_JIS(TextDecoderで復号)。
+// XFはShift_JIS、標準歌詞はUTF-8を優先し、不正なUTF-8ならShift_JISで復号する。
 
 const PAIRING_TOLERANCE_BEATS = 1 / 8;
 
@@ -123,6 +123,64 @@ function normalizeKana(text) {
 	return hiraToKata(text).replace(/[^ァ-ヺー]/g, "");
 }
 
+function standardLyrics(events) {
+	let decoder = new TextDecoder("utf-8", { fatal: true });
+	try {
+		for (const event of events) decoder.decode(event.data);
+	} catch {
+		decoder = new TextDecoder("shift_jis");
+	}
+	// CR/LF・スラッシュ・バックスラッシュは、前後どちらのイベントにあっても改行。
+	return events.flatMap(({ tick, data }) => {
+		const parts = decoder.decode(data).replace(/\r\n?|\n|\\/g, "/").split("/");
+		return parts.map((text, index) => ({ tick, text: (index ? "/" : "") + text }));
+	});
+}
+
+function matchingLyrics(moras, ticks, tolerance) {
+	const sorted = [...ticks].sort((a, b) => a - b);
+	let hit = 0;
+	for (const { tick } of moras) {
+		let lo = 0;
+		let hi = sorted.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (sorted[mid] < tick - tolerance) lo = mid + 1;
+			else hi = mid;
+		}
+		if (lo < sorted.length && sorted[lo] <= tick + tolerance) hit++;
+	}
+	return moras.length ? hit / moras.length : 0;
+}
+
+function selectStandardLyrics(tracks, tolerance) {
+	let best = null;
+	for (const track of tracks) {
+		if (!track.lyrics.length) continue;
+		const lyrics = standardLyrics(track.lyrics);
+		const moras = parseLyricEvents(lyrics);
+		// 同一トラックを優先し、別トラックの歌詞や伴奏を混ぜない。
+		const candidates = [track, ...tracks.filter(other => other !== track)];
+		for (const candidate of candidates) {
+			for (const [channel, ticks] of candidate.noteOns) {
+				if (track.channel !== null && channel !== track.channel) continue;
+				if (channel === 9) continue; // 標準の打楽器チャンネル
+				const score = matchingLyrics(moras, ticks, tolerance);
+				const local = candidate === track;
+				if (!best || score > best.score || (score === best.score && (
+					(local && !best.local) || (local === best.local && moras.length > best.count)
+				))) {
+					best = { lyrics, ticks, channel, score, local, count: moras.length };
+				}
+			}
+		}
+	}
+	if (!best || best.score === 0) {
+		throw new Error("音符に対応する歌詞が見つかりません。歌詞入りMIDI（XF・標準）を指定してください");
+	}
+	return best;
+}
+
 // ---- 本体 ----
 
 // buffer: ArrayBuffer(.midファイルの中身)
@@ -146,21 +204,30 @@ export function parseXfMidi(buffer) {
 	const lyricEventsRaw = [];
 	const cueTexts = [];
 	const noteOns = new Map(); // channel -> tick[]
+	const standardTracks = [];
 	let pos = 8 + 6;
 	while (pos + 8 <= bytes.length) {
 		const name = String.fromCharCode(...bytes.subarray(pos, pos + 4));
 		const size = new Reader(bytes, pos + 4).u32();
 		const bodyStart = pos + 8;
+		const track = { lyrics: [], noteOns: new Map(), channel: null };
+		if (name === "MTrk") standardTracks.push(track);
 		if (name === "MTrk" || name === "XFIH" || name === "XFKM") {
 			try {
 				readTrackEvents(bytes, bodyStart, size, (ev) => {
 					if (ev.meta === 0x05 && name === "XFKM") {
 						lyricEventsRaw.push({ tick: ev.tick, text: decoder.decode(ev.data) });
+					} else if (ev.meta === 0x05 && name === "MTrk") {
+						track.lyrics.push(ev);
+					} else if (ev.meta === 0x20 && ev.data.length === 1 && name === "MTrk") {
+						track.channel = ev.data[0];
 					} else if (ev.meta === 0x07) {
 						cueTexts.push(decoder.decode(ev.data));
 					} else if (ev.on) {
 						if (!noteOns.has(ev.channel)) noteOns.set(ev.channel, []);
 						noteOns.get(ev.channel).push(ev.tick);
+						if (!track.noteOns.has(ev.channel)) track.noteOns.set(ev.channel, []);
+						track.noteOns.get(ev.channel).push(ev.tick);
 					}
 				});
 			} catch (err) {
@@ -171,7 +238,12 @@ export function parseXfMidi(buffer) {
 	}
 
 	if (lyricEventsRaw.length === 0) {
-		throw new Error("XFカラオケ歌詞(XFKM)が見つかりません。XF形式のMIDIを指定してください");
+		const selected = selectStandardLyrics(standardTracks,
+			Math.max(1, Math.floor(division * PAIRING_TOLERANCE_BEATS)));
+		lyricEventsRaw.push(...selected.lyrics);
+		noteOns.clear();
+		noteOns.set(selected.channel, selected.ticks);
+		cueTexts.length = 0;
 	}
 	const moras = parseLyricEvents(lyricEventsRaw);
 
@@ -184,20 +256,7 @@ export function parseXfMidi(buffer) {
 	const tolerance = Math.max(1, Math.floor(division * PAIRING_TOLERANCE_BEATS));
 	const score = (ch) => {
 		const ticks = noteOns.get(ch);
-		if (!ticks || moras.length === 0) return 0;
-		const sorted = [...ticks].sort((a, b) => a - b);
-		let hit = 0;
-		for (const { tick } of moras) {
-			let lo = 0;
-			let hi = sorted.length;
-			while (lo < hi) {
-				const mid = (lo + hi) >> 1;
-				if (sorted[mid] < tick - tolerance) lo = mid + 1;
-				else hi = mid;
-			}
-			if (lo < sorted.length && sorted[lo] <= tick + tolerance) hit++;
-		}
-		return hit / moras.length;
+		return ticks ? matchingLyrics(moras, ticks, tolerance) : 0;
 	};
 	const candidates = [];
 	if (headerChannel !== null) candidates.push(headerChannel - 1, headerChannel);

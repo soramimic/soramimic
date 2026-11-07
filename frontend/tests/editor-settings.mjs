@@ -4,29 +4,12 @@ import { regenerateAll, selectRange, menuAction, closeSelection } from "./editor
 // 設定変更と再生成を別々に取り消せること、位置別重み(weightsList)が
 // エンジンまで届くことを確認する。
 // 実行: npm run build && node tests/editor-settings.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
-const PORT = 4499;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -74,15 +57,9 @@ async function openSettings(page) {
 
 const settingsOpen = (page) => page.$eval("#editor-settings", (d) => d.open);
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -262,6 +239,7 @@ try {
 		d.noteLengthAlpha = 0.25;
 		d.history = [];
 		d.future = [];
+		delete d.editorSessionId; delete d.editorSavedAt;
 		sessionStorage.setItem(k, JSON.stringify(d));
 	}, EDITOR_KEY);
 	await editor.reload();
@@ -332,6 +310,8 @@ try {
 		seed.results = [[retained], []];
 		seed.history = []; seed.future = []; seed.dirtyLines = [];
 		delete seed.where; delete seed.wordlistSource;
+		// This is a new fixture, not an older checkpoint of the previous edit.
+		delete seed.generationHistoryId; delete seed.editorSessionId; delete seed.editorSavedAt;
 		sessionStorage.setItem(key, JSON.stringify(seed));
 	}, { key: EDITOR_KEY, seed: initialData, retained });
 	await editor.reload();
@@ -371,13 +351,6 @@ try {
 	}
 
 	console.log("[ok] editor settings test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

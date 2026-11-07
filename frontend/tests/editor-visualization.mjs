@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium, webkit } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { menuAction } from "./editor-ui.mjs";
 
 const browserType = process.env.VISUALIZATION_BROWSER === "webkit" ? webkit : chromium;
-const port = browserType === webkit ? 4764 : 4763;
-const base = `http://localhost:${port}`;
+const { url: base, close: closePreview } = await startPreview();
 const source = "カタコオカンヒカリナ";
 const word = (id, surface, kana, pronunciation, start, end) => ({
 	id, surface, kana, pronunciation, period: [start, end], sim: -999,
@@ -36,14 +35,8 @@ for (const [surface, kana, pronunciation, original] of [
 	seed.results.push([{ id: surface, surface, kana, pronunciation, period: [0, original.length],
 		original_surface: original, originalkana: original }]);
 }
-const preview = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], { stdio: "ignore", detached: true });
 let browser;
 try {
-	for (let attempt = 0; ; attempt++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (attempt > 200) throw new Error("preview did not start");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-	}
 	browser = await browserType.launch();
 	const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -212,6 +205,5 @@ try {
 	assert.deepEqual(errors, []);
 	console.log("[ok] visualization E2E: combined highlights, legacy preferences, persistence, mobile layout, corrections and undo");
 } finally {
-	await browser?.close();
-	try { process.kill(-preview.pid, "SIGTERM"); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

@@ -4,40 +4,18 @@ import { openLine, selectRange, selectReading } from "./editor-ui.mjs";
 // マウスとタッチでイベント経路が異なる(clickが飛ばない・指の揺れ等)ため、
 // editor-smoke.mjs(マウス)とは別にタッチで一通り操作する。
 // 実行: npm run build && node tests/editor-touch.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4399;
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
+const { url: base, close: closePreview } = await startPreview();
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`http://localhost:${PORT}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	// スマホ相当: 狭い画面+タッチ入力
 	const context = await browser.newContext({
 		viewport: { width: 390, height: 844 },
@@ -56,7 +34,7 @@ try {
 	page.on("pageerror", (e) => pageErrors.push(e));
 
 	// ---- 変換して編集ツールを開く ----
-	await page.goto(`http://localhost:${PORT}/`);
+	await page.goto(`${base}/`);
 	await page.waitForFunction(
 		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
@@ -396,13 +374,6 @@ try {
 	}
 
 	console.log("[ok] editor touch test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

@@ -5,11 +5,12 @@
 import "./style.css";
 import "./editor.css";
 import "./appBridge.js";
-import { validateEditorData } from "./editorData.js";
+import { validateEditorData, normalizeEditorParam, normalizeEditorNoteLength, DEFAULT_NOTE_LENGTH_ALPHA } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
 import { setupEditorDisplay } from "./editorDisplay.js";
 import "./editorVisualization.css";
-import { createGenerationHistoryRepository } from "./generationHistory.js";
+import { createGenerationHistoryRepository, makeStorageId } from "./generationHistory.js";
+import { recoverEditorData, saveEditorRecovery } from "./editorRecovery.js";
 import {
 	isVideoReview, setupReviewToolbar, renderReviewLine, appendReviewHeader,
 } from "./editorReview.js";
@@ -46,7 +47,6 @@ const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
-const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
 const SKIP_REGEN_CONFIRMATION_KEY = "soramimic-skip-regenerate-confirmation";
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
@@ -184,31 +184,57 @@ function setupEmbedNavigation() {
 	});
 }
 
-let saveFailureNotified = false; // 保存不可の通知は1回だけ(操作のたびに出さない)
 const generationHistory = createGenerationHistoryRepository();
 const pendingHistoryWrites = new Set();
-let historyFailureNotified = false;
+let saveRevision = 0;
 
-function saveGenerationHistory() {
-	if (!data?.generationHistoryId) return;
-	const write = generationHistory.update(data.generationHistoryId, data);
-	pendingHistoryWrites.add(write);
-	write.then(() => { pendingHistoryWrites.delete(write); }, () => {
-		pendingHistoryWrites.delete(write);
-		if (historyFailureNotified) return;
-		historyFailureNotified = true;
-		alert("編集内容を履歴に保存できませんでした。「書き出し」でファイルに保存してください。");
-	});
+function showSaveStatus(saved) {
+	if (window.parent !== window) return;
+	const status = $id("editor-save-status");
+	status.hidden = false;
+	status.textContent = saved === null ? "端末に保存しています…" : saved
+		? "この端末に自動保存しました。"
+		: "端末への自動保存ができません。「書き出し」でファイルに保存してください。";
+	status.classList.toggle("save-failed", saved === false);
 }
 
-// 保存できたら true。容量超過(QuotaExceededError)は履歴を削って粘り、
-// それでもダメなら「保存できていない」ことを分かる形で1度だけ知らせる:
-// 黙って落とすと、編集し続けたあとでリロードして全部消える
-function saveData() {
+function saveGenerationHistory(options) {
+	if (!data?.generationHistoryId) return null;
+	const write = generationHistory.update(data.generationHistoryId, data, options);
+	pendingHistoryWrites.add(write);
+	write.then(() => { pendingHistoryWrites.delete(write); }, error => {
+		pendingHistoryWrites.delete(write);
+		console.warn("編集内容を履歴に保存できませんでした:", error);
+	});
+	return write;
+}
+
+// Save each destination independently: a full sessionStorage must not prevent a
+// persistent checkpoint or history update. Checkpoint writes are synchronous and
+// happen on every committed edit, without waiting for a background/unload event.
+function saveData(options) {
 	syncOriginalReadingAlignments(data, app);
+	const revision = ++saveRevision;
+	data.editorSessionId ||= makeStorageId();
+	data.editorSavedAt = Math.max(Date.now(), (data.editorSavedAt || 0) + 1);
+	let recoverySaved = false;
+	if (window.parent === window) {
+		try {
+			recoverySaved = saveEditorRecovery(data);
+		} catch (error) { console.warn("編集内容の復元用保存に失敗:", error); }
+	}
+	const historyWrite = saveGenerationHistory(options);
+	showSaveStatus(recoverySaved ? true : historyWrite ? null : false);
+	if (historyWrite) {
+		historyWrite.then(saved => {
+			if (revision === saveRevision) showSaveStatus(recoverySaved || saved);
+		}, () => {
+			if (revision === saveRevision) showSaveStatus(recoverySaved);
+		});
+	}
+
 	try {
 		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
-		saveGenerationHistory();
 		return true;
 	} catch (err) {
 		// 容量超過時は履歴を削って保存し直す(編集内容の保存を優先)
@@ -217,16 +243,9 @@ function saveData() {
 		data.future = data.future.slice(-5);
 		try {
 			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(data));
-			saveGenerationHistory();
 			return true;
 		} catch (err2) {
 			console.error(err2);
-			if (!saveFailureNotified) {
-				saveFailureNotified = true;
-				alert("編集内容をブラウザに保存できませんでした(保存容量オーバー)。"
-					+ "自作リストが大きすぎるかもしれません。リストを小さくするか、"
-					+ "「書き出し」でファイルに保存してください。");
-			}
 			return false;
 		}
 	}
@@ -275,14 +294,7 @@ function noteLengthWeights() {
 }
 
 function normalizeNoteLengthSetting() {
-	if (!Array.isArray(data.noteLengthRawList)) {
-		delete data.noteLengthRawList;
-		delete data.noteLengthAlpha;
-		return;
-	}
-	const alpha = Number(data.noteLengthAlpha);
-	data.noteLengthAlpha = Number.isFinite(alpha) && alpha >= 0
-		? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA;
+	normalizeEditorNoteLength(data);
 }
 
 function applyNoteLengthSetting() {
@@ -2004,38 +2016,61 @@ function countOriginalEntries(text) {
 // 選んだCSV/テキストを自作リストの編集欄に流し込む。ここでやるのは
 // textareaを埋めてinputを発火させるところまでで、正規化CSV(originalTextToCsv)も
 // localStorageへの保存も貼り付けたときとまったく同じハンドラに任せる
+let originalReadSequence = 0;
+let originalReading = false;
+
+function setOriginalReading(reading) {
+	originalReading = reading;
+	$id("editor-original-dialog").setAttribute("aria-busy", String(reading));
+	for (const id of ["editor-original-text", "btn-original-register", "btn-original-paste",
+		"btn-original-file", "original-file"]) $id(id).disabled = reading;
+}
+
+function cancelOriginalRead() {
+	++originalReadSequence;
+	setOriginalReading(false);
+}
+
 async function loadOriginalFile(file) {
+	if (originalReading) return;
 	if (file.size > ORIGINAL_FILE_MAX) {
 		setOriginalFileStatus(
 			`ファイルが大きすぎます(${(file.size / 1024 / 1024).toFixed(1)}MB)。`
 			+ `${ORIGINAL_FILE_MAX / 1024 / 1024}MBまでのCSV/テキストにしてください`);
 		return;
 	}
-	let text;
+	const sequence = ++originalReadSequence;
+	setOriginalReading(true);
+	setOriginalFileStatus("ファイルを読み込んでいます…");
 	try {
-		text = await file.text();
+		const text = await file.text();
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
+		const ta = $id("editor-original-text");
+		ta.value = text;
+		setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
+		ta.dispatchEvent(new Event("input", { bubbles: true }));
 	} catch (err) {
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		console.error(err);
 		setOriginalFileStatus("ファイルを読み込めませんでした: " + err.message);
-		return;
+	} finally {
+		if (sequence === originalReadSequence) setOriginalReading(false);
 	}
-	const ta = $id("editor-original-text");
-	ta.value = text;
-	// 先に成功の表示を出しておく。保存に失敗したときは input のハンドラが
-	// この表示を上書きするので、失敗のほうが残る
-	setOriginalFileStatus(`${file.name}: ${countOriginalEntries(text)}語を読み込みました`);
-	ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 // 自作リスト欄へクリップボードのテキストを流し込む。Clipboard API が使えない
 // HTTP配置や権限拒否では、欄へフォーカスして通常の Ctrl/Cmd+V を案内する。
 async function pasteOriginalText() {
+	if (originalReading) return;
+	const sequence = ++originalReadSequence;
+	setOriginalReading(true);
 	const ta = $id("editor-original-text");
 	try {
 		if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
 			throw new Error("clipboard unavailable");
 		}
 		const text = await navigator.clipboard.readText();
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		if (!text) {
 			setOriginalFileStatus("クリップボードにテキストがありません");
 			return;
@@ -2044,9 +2079,13 @@ async function pasteOriginalText() {
 		setOriginalFileStatus(`クリップボードから${countOriginalEntries(text)}語を貼り付けました`);
 		ta.dispatchEvent(new Event("input", { bubbles: true }));
 	} catch (err) {
+		if (sequence !== originalReadSequence || !$id("editor-original-dialog").open) return;
 		console.warn("クリップボードを読み取れませんでした:", err);
+		setOriginalReading(false);
 		ta.focus();
 		setOriginalFileStatus("入力欄に Ctrl+V（Macは⌘V）で貼り付けてください");
+	} finally {
+		if (sequence === originalReadSequence) setOriginalReading(false);
 	}
 }
 
@@ -2101,6 +2140,7 @@ let originalDraftEntry = null;
 // 自作リストは別モーダルで編集する。選択操作から開いた場合は、キャンセル時に
 // それまで適用されていた単語リストへセレクトを戻す。
 function openOriginalDialog(restoreValue = null) {
+	cancelOriginalRead();
 	if (engineMatches()) {
 		++settingsRevision;
 		setSettingsBusy(false);
@@ -2123,10 +2163,12 @@ function openOriginalDialog(restoreValue = null) {
 }
 
 function cancelOriginalDialog() {
+	cancelOriginalRead();
 	$id("editor-original-dialog").close();
 }
 
 function acceptOriginalDialog() {
+	if (originalReading) return;
 	const text = $id("editor-original-text").value;
 	if (!text.trim()) {
 		setOriginalFileStatus("単語を1つ以上入力してください");
@@ -2149,6 +2191,7 @@ function acceptOriginalDialog() {
 }
 
 function finishOriginalDialog() {
+	cancelOriginalRead();
 	if (!originalDialogAccepted && originalDialogRestoreValue) {
 		$id("editor-wordlist").value = originalDialogRestoreValue;
 		onWordlistChange();
@@ -2372,16 +2415,7 @@ function setupSettingsPanel() {
 // 現行の monophoneタイブレーク行列(#102)ではこのハックはスコアを汚すため除去する
 // (未指定=lib既定1で無効化)。VOWEL_RATIO 未指定は現行既定 0.8 とみなす。
 function normalizeParam() {
-	if (data.param && typeof data.param === "object") {
-		delete data.param.SAME_VOWEL_REWARD;
-		delete data.param.SAME_CONSONANT_REWARD;
-		if (data.param.VOWEL_RATIO == null) data.param.VOWEL_RATIO = 0.8;
-		// ン/ッ/ーの変換コストは母音準一致セル相当を vowelRatio に連動させる(#105)。
-		// 旧セッション(未指定)は VOWEL_RATIO から導出し、候補・再生成を生成画面と揃える。
-		if (data.param.VARIATION_COST == null) {
-			data.param.VARIATION_COST = 20 * Number(data.param.VOWEL_RATIO);
-		}
-	}
+	normalizeEditorParam(data.param);
 }
 
 function hasResults() {
@@ -2854,32 +2888,48 @@ function exportData() {
 	URL.revokeObjectURL(a.href);
 }
 
+let importReading = false;
+
 async function importFile(file) {
-	let obj;
+	if (importReading) return;
+	importReading = true;
+	const container = $id("app");
+	const wasInert = container.inert;
+	container.inert = true;
+	container.setAttribute("aria-busy", "true");
 	try {
-		obj = JSON.parse(await file.text());
-	} catch (err) {
-		alert("JSONの読み込みに失敗しました: " + err.message);
-		return;
+		let obj;
+		try {
+			obj = JSON.parse(await file.text());
+		} catch (err) {
+			alert("JSONの読み込みに失敗しました: " + err.message);
+			return;
+		}
+		const problem = validateEditorData(obj);
+		if (problem) {
+			alert("読み込めないファイルです: " + problem);
+			return;
+		}
+		// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
+		// 生成画面から開いたときと同じ起動フローに乗る
+		delete obj.format;
+		delete obj.generationHistoryId;
+		delete obj.editorSessionId;
+		delete obj.editorSavedAt;
+		obj.history = [];
+		obj.future = [];
+		try {
+			sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(obj));
+		} catch (err) {
+			alert("読み込んだデータの保存に失敗しました: " + err.message);
+			return;
+		}
+		location.reload();
+	} finally {
+		importReading = false;
+		container.inert = wasInert;
+		container.removeAttribute("aria-busy");
 	}
-	const problem = validateEditorData(obj);
-	if (problem) {
-		alert("読み込めないファイルです: " + problem);
-		return;
-	}
-	// 履歴は持ち込まない。sessionStorageに入れてリロードすれば
-	// 生成画面から開いたときと同じ起動フローに乗る
-	delete obj.format;
-	delete obj.generationHistoryId;
-	obj.history = [];
-	obj.future = [];
-	try {
-		sessionStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(obj));
-	} catch (err) {
-		alert("読み込んだデータの保存に失敗しました: " + err.message);
-		return;
-	}
-	location.reload();
 }
 
 function setupImportExport() {
@@ -2922,6 +2972,17 @@ async function start({ saveReceivedResult = false } = {}) {
 		data = JSON.parse(sessionStorage.getItem(EDITOR_STORAGE_KEY));
 	} catch (err) {
 		console.error("編集データの読み込みに失敗:", err);
+	}
+	// Embedded jobs keep their host's context. Standalone recovery also detects a
+	// stale session left by a failed write, without replacing fresh incoming data.
+	if (window.parent === window) {
+		const restored = await recoverEditorData(data, generationHistory);
+		data = restored.data;
+		if (restored.recovered) {
+			const status = $id("editor-recovery-status");
+			status.hidden = false;
+			status.textContent = "この端末に保存した編集内容を復元しました。";
+		}
 	}
 	if (!data || typeof data !== "object") {
 		data = null; // 壊れたデータで編集操作が動かないように
@@ -2988,8 +3049,9 @@ async function start({ saveReceivedResult = false } = {}) {
 			|| !data.originalLines.every((line) => typeof line === "string")) {
 			syncOriginalLines();
 		}
-		saveData();
 	}
+	// Establish the synchronous checkpoint before waiting for any database work.
+	saveData();
 	if (saveReceivedResult) {
 		try {
 			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "", { deduplicate: true });
@@ -3013,6 +3075,15 @@ async function start({ saveReceivedResult = false } = {}) {
 			status.textContent = "ビデオの歌詞を読み込みましたが、過去の結果に保存できませんでした。「書き出し」でファイルに保存してください。";
 		}
 	}
+	// JSON imports and older sessions also need a durable history entry, rather
+	// than only results that originated on the generation screen or in Video.
+	if (converted && !data.generationHistoryId && !saveReceivedResult) {
+		try {
+			const entry = await generationHistory.add(data, data.lyrics || data.phrases?.join("\n") || "");
+			data.generationHistoryId = entry.id;
+		} catch (error) { console.warn("編集内容を履歴に追加できませんでした:", error); }
+	}
+	saveData();
 
 	// まず読み取り専用のアライン表示を出し、候補機能は裏で初期化する
 	renderAll();
@@ -3056,7 +3127,7 @@ async function start({ saveReceivedResult = false } = {}) {
 				csvText: originalTextToCsv(
 					localStorage.getItem(ORIGINAL_STORAGE_KEY) || "", app),
 			});
-			saveData();
+			saveData({ derived: true });
 		}
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる

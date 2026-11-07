@@ -171,29 +171,6 @@ function estimateReadings(words, getYomi) {
 	return out;
 }
 
-/**
- * plain形式のテキストのうち「読みの列が無い行」に、推定した読みを2列目として書き足す。
- *
- * 行数・行の並びは変えない(plainToCsv は「コメント・空行を落としたあとの行番号」を
- * id にするので、行を足し引きすると id がずれる)。
- */
-export function fillPlainReadings(text, getYomi) {
-	const lines = String(text ?? "").split(/\r\n|\n|\r/);
-	// plainToCsv と同じ前処理(#以降はコメント、​ は除去)で「語だけの行」を見つける
-	const words = lines.map((line) => {
-		const cells = line.replace(/#.*$/, "").replace(/\u200B/g, "").split(",");
-		return cells.length === 1 ? cells[0].trim() : "";
-	});
-	const readings = estimateReadings(words, getYomi);
-	return lines
-		.map((line, i) => {
-			const word = words[i];
-			const kana = word ? readings.get(word) : undefined;
-			return kana ? `${word},${kana}` : line;
-		})
-		.join("\n");
-}
-
 function plainTextToCsv(text, getYomi) {
 	const rows = plainRows(text);
 	const readings = estimateReadings(

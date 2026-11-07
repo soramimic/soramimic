@@ -652,18 +652,6 @@ function Character(kanji){
 		return tokens;
 	}
 
-	function getSubwordList(char_tokens){
-		let subwords = [];
-		let last_index = -1;
-		for(let token of char_tokens){
-			if(token["subword_index"]!==last_index){
-				last_index = token["subword_index"];
-				subwords.push([]);
-			}
-			subwords[subwords.length-1].push(token);
-		}
-		return subwords;
-	}
 	return {
 		balancedAllocate: balancedAllocate,
 		tokenize: function(tokens){

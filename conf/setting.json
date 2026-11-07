@@ -424,6 +424,25 @@
       { "v": "current", "label": "活動中" },
       { "v": "former", "label": "卒業・引退" }
      ]
+    },
+    {
+     "column": "subscriber_band",
+     "label": "登録者数",
+     "values": [
+      { "v": "under_10k", "label": "1万未満", "where": "subscriber_band=under_10k", "default": true },
+      { "v": "10k_to_100k", "label": "1-10万", "where": "subscriber_band=10k_to_100k", "default": true },
+      { "v": "100k_to_1m", "label": "10-100万", "where": "subscriber_band=100k_to_1m", "default": true },
+      { "v": "1m_plus", "label": "100万以上", "where": "subscriber_band=1m_plus", "default": true },
+      { "v": "unknown", "label": "不明", "where": "subscriber_band=unknown", "default": true }
+     ]
+    },
+    {
+     "column": "has_image",
+     "label": "画像",
+     "values": [
+      { "v": "yes", "label": "あり", "default": true },
+      { "v": "no", "label": "なし", "default": true }
+     ]
     }
    ]
   },
@@ -448,6 +467,25 @@
      "values": [
       { "v": "current", "label": "活動中" },
       { "v": "former", "label": "卒業・引退" }
+     ]
+    },
+    {
+     "column": "subscriber_band",
+     "label": "登録者数",
+     "values": [
+      { "v": "under_10k", "label": "1万未満", "where": "subscriber_band=under_10k", "default": true },
+      { "v": "10k_to_100k", "label": "1-10万", "where": "subscriber_band=10k_to_100k", "default": true },
+      { "v": "100k_to_1m", "label": "10-100万", "where": "subscriber_band=100k_to_1m", "default": true },
+      { "v": "1m_plus", "label": "100万以上", "where": "subscriber_band=1m_plus", "default": true },
+      { "v": "unknown", "label": "不明", "where": "subscriber_band=unknown", "default": true }
+     ]
+    },
+    {
+     "column": "has_image",
+     "label": "画像",
+     "values": [
+      { "v": "yes", "label": "あり", "default": true },
+      { "v": "no", "label": "なし", "default": true }
      ]
     }
    ]

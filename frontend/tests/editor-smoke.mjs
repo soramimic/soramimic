@@ -1,43 +1,20 @@
-import { regenerateAll, openLine, selectRange, selectReading, menuAction } from "./editor-ui.mjs";
+import { regenerateAll, openLine, selectRange, selectReading, menuAction, clearSavedEditor } from "./editor-ui.mjs";
 // 編集ツール(#17)のE2Eスモークテスト: ビルド済みアプリを実ブラウザで駆動し、
 // 「変換 → 編集ツールを開く → 読み修正 → 候補差し替え → 再生成 → 戻る → コピー」
 // の編集フロー一式が生きていることを確認する。
 // 実行: npm run build && node tests/editor-smoke.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4299;
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
+const { url: base, close: closePreview } = await startPreview();
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
 }
 
-// detached + プロセスグループkillで、子のviteプロセスも確実に始末する
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`http://localhost:${PORT}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、常にkuromojiフォールバックの
 	// 決定的なトークナイズでテストする
@@ -50,7 +27,7 @@ try {
 	page.on("pageerror", (e) => pageErrors.push(e));
 
 	// ---- 生成画面: 変換して編集ツールを開く ----
-	await page.goto(`http://localhost:${PORT}/`);
+	await page.goto(`${base}/`);
 	await page.waitForFunction(
 		() => document.getElementById("btn-convert").textContent === "生成",
 		undefined, { timeout: 60000 },
@@ -61,7 +38,6 @@ try {
 	await page.click("#btn-convert");
 	await page.waitForURL("**/editor.html", { timeout: 120000 });
 	const editor = page;
-
 
 	// ---- 編集画面: アライン表示と初期化完了(候補DB構築)を待つ ----
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
@@ -652,9 +628,9 @@ try {
 		menuAction(editor, "#btn-export"),
 	]);
 	const exportPath = await download.path();
-	// 空の編集画面(sessionStorageなし)から読み込んで再開できること
-	await editor.evaluate(() => sessionStorage.clear());
-	await editor.reload();
+	// With neither a session nor a persistent checkpoint/history, file import is
+	// still available. Session loss alone now resumes the automatically saved edit.
+	await clearSavedEditor(editor);
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });
@@ -669,7 +645,7 @@ try {
 	);
 
 	// ---- 音節単位の対応: 一音節に複数の文字がある語 ----
-	await page.goto(`http://localhost:${PORT}/`);
+	await page.goto(`${base}/`);
 	await page.waitForFunction(() => document.getElementById("btn-convert").textContent === "生成");
 	await page.fill("#input-text", "赤とんぼ\n赤ちゃん\n東京");
 	await page.click("#btn-convert");
@@ -757,13 +733,6 @@ try {
 	}
 
 	console.log("[ok] editor smoke test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

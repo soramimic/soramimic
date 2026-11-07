@@ -41,6 +41,8 @@ jobs:
         run: node tests/static-assets.mjs
       - name: 編集ツールE2E(読み修正・差し替え・再生成・undo・コピー)
         run: node tests/editor-smoke.mjs
+      - name: 編集内容の自動保存・タブ継続・履歴からの再開(Chromium・WebKit)
+        run: node tests/editor-recovery.mjs
       - name: 編集画面のレイアウト・キーボード操作
         run: node tests/editor-layout.mjs
       - name: 編集画面の可視化・判定・修正後の更新
@@ -75,3 +77,5 @@ jobs:
         run: node tests/app-bridge.mjs && BRIDGE_BROWSER=webkit node tests/app-bridge.mjs
       - name: 動画生成前の歌詞確認E2E
         run: node tests/editor-review.mjs
+      - name: 編集ファイル読込中の操作制限とキャンセル
+        run: node tests/editor-file-operations.mjs && EDITOR_FILES_BROWSER=webkit node tests/editor-file-operations.mjs
