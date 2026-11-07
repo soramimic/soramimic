@@ -83,6 +83,13 @@ try {
 			await repo.update(hydrated.id, { ...edited, editorSavedAt: 10000 });
 			await repo.update(hydrated.id, { ...fixture, editorSavedAt: 11000 });
 			const hydratedUndone = await repo.get(hydrated.id);
+			const quickEdit = await repo.add(oldList, "準備中の編集");
+			const editedOldList = { ...edited, wordlist: oldList.wordlist, editorSavedAt: 12000 };
+			await repo.update(quickEdit.id, editedOldList);
+			await repo.update(quickEdit.id, { ...edited, editorSavedAt: 13000 }, { derived: true });
+			const hydratedDuringEdit = await repo.get(quickEdit.id);
+			await repo.update(quickEdit.id, { ...fixture, editorSavedAt: 14000 });
+			const quickEditUndone = await repo.get(quickEdit.id);
 			await repo.close();
 			const reopenedRepo = createGenerationHistoryRepository({ databaseName: "history-timestamps-test" });
 			const persisted = await reopenedRepo.get(entry.id);
@@ -107,6 +114,7 @@ try {
 			return { stamps, recoveryTime: reopened.updatedAt, session: reopened.editorSessionId,
 				defaulted: defaulted.contentUpdatedAt, settingEdited: settingEdited.contentUpdatedAt,
 				hydratedOpened: hydratedOpened.contentUpdatedAt, hydratedUndone: hydratedUndone.contentUpdatedAt,
+				hydratedDuringEdit: hydratedDuringEdit.contentUpdatedAt, quickEditUndone: quickEditUndone.contentUpdatedAt,
 				persistedTime: persisted.contentUpdatedAt, legacyOpened: legacyOpened.contentUpdatedAt,
 				legacyEdited: legacyEdited.contentUpdatedAt };
 		}, fixture);
@@ -120,6 +128,8 @@ try {
 		assert.equal(timestamps.settingEdited, 12000, "a user setting change must count as an edit");
 		assert.equal(timestamps.hydratedOpened, null, "hydrating an old custom list is not an edit");
 		assert.equal(timestamps.hydratedUndone, null, "undo must still recognize the hydrated original");
+		assert.equal(timestamps.hydratedDuringEdit, 12000, "list hydration must retain an edit made during loading");
+		assert.equal(timestamps.quickEditUndone, null, "undo after list hydration must recognize the original words");
 		const storage = await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository({ databaseName: "history-capacity-test", now: () => 1000 });

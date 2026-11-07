@@ -161,7 +161,15 @@ export function createGenerationHistoryRepository({
 					// Older records have no original snapshot. Start tracking from their
 					// saved content, rather than guessing a past edit from recovery times.
 					let originalContentSignature = previous.originalContentSignature ?? previousSignature;
-					if (derived && originalContentSignature === previousSignature) originalContentSignature = signature;
+					if (derived) {
+						// A legacy custom list may finish loading after a quick lock edit.
+						// Enrich its original list as well, without rebasing the edited words.
+						const original = JSON.parse(originalContentSignature);
+						if (contentSignature(original.wordlist || {}) === contentSignature(previous.payload.wordlist || {})) {
+							original.wordlist = payload.wordlist;
+							originalContentSignature = editableContentSignature(original);
+						}
+					}
 					const contentUpdatedAt = derived ? previous.contentUpdatedAt ?? null
 						: signature === originalContentSignature ? null
 						: signature === previousSignature ? previous.contentUpdatedAt ?? null
