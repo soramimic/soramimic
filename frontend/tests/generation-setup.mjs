@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { startPreview } from "./preview.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
+import { buildXfMidi, buildLyricMidi } from "../../tests/xfmidi-fixture.mjs";
 
 const { url: base, close: closePreview } = await startPreview();
 let browser;
@@ -180,6 +181,23 @@ try {
 		await (await cancelChooserPromise).setFiles([]);
 		assert.equal(await page.locator("#lyrics-file-name").textContent(), "キーボード.txt", "canceling a replacement keeps the loaded filename");
 		assert.equal(await page.inputValue("#input-text"), "青い空");
+		for (const [name, bytes, expected] of [
+			["歌詞.MID", buildXfMidi(), "シズム\nトケ"],
+			["歌詞.midi", buildLyricMidi(), "ハル\nナツ"],
+		]) {
+			await page.fill("#input-text", "");
+			const midiChooser = page.waitForEvent("filechooser");
+			await upload.click();
+			await (await midiChooser).setFiles({ name, mimeType: "application/octet-stream", buffer: Buffer.from(bytes) });
+			await page.waitForFunction(() => !document.getElementById("btn-lyrics-upload").disabled);
+			assert.equal(await page.inputValue("#input-text"), expected, "MIDI lyrics use the regular upload button without a URL option");
+			assert.equal(await page.locator("#lyrics-file-name").textContent(), name);
+			assert.match(await page.locator("#lyrics-file-status").textContent(), /2行・[45]音符/);
+			assert(!page.url().includes("?"));
+		}
+		await page.reload();
+		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
+		assert.equal(await page.inputValue("#input-text"), "ハル\nナツ", "MIDI lyrics survive reload");
 		for (const name of ["歌詞.txt", "歌詞.md", "歌詞.md"]) {
 			await load(name, "\uFEFF青い空\n白い雲");
 			await page.waitForFunction(() => !document.getElementById("lyrics-file").disabled);
@@ -218,7 +236,14 @@ try {
 		await page.reload();
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.inputValue("#input-text"), "青い空\n白い雲", "file lyrics survive reload");
-		for (const [name, contents] of [["長い歌詞.txt", "あ".repeat(10001)], ["invalid.json", "{"], ["invalid.json", "{}"], ["invalid.json", '{"results":[null],"unitsList":[[]]}']]) {
+		for (const [name, contents] of [
+			["長い歌詞.txt", "あ".repeat(10001)],
+			["invalid.mid", "not a MIDI file"],
+			["instrumental.midi", buildLyricMidi({ lyrics: [] })],
+			["no-reading.mid", buildLyricMidi({ lyrics: [[0, "hello"], [240, "world"]] })],
+			["invalid.json", "{"], ["invalid.json", "{}"],
+			["invalid.json", '{"results":[null],"unitsList":[[]]}'],
+		]) {
 			await load(name, contents);
 			await page.waitForFunction(() => document.getElementById("lyrics-file-status").textContent.startsWith("読み込めませんでした"));
 			assert(await page.locator("#lyrics-file-status").isVisible());

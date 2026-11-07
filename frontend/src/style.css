@@ -400,22 +400,10 @@ body:has(#sample-picker[open]) {
 	margin-bottom: 1rem;
 }
 
-/* サンプル歌詞チップとMIDI取り込みを1行に並べる(狭い幅では折り返す) */
-.input-source-row {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.6rem;
-}
-
 .sample-label {
 	font-size: 0.85rem;
 	font-weight: 600;
 	color: var(--muted);
-}
-
-.input-source-row .btn {
-	white-space: nowrap;
 }
 
 .midi-status {

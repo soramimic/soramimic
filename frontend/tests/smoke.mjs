@@ -552,36 +552,36 @@ try {
 		mimeType: "audio/midi",
 		buffer: Buffer.from(buildXfMidi()),
 	};
-	await page.setInputFiles("#midi-file", fixtureMidi);
+	await page.setInputFiles("#lyrics-file", fixtureMidi);
 	await page.waitForSelector("#midi-lyrics-dialog[open]", { timeout: 15000 });
 	await page.click("#midi-lyrics-no");
 	await page.waitForFunction(
 		() => document.getElementById("input-text").value === "シズム\nトケ",
 		{ timeout: 15000 },
 	);
-	const midiStatus = await page.textContent("#midi-status");
+	const midiStatus = await page.textContent("#lyrics-file-status");
 	if (!midiStatus.includes("2行・5音符")) {
 		throw new Error("MIDI取り込みステータスが想定外: " + midiStatus);
 	}
 
 	// ---- Videoの歌詞入りMIDIと同じ、UTF-8の標準歌詞イベント ----
 	await page.fill("#input-text", "");
-	await page.setInputFiles("#midi-file", {
+	await page.setInputFiles("#lyrics-file", {
 		name: "lyrics.mid", mimeType: "audio/midi", buffer: Buffer.from(buildLyricMidi()),
 	});
 	await page.waitForFunction(() => document.getElementById("input-text").value === "ハル\nナツ");
-	assert.match(await page.textContent("#midi-status"), /2行・4音符/);
+	assert.match(await page.textContent("#lyrics-file-status"), /2行・4音符/);
 
 	// ---- MIDI取り込み(元歌詞つき): 歌唱行と対応づけて表記ベースの行になる ----
 	await page.fill("#input-text", "私は沈むけど、とけない");
-	await page.setInputFiles("#midi-file", fixtureMidi);
+	await page.setInputFiles("#lyrics-file", fixtureMidi);
 	await page.waitForSelector("#midi-lyrics-dialog[open]", { timeout: 15000 });
 	await page.click("#midi-lyrics-yes");
 	await page.waitForFunction(
 		() => document.getElementById("input-text").value === "沈む\nとけ",
 		{ timeout: 15000 },
 	);
-	const alignStatus = await page.textContent("#midi-status");
+	const alignStatus = await page.textContent("#lyrics-file-status");
 	if (!alignStatus.includes("対応づけ: 2/2行")) {
 		throw new Error("元歌詞対応づけのステータスが想定外: " + alignStatus);
 	}
