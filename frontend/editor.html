@@ -70,12 +70,14 @@
             <span id="setup-progress" class="editor-status" hidden></span>
           </div>
         </section>
-        <p id="editor-empty" class="editor-empty" hidden>
-          編集する生成結果がありません。<a href="./">生成画面</a>で歌詞を入力して生成してください。
-          書き出したファイル(JSON)があれば
-          <button id="btn-import-empty" class="btn">ファイルを読み込む</button>
-          から再開できます。
-        </p>
+        <section id="editor-empty" class="editor-empty" hidden>
+          <p>このタブに編集中のデータがありません。</p>
+          <p><a id="editor-history-link" class="btn btn-primary" href="./#output-field">過去の結果を開く</a></p>
+          <p>書き出したファイル(JSON)があれば
+            <button id="btn-import-empty" class="btn">ファイルを読み込む</button>
+            から再開できます。</p>
+          <p>新しく作る場合は<a href="./">生成画面</a>へ進んでください。</p>
+        </section>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
         <p id="bridge-status" class="editor-status" role="status" hidden></p>
         <div id="editor-toolbar" class="editor-toolbar" hidden>

@@ -237,12 +237,11 @@ try {
 		}
 	}
 
-	// A corrupt session resumes the last saved edit; only a browser with no
-	// persistent edit left should show the empty/import screen.
+	// An unidentified session must offer history/import even with saved edits.
 	await seed(page, { param: {} });
-	await waitEditor(page);
-	assert(await page.isVisible("#editor-recovery-status"), "壊れたシードから保存済みの編集を復元できない");
-	await checkBoundaries();
+	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
+	assert(await isHidden(page, "#editor-recovery-status"), "別の保存内容を自動で復元している");
+	assert(await page.isVisible("#editor-history-link"), "過去の結果への案内がない");
 	await clearSavedEditor(page);
 	await seed(page, { param: {} });
 	await page.waitForSelector("#editor-empty:not([hidden])", { timeout: 30000 });
