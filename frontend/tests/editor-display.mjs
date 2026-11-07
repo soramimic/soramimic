@@ -34,7 +34,11 @@ try {
 	await page.evaluate(() => localStorage.setItem("soramimic-editor-display", JSON.stringify({
 		wordClear: false, wordLock: false, lineLock: false,
 	})));
-	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
+	const ready = () => page.waitForFunction(() =>
+		document.getElementById("editor-toolbar")?.hidden === false &&
+		document.getElementById("editor-status")?.hidden === true &&
+		document.getElementById("btn-regenerate")?.disabled === false,
+		undefined, { timeout: 60000 });
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	const row = (line = 0) => page.locator(`.review-line[data-line="${line}"]`);
 	const openDisplay = () => menuAction(page, "#btn-display-settings");
