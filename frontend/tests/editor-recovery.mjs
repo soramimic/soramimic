@@ -26,6 +26,25 @@ async function editLock(page) {
 	await page.locator(".review-word").first().click();
 	await page.locator(".panel-lock").click(); await page.locator(".panel-close").click();
 }
+async function empty(page) {
+	await page.locator("#editor-empty").waitFor({ state: "visible" });
+	assert(await page.locator("#editor-history-link").isVisible());
+	assert(await page.locator("#btn-import-empty").isVisible());
+	assert(await page.locator("#editor-toolbar").isHidden());
+	assert(await page.locator("#editor-recovery-status").isHidden());
+	assert.equal(await page.locator(".review-word").count(), 0);
+}
+async function reopenFromHistory(page, id, surface = "青森") {
+	await empty(page);
+	await page.locator("#editor-history-link").click();
+	await page.waitForURL(`${base}/#output-field`);
+	await page.locator(`#history-list [data-history-id="${id}"]`).waitFor();
+	assert(await page.locator("#output-field").evaluate(field => field.open && !field.hidden),
+		"the history link must open the saved-result list");
+	await page.locator(`[data-history-id="${id}"] .history-edit`).click();
+	await page.waitForURL(`${base}/editor.html`);
+	await ready(page, surface);
+}
 const checkpoint = page => page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
 async function history(page) {
 	return page.evaluate(() => new Promise((resolve, reject) => {
@@ -61,7 +80,11 @@ try {
 		context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
 		let page = await context.newPage();
 		await page.goto(`${base}/editor.html`);
-		await page.locator("#editor-empty").waitFor({ state: "visible" });
+		await empty(page);
+		await page.locator("#editor-history-link").click();
+		await page.locator("#history-status").filter({ hasText: "保存された生成結果はありません" }).waitFor();
+		assert(await page.locator("#output-field").evaluate(field => field.open && !field.hidden));
+		await page.goto(`${base}/editor.html`); await empty(page);
 		await page.setInputFiles("#import-file", { name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
 		await ready(page);
 		assert((await checkpoint(page)).payload.generationHistoryId, "imports also receive a history identity");
@@ -71,19 +94,32 @@ try {
 		assert.equal(saved.results[0][0].locked, true, "edits are checkpointed synchronously");
 		assert.equal(saved.history, undefined, "undo snapshots must not fill the checkpoint");
 		assert.deepEqual(saved.videoMetadata, fixture.videoMetadata);
-		await page.close(); page = await context.newPage();
-		await page.goto(`${base}/editor.html`); await ready(page);
-		assert(await page.locator("#editor-recovery-status").isVisible());
+		await page.reload(); await ready(page);
+		assert(await page.locator("#editor-recovery-status").isHidden(), "an intact tab continues its own edit");
 		const restored = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 		for (const field of ["results", "unitsList", "originalReadingAlignments", "videoMetadata", "wordlist", "generationHistoryId"]) assert.deepEqual(restored[field], saved[field]);
-		assert.equal((await history(page)).length, 1, "recovery must not duplicate history");
+		assert.equal((await history(page)).length, 1, "reloading must not duplicate history");
+		await page.close(); page = await context.newPage();
+		await page.goto(`${base}/editor.html`); await empty(page);
+		assert.equal(await page.evaluate(() => sessionStorage.getItem("soramimic-editor")), null);
+		assert.deepEqual((await checkpoint(page)).payload.results, saved.results, "a new tab must retain saved work without opening it");
+		await reopenFromHistory(page, saved.generationHistoryId);
+		const reopened = await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
+		for (const field of ["results", "unitsList", "originalReadingAlignments", "videoMetadata", "wordlist", "generationHistoryId"]) assert.deepEqual(reopened[field], saved[field]);
 
 		const other = structuredClone(fixture); other.results[0][0].surface = "別の編集";
 		const second = await context.newPage(); await seed(second, other);
 		assert(await second.locator("#editor-recovery-status").isHidden());
 		assert.equal((await checkpoint(second)).payload.results[0][0].surface, "別の編集");
 		assert.equal((await history(second)).length, 2, "new work retains earlier history");
-		await page.reload(); await ready(page); // An intact session wins over another tab's checkpoint.
+		const unknown = await context.newPage(); await unknown.goto(`${base}/editor.html`); await empty(unknown);
+		assert.equal((await checkpoint(unknown)).payload.results[0][0].surface, "別の編集",
+			"opening an empty editor must not change the latest checkpoint");
+		assert.equal((await history(unknown)).length, 2);
+		await reopenFromHistory(unknown, saved.generationHistoryId);
+		assert.equal((await history(unknown)).length, 2, "choosing a saved result must update the same history item");
+		await unknown.close();
+		await page.reload(); await ready(page); // An intact session continues its own edit.
 
 		await denyWrites(page, "session"); await editLock(page);
 		assert.equal((await checkpoint(page)).payload.results[0][0].locked, false);
@@ -92,7 +128,8 @@ try {
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), false,
 			"a stale session must not overwrite its newer checkpoint on reload");
 		await page.close(); page = await context.newPage();
-		await page.goto(`${base}/editor.html`); await ready(page);
+		await page.goto(`${base}/editor.html`); await empty(page);
+		await reopenFromHistory(page, saved.generationHistoryId);
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), false);
 
 		// Quota failure must still save to IndexedDB and recover ahead of an older checkpoint.
@@ -101,7 +138,8 @@ try {
 		assert.equal((await checkpoint(page)).payload.results[0][0].locked, false);
 		assert.equal((await history(page)).find(item => item.id === saved.generationHistoryId).payload.results[0][0].locked, true);
 		await page.close(); page = await context.newPage();
-		await page.goto(`${base}/editor.html`); await ready(page);
+		await page.goto(`${base}/editor.html`); await empty(page);
+		await reopenFromHistory(page, saved.generationHistoryId);
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), true);
 		await denyWrites(page, "session"); await denyWrites(page, "recovery");
 		await editLock(page);
@@ -109,9 +147,15 @@ try {
 		await page.reload(); await ready(page);
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), false,
 			"history must recover the newer edit when both synchronous writes failed");
+		const beforeClear = await history(page);
+		const checkpointBeforeClear = await checkpoint(page);
+		await page.evaluate(() => sessionStorage.removeItem("soramimic-editor"));
+		await page.reload(); await empty(page);
+		assert.deepEqual(await history(page), beforeClear, "a cleared tab must retain every saved result");
+		assert.deepEqual(await checkpoint(page), checkpointBeforeClear);
 		await page.evaluate(() => { sessionStorage.setItem("soramimic-editor", "{broken"); localStorage.setItem("soramimic-editor-recovery", "{broken"); });
-		await page.reload(); await ready(page);
-		assert(await page.locator("#editor-recovery-status").isVisible());
+		await page.reload(); await empty(page);
+		assert.deepEqual(await history(page), beforeClear, "a corrupt tab must not open or overwrite a saved result");
 
 		await second.goto(`${base}/about.html`);
 		await second.evaluate(() => {
@@ -125,15 +169,19 @@ try {
 		const denied = await browser.newContext();
 		await denied.route(url => url.hostname !== "localhost", route => route.abort());
 		await denied.addInitScript(() => Object.defineProperty(window, "indexedDB", { get() { throw new DOMException("blocked", "SecurityError"); } }));
-		const blocked = await denied.newPage(); await seed(blocked); await editLock(blocked); await blocked.close();
-		const resumed = await denied.newPage(); await resumed.goto(`${base}/editor.html`); await ready(resumed);
+		const blocked = await denied.newPage(); await seed(blocked); await editLock(blocked);
+		await blocked.reload(); await ready(blocked);
+		const resumed = blocked;
 		assert.equal(await resumed.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), true);
 		await denyWrites(resumed, "recovery"); await editLock(resumed);
 		assert.match(await resumed.locator("#editor-save-status").textContent(), /自動保存ができません/);
 		assert.equal(await resumed.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results[0][0].locked), false);
 		assert.equal((await checkpoint(resumed)).payload.results[0][0].locked, true, "failed writes retain the last good checkpoint");
+		await resumed.close();
+		const fresh = await denied.newPage(); await fresh.goto(`${base}/editor.html`); await empty(fresh);
+		assert.equal((await checkpoint(fresh)).payload.results[0][0].locked, true);
 		await denied.close();
-		console.log(`[ok] ${engine.name()}: JSON autosave, closed-tab recovery, independent tabs, corruption, storage failures and embedded isolation`);
+		console.log(`[ok] ${engine.name()}: JSON autosave, same-tab continuation, empty/new tabs, history selection, corruption, storage failures and embedded isolation`);
 		await browser.close(); browser = null;
 	}
 } finally {

@@ -1068,6 +1068,17 @@ export async function startApp() {
 		}
 	}
 	await initializeHistory();
+	function openLinkedHistory() {
+		if (location.hash !== "#output-field") return;
+		if (!historyEntries.length && !editorPayload && historyStatus.hidden) {
+			showHistoryStatus("保存された生成結果はありません。");
+		}
+		outputField.hidden = false;
+		outputField.open = true;
+		outputField.scrollIntoView({ block: "start" });
+	}
+	openLinkedHistory();
+	window.addEventListener("hashchange", openLinkedHistory);
 
 	btnConvert.addEventListener("click", () => {
 		const text = inputText.value;

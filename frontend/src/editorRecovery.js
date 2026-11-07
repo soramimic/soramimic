@@ -12,7 +12,7 @@ export function canResumeEditor(data) {
 
 // Keep one synchronous checkpoint in addition to IndexedDB history. Undo snapshots
 // and host requests are deliberately excluded so the checkpoint stays small and
-// can be opened independently after the original tab is gone.
+// can repair a stale copy in the same editing session.
 export function saveEditorRecovery(data, storage = localStorage) {
 	if (!canResumeEditor(data)) return false;
 	const payload = generationHistoryPayload(data);
@@ -26,11 +26,14 @@ export function saveEditorRecovery(data, storage = localStorage) {
 
 export async function recoverEditorData(session, repository, storage) {
 	const usable = canResumeEditor(session);
+	// Without this tab's data there is no reliable editing identity. Let the user
+	// choose a saved result instead of opening another tab's most recent work.
+	if (!usable) return { data: null, recovered: false };
 	// Fresh generation/import payloads take priority over every saved edit.
-	if (usable && !session.editorSessionId) return { data: session, recovered: false };
-	let data = usable ? session : null;
-	let savedAt = usable ? session.editorSavedAt || 0 : 0;
-	const belongsToSession = candidate => !usable || candidate.editorSessionId === session.editorSessionId;
+	if (!session.editorSessionId) return { data: session, recovered: false };
+	let data = session;
+	let savedAt = session.editorSavedAt || 0;
+	const belongsToSession = candidate => candidate.editorSessionId === session.editorSessionId;
 	try {
 		const checkpoint = readEditorRecovery(storage);
 		if (checkpoint && belongsToSession(checkpoint.payload) && checkpoint.savedAt > savedAt) {
@@ -39,9 +42,7 @@ export async function recoverEditorData(session, repository, storage) {
 		}
 	} catch (error) { console.warn("復元用データを読み込めませんでした:", error); }
 	try {
-		const entry = usable
-			? (session.generationHistoryId ? await repository.get(session.generationHistoryId) : null)
-			: await repository.latest(entry => canResumeEditor(entry.payload));
+		const entry = session.generationHistoryId ? await repository.get(session.generationHistoryId) : null;
 		if (entry && belongsToSession(entry) && canResumeEditor(entry.payload) && entry.updatedAt > savedAt) {
 			const setupFirst = data?.generationHistoryId === entry.id && data.setupFirst;
 			data = { ...entry.payload, generationHistoryId: entry.id,
