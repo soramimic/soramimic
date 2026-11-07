@@ -1,3 +1,5 @@
+import { normalizeEditorParam, normalizeEditorNoteLength } from "./editorData.js";
+
 export const GENERATION_HISTORY_LIMIT = 50;
 export const GENERATION_HISTORY_DATABASE = "soramimic-generation-history";
 
@@ -27,6 +29,15 @@ function contentSignature(payload) {
 		if (!value || typeof value !== "object" || Array.isArray(value)) return value;
 		return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
 	});
+}
+
+function editableContentSignature(payload) {
+	// Line mappings are derived from the lyrics when an older file is opened.
+	const { originalLines, ...content } = structuredClone(payload);
+	normalizeEditorParam(content.param);
+	normalizeEditorNoteLength(content);
+	if (!Array.isArray(content.weightsList)) delete content.weightsList;
+	return contentSignature(content);
 }
 
 export function createGenerationHistoryRepository({
@@ -105,7 +116,8 @@ export function createGenerationHistoryRepository({
 					const newest = store.index("createdAt").openCursor(null, "prev");
 					newest.onsuccess = () => {
 						const createdAt = Math.max(now(), (newest.result?.value.createdAt || 0) + 1);
-						const entry = { id, createdAt, updatedAt: createdAt, sourceText, payload };
+						const entry = { id, createdAt, updatedAt: createdAt, sourceText, payload,
+							originalContentSignature: editableContentSignature(payload), contentUpdatedAt: null };
 						store.add(entry);
 						result(entry);
 						let count = 0;
@@ -132,8 +144,9 @@ export function createGenerationHistoryRepository({
 				};
 			});
 		},
-		async update(id, data) {
+		async update(id, data, { derived = false } = {}) {
 			const payload = generationHistoryPayload(data);
+			const signature = editableContentSignature(payload);
 			// The timestamp describes this snapshot, not when a queued transaction
 			// happens to finish. Recovery must not mistake an older queued write for
 			// an edit newer than the synchronous checkpoint.
@@ -143,8 +156,18 @@ export function createGenerationHistoryRepository({
 				const request = store.get(id);
 				request.onsuccess = () => {
 					if (!request.result) { result(false); return; }
-					store.put({ ...request.result, payload, editorSessionId,
-						updatedAt: Math.max(updatedAt, request.result.createdAt) });
+					const previous = request.result;
+					const previousSignature = editableContentSignature(previous.payload);
+					// Older records have no original snapshot. Start tracking from their
+					// saved content, rather than guessing a past edit from recovery times.
+					let originalContentSignature = previous.originalContentSignature ?? previousSignature;
+					if (derived && originalContentSignature === previousSignature) originalContentSignature = signature;
+					const contentUpdatedAt = derived ? previous.contentUpdatedAt ?? null
+						: signature === originalContentSignature ? null
+						: signature === previousSignature ? previous.contentUpdatedAt ?? null
+						: Math.max(updatedAt, previous.contentUpdatedAt || previous.createdAt);
+					store.put({ ...previous, payload, editorSessionId, originalContentSignature, contentUpdatedAt,
+						updatedAt: Math.max(updatedAt, previous.createdAt) });
 					result(true);
 				};
 			});

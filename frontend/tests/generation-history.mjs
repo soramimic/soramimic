@@ -4,6 +4,7 @@ import { readFile, mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 
 const source = await readFile(new URL("../src/generationHistory.js", import.meta.url), "utf8");
+const editorDataSource = await readFile(new URL("../src/editorData.js", import.meta.url), "utf8");
 const { url: base, close: closePreview } = await startPreview();
 const fixture = {
 	phrases: ["沈む"],
@@ -18,6 +19,7 @@ async function contextFor(engine) {
 	const context = await browser.newContext({ timezoneId: "Asia/Tokyo" });
 	await context.route(url => url.hostname !== "localhost", route => route.abort());
 	await context.route("**/__history-test.js", route => route.fulfill({ contentType: "application/javascript", body: source }));
+	await context.route("**/editorData.js", route => route.fulfill({ contentType: "application/javascript", body: editorDataSource }));
 	return context;
 }
 async function home(page) {
@@ -40,6 +42,84 @@ try {
 		context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
 		page.on("pageerror", error => errors.push(error.message));
 		await home(page);
+		const timestamps = await page.evaluate(async fixture => {
+			const { createGenerationHistoryRepository } = await import("/__history-test.js");
+			const repo = createGenerationHistoryRepository({ databaseName: "history-timestamps-test", now: () => 1000 });
+			const entry = await repo.add(fixture, "元歌詞");
+			const stamps = [entry.contentUpdatedAt];
+			const save = async (data, editorSavedAt) => {
+				await repo.update(entry.id, { ...data, editorSavedAt, editorSessionId: "session" });
+				const stored = await repo.get(entry.id);
+				stamps.push(stored.contentUpdatedAt);
+				return stored;
+			};
+			const normalized = { ...fixture, param: { VOWEL_RATIO: 0.8, VARIATION_COST: 16 },
+				wordlistSource: { kind: "local" }, originalReadingAlignments: [["derived"]],
+				originalLines: ["自動で対応づけた元歌詞"],
+				hostRequest: { nonce: 5 }, history: [{ results: [] }] };
+			await save(normalized, 2000);
+			const edited = structuredClone(normalized);
+			edited.results[0][0].locked = false;
+			await save(edited, 3000);
+			const reopened = await save(edited, 4000);
+			await save(fixture, 5000); // undo to the generated content
+			await save(edited, 6000); // redo
+			const changedAgain = { ...edited, lyrics: "元歌詞の変更" };
+			await save(changedAgain, 7000);
+			const oldSettings = { ...fixture, param: { SAME_VOWEL_REWARD: 0.2, SAME_CONSONANT_REWARD: 0.9 },
+				noteLengthRawList: [[1, 2, 3]], weightsList: null };
+			const settings = await repo.add(oldSettings, "旧設定");
+			const normalizedSettings = { ...normalized, noteLengthRawList: oldSettings.noteLengthRawList, noteLengthAlpha: 0.25 };
+			await repo.update(settings.id, normalizedSettings);
+			const defaulted = await repo.get(settings.id);
+			await repo.update(settings.id, { ...normalizedSettings, noteLengthAlpha: 0.5, editorSavedAt: 12000 });
+			const settingEdited = await repo.get(settings.id);
+			const oldList = structuredClone(fixture);
+			delete oldList.wordlist.csvText;
+			const hydrated = await repo.add(oldList, "旧形式リスト");
+			await repo.update(hydrated.id, { ...fixture, editorSavedAt: 8000 }, { derived: true });
+			await repo.update(hydrated.id, { ...fixture, editorSavedAt: 9000 });
+			const hydratedOpened = await repo.get(hydrated.id);
+			await repo.update(hydrated.id, { ...edited, editorSavedAt: 10000 });
+			await repo.update(hydrated.id, { ...fixture, editorSavedAt: 11000 });
+			const hydratedUndone = await repo.get(hydrated.id);
+			await repo.close();
+			const reopenedRepo = createGenerationHistoryRepository({ databaseName: "history-timestamps-test" });
+			const persisted = await reopenedRepo.get(entry.id);
+			await reopenedRepo.close();
+			// Simulate a record created before content timestamps existed.
+			await new Promise((resolve, reject) => {
+				const request = indexedDB.open("history-timestamps-test");
+				request.onerror = () => reject(request.error);
+				request.onsuccess = () => {
+					const db = request.result, tx = db.transaction("results", "readwrite");
+					tx.objectStore("results").put({ id: "legacy", createdAt: 1000, updatedAt: 9000, payload: fixture });
+					tx.oncomplete = () => { db.close(); resolve(); };
+					tx.onabort = () => { db.close(); reject(tx.error); };
+				};
+			});
+			const legacyRepo = createGenerationHistoryRepository({ databaseName: "history-timestamps-test" });
+			await legacyRepo.update("legacy", { ...normalized, editorSavedAt: 10000 });
+			const legacyOpened = await legacyRepo.get("legacy");
+			await legacyRepo.update("legacy", { ...edited, editorSavedAt: 11000 });
+			const legacyEdited = await legacyRepo.get("legacy");
+			await legacyRepo.close();
+			return { stamps, recoveryTime: reopened.updatedAt, session: reopened.editorSessionId,
+				defaulted: defaulted.contentUpdatedAt, settingEdited: settingEdited.contentUpdatedAt,
+				hydratedOpened: hydratedOpened.contentUpdatedAt, hydratedUndone: hydratedUndone.contentUpdatedAt,
+				persistedTime: persisted.contentUpdatedAt, legacyOpened: legacyOpened.contentUpdatedAt,
+				legacyEdited: legacyEdited.contentUpdatedAt };
+		}, fixture);
+		assert.deepEqual(timestamps.stamps, [null, null, 3000, 3000, null, 6000, 7000]);
+		assert.equal(timestamps.recoveryTime, 4000, "recovery must retain the latest save time even without a content edit");
+		assert.equal(timestamps.session, "session");
+		assert.equal(timestamps.persistedTime, 7000);
+		assert.equal(timestamps.legacyOpened, null, "legacy save times are not evidence of an edit");
+		assert.equal(timestamps.legacyEdited, 11000);
+		assert.equal(timestamps.defaulted, null, "automatic setting migrations must not count as edits");
+		assert.equal(timestamps.settingEdited, 12000, "a user setting change must count as an edit");
+		assert.equal(timestamps.hydratedOpened, null, "hydrating an old custom list is not an edit");
+		assert.equal(timestamps.hydratedUndone, null, "undo must still recognize the hydrated original");
 		const storage = await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
 			const repo = createGenerationHistoryRepository({ databaseName: "history-capacity-test", now: () => 1000 });
@@ -114,7 +194,7 @@ try {
 
 		await page.evaluate(async fixture => {
 			const { createGenerationHistoryRepository } = await import("/__history-test.js");
-			const repo = createGenerationHistoryRepository();
+			const repo = createGenerationHistoryRepository({ now: () => new Date("2026-11-07T00:30:00Z").getTime() });
 			for (let i = 0; i < 52; i++) {
 				const payload = structuredClone(fixture);
 				payload.wordlist.text = `単語リスト${i}`;
@@ -126,6 +206,10 @@ try {
 					payload.results[0][0].surface = "長い単語".repeat(30);
 				}
 				await repo.add(payload, `元歌詞${i}`, { id: `saved-${i}` });
+				if (i === 51) {
+					payload.results[0][0].locked = false;
+					await repo.update(`saved-${i}`, { ...payload, editorSavedAt: new Date("2026-11-07T01:42:00Z").getTime() });
+				}
 			}
 			await repo.close();
 		}, fixture);
@@ -143,6 +227,10 @@ try {
 		assert.equal(await page.locator("#history-select, #history-delete").count(), 0);
 		await page.locator("#output-field > summary").click();
 		const newest = cardFor("saved-51");
+		assert.equal(await newest.locator(".history-update").textContent(), "更新 11/7 10:42");
+		assert.equal(await newest.locator(".history-update time").getAttribute("datetime"), "2026-11-07T01:42:00.000Z");
+		assert(await newest.locator(".history-update").isVisible());
+		assert(await cardFor("saved-50").locator(".history-update").isHidden());
 		for (const scheme of ["light", "dark"]) {
 			await page.emulateMedia({ colorScheme: scheme });
 			for (const width of [320, 390, 1200]) {
@@ -201,6 +289,8 @@ try {
 		await page.waitForURL("**/editor.html");
 		await page.waitForFunction(() => document.getElementById("editor-status").hidden && !document.getElementById("btn-regenerate").disabled);
 		assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).generationHistoryId), "saved-7");
+		const opened = await page.evaluate(async () => (await (await import("/__history-test.js")).createGenerationHistoryRepository().get("saved-7")));
+		assert.equal(opened.contentUpdatedAt, null, "opening the editor and applying defaults must not count as editing");
 		await page.locator(".review-word").first().click();
 		await page.locator(".panel-lock").click();
 		await page.locator(".panel-close").click();
@@ -213,6 +303,8 @@ try {
 		assert.equal(edited.payload.wordlist.csvText, fixture.wordlist.csvText);
 		assert.equal(await page.locator(".history-item").count(), 50);
 		assert.equal(await cardFor("saved-7").count(), 1, "editing must preserve the same card");
+		assert.equal(await cardFor("saved-7").locator(".history-update").getAttribute("hidden"), null);
+		assert(Number.isFinite(edited.contentUpdatedAt));
 
 		await page.click("#wordlist-trigger");
 		await page.getByRole("menuitem", { name: "＋ 新しいリスト" }).click();
@@ -230,6 +322,8 @@ try {
 		await page.waitForFunction(() => !document.getElementById("btn-convert").disabled);
 		assert.equal(await page.locator(".history-item").count(), 50);
 		assert.equal(await page.locator(".history-item").first().getAttribute("data-history-id"), generated.generationHistoryId);
+		assert.equal(await page.locator(".history-item").first().locator(".history-update").getAttribute("hidden"), "",
+			"generating and opening the editor must leave the new result unmodified");
 		await context.close();
 
 		const legacyContext = await contextFor(engine);

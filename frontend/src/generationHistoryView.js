@@ -53,11 +53,22 @@ export function createGenerationHistoryView({ container, template, onEdit }) {
 						|| entry.sourceText?.slice(0, 120) || "生成結果";
 					card.setAttribute("aria-labelledby", heading.id);
 					card.querySelector(".history-wordlist").textContent = entry.payload.wordlist?.text || "単語リスト";
-					const date = card.querySelector("time");
+					const date = card.querySelector(".history-created");
 					date.dateTime = new Date(entry.createdAt).toISOString();
 					date.textContent = new Date(entry.createdAt).toLocaleString("ja-JP", {
 						year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
 					});
+					if (Number.isFinite(entry.contentUpdatedAt)) {
+						const updated = new Date(entry.contentUpdatedAt);
+						const update = card.querySelector(".history-update");
+						update.hidden = false;
+						const time = update.querySelector("time");
+						time.dateTime = updated.toISOString();
+						time.title = updated.toLocaleString("ja-JP");
+						time.textContent = updated.toLocaleString("ja-JP", {
+							month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+						});
+					}
 					// Only format a short preview until this result is expanded or copied.
 					card.querySelector(".history-preview").textContent = makeResultText(
 						(entry.payload.results || []).slice(0, 2), "4").slice(0, 240);
