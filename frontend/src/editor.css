@@ -9,6 +9,32 @@
 	color: var(--muted);
 }
 
+.editor-empty-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 1.5rem;
+}
+
+.editor-empty-link {
+	display: inline-flex;
+	align-items: center;
+	min-height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+	cursor: pointer;
+}
+
+.editor-empty-link:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: 3px;
+}
+
 .editor-line {
 	background: var(--panel);
 	border: 1px solid var(--border);
