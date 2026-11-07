@@ -485,6 +485,12 @@ body:has(#sample-picker[open]) {
 	overflow-wrap: anywhere;
 }
 
+.history-update:not([hidden]) {
+	display: block;
+	margin-top: .15rem;
+	font-size: .75rem;
+}
+
 .history-preview {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;

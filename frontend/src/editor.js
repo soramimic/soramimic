@@ -6,7 +6,7 @@ import "./style.css";
 import "./editor.css";
 import "./appBridge.js";
 import { retainScoreLines } from "./editorScore.js";
-import { validateEditorData } from "./editorData.js";
+import { validateEditorData, normalizeEditorParam, normalizeEditorNoteLength, DEFAULT_NOTE_LENGTH_ALPHA } from "./editorData.js";
 import { setupVisualization } from "./editorVisualization.js";
 import { setupEditorDisplay } from "./editorDisplay.js";
 import "./editorVisualization.css";
@@ -49,7 +49,6 @@ const HISTORY_MAX = 50; // 「戻る」履歴の上限
 const LONG_PRESS_MS = 500; // 候補詳細を出す長押しの判定時間
 const HOST_POLL_MS = 1500; // ホストの応答(hostRequestの消滅)を見に行く間隔
 const HOST_TIMEOUT_MS = 30000; // 応答が来ないときに待機を解除するまでの猶予
-const DEFAULT_NOTE_LENGTH_ALPHA = 0.25;
 const SKIP_REGEN_CONFIRMATION_KEY = "soramimic-skip-regenerate-confirmation";
 // 自作リストとして読み込めるファイルの上限。正規化CSV(csvText)は編集データごと
 // sessionStorage に載るので、入り口で断らないと保存できないところまで行ってしまう
@@ -201,9 +200,9 @@ function showSaveStatus(saved) {
 	status.classList.toggle("save-failed", saved === false);
 }
 
-function saveGenerationHistory() {
+function saveGenerationHistory(options) {
 	if (!data?.generationHistoryId) return null;
-	const write = generationHistory.update(data.generationHistoryId, data);
+	const write = generationHistory.update(data.generationHistoryId, data, options);
 	pendingHistoryWrites.add(write);
 	write.then(() => { pendingHistoryWrites.delete(write); }, error => {
 		pendingHistoryWrites.delete(write);
@@ -215,7 +214,7 @@ function saveGenerationHistory() {
 // Save each destination independently: a full sessionStorage must not prevent a
 // persistent checkpoint or history update. Checkpoint writes are synchronous and
 // happen on every committed edit, without waiting for a background/unload event.
-function saveData() {
+function saveData(options) {
 	syncOriginalReadingAlignments(data, app);
 	const revision = ++saveRevision;
 	data.editorSessionId ||= makeStorageId();
@@ -226,7 +225,7 @@ function saveData() {
 			recoverySaved = saveEditorRecovery(data);
 		} catch (error) { console.warn("編集内容の復元用保存に失敗:", error); }
 	}
-	const historyWrite = saveGenerationHistory();
+	const historyWrite = saveGenerationHistory(options);
 	showSaveStatus(recoverySaved ? true : historyWrite ? null : false);
 	if (historyWrite) {
 		historyWrite.then(saved => {
@@ -297,14 +296,7 @@ function noteLengthWeights() {
 }
 
 function normalizeNoteLengthSetting() {
-	if (!Array.isArray(data.noteLengthRawList)) {
-		delete data.noteLengthRawList;
-		delete data.noteLengthAlpha;
-		return;
-	}
-	const alpha = Number(data.noteLengthAlpha);
-	data.noteLengthAlpha = Number.isFinite(alpha) && alpha >= 0
-		? Math.min(2, alpha) : DEFAULT_NOTE_LENGTH_ALPHA;
+	normalizeEditorNoteLength(data);
 }
 
 function applyNoteLengthSetting() {
@@ -2425,16 +2417,7 @@ function setupSettingsPanel() {
 // 現行の monophoneタイブレーク行列(#102)ではこのハックはスコアを汚すため除去する
 // (未指定=lib既定1で無効化)。VOWEL_RATIO 未指定は現行既定 0.8 とみなす。
 function normalizeParam() {
-	if (data.param && typeof data.param === "object") {
-		delete data.param.SAME_VOWEL_REWARD;
-		delete data.param.SAME_CONSONANT_REWARD;
-		if (data.param.VOWEL_RATIO == null) data.param.VOWEL_RATIO = 0.8;
-		// ン/ッ/ーの変換コストは母音準一致セル相当を vowelRatio に連動させる(#105)。
-		// 旧セッション(未指定)は VOWEL_RATIO から導出し、候補・再生成を生成画面と揃える。
-		if (data.param.VARIATION_COST == null) {
-			data.param.VARIATION_COST = 20 * Number(data.param.VOWEL_RATIO);
-		}
-	}
+	normalizeEditorParam(data.param);
 }
 
 function hasResults() {
@@ -3166,7 +3149,7 @@ async function start({ saveReceivedResult = false } = {}) {
 				csvText: originalTextToCsv(
 					localStorage.getItem(ORIGINAL_STORAGE_KEY) || "", app),
 			});
-			saveData();
+			saveData({ derived: true });
 		}
 		// 生成時のファセット絞り込み(where)も引き継ぐ。旧データでwhereが
 		// 無い場合はundefinedとなり、従来どおりエントリ既定のwhereが使われる

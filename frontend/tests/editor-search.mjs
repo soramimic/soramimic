@@ -38,7 +38,12 @@ try {
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto(`${base}/editor.html`);
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
-	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
+	const ready = () => page.waitForFunction(() =>
+		document.getElementById("editor-toolbar")?.hidden === false &&
+		document.getElementById("editor-status")?.hidden === true &&
+		document.getElementById("btn-regenerate")?.disabled === false &&
+		document.getElementById("reverse-word")?.disabled === false,
+		undefined, { timeout: 60000 });
 	const searchDone = () => page.waitForFunction(() => document.querySelector(".reverse-word-match") && !document.getElementById("reverse-status").textContent);
 	for (const review of [false, true]) {
 		const session = structuredClone(seed);
