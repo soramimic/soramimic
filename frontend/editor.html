@@ -72,11 +72,11 @@
         </section>
         <section id="editor-empty" class="editor-empty" hidden>
           <p>このタブに編集中のデータがありません。</p>
-          <p><a id="editor-history-link" class="btn btn-primary" href="./#output-field">過去の結果を開く</a></p>
-          <p>書き出したファイル(JSON)があれば
-            <button id="btn-import-empty" class="btn">ファイルを読み込む</button>
-            から再開できます。</p>
-          <p>新しく作る場合は<a href="./">生成画面</a>へ進んでください。</p>
+          <p class="editor-empty-actions">
+            <button id="btn-import-empty" class="editor-empty-link" type="button">ファイルを読み込む</button>
+            <a id="editor-history-link" class="editor-empty-link" href="./#output-field">過去の結果を開く</a>
+            <a class="editor-empty-link" href="./">新しく生成する</a>
+          </p>
         </section>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
         <p id="bridge-status" class="editor-status" role="status" hidden></p>
