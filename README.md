@@ -66,7 +66,7 @@ node tests/performance/run.mjs --base /path/to/base-checkout --report /tmp/perfo
 
 ### 歌詞入りMIDIの取り込み
 
-`?midi` 付きのURLで表示される「MIDIから取り込み」は、XF MIDIと標準の歌詞入りMIDIに対応します。
+生成画面の「歌詞をアップロード」で、XF MIDIと標準の歌詞入りMIDI（`.mid`・`.midi`）から歌詞を取り込めます。
 標準MIDIの歌詞はUTF-8またはShift_JISで読み込みます。音符に対応する歌詞がないMIDIは取り込めません。
 
 ### SVSとの連携

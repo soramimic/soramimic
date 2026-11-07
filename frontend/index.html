@@ -71,13 +71,13 @@
                 </span>
               </button>
               <input id="lyrics-file" type="file" hidden
-                accept=".txt,.md,.json,text/plain,text/markdown,application/json"
-                aria-label="歌詞またはJSONファイル" aria-describedby="lyrics-file-hint" disabled />
+                accept=".txt,.md,.json,.mid,.midi,text/plain,text/markdown,application/json,audio/midi,audio/x-midi"
+                aria-label="歌詞・MIDI・JSONファイル" aria-describedby="lyrics-file-hint" disabled />
               <div class="generation-input-actions">
                 <button id="btn-sample-lyrics" class="generation-source-link" type="button"
                   aria-controls="sample-picker" aria-haspopup="dialog" aria-expanded="false" disabled>サンプル歌詞で試す</button>
               </div>
-              <span id="lyrics-file-hint" class="visually-hidden">歌詞（TXT・Markdown）／編集データ（JSON）</span>
+              <span id="lyrics-file-hint" class="visually-hidden">歌詞（TXT・Markdown・歌詞入りMIDI）／編集データ（JSON）</span>
               <p id="lyrics-file-status" class="midi-status" role="status" hidden></p>
             </div>
             <div class="field generation-wordlist-row">
@@ -105,11 +105,6 @@
                   <button class="btn active" data-value="false">なし</button>
                 </div>
               </div>
-              <div class="field input-source-row">
-                <button id="btn-midi-import" class="btn" title="歌詞入りMIDIから歌詞の読みを取り込みます">MIDIから取り込み</button>
-                <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
-              </div>
-              <p id="midi-status" class="midi-status" hidden></p>
             </details>
             <div class="convert-row generation-actions">
               <button id="btn-convert" class="btn btn-primary" disabled>読み込み中...</button>
