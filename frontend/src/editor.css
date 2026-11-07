@@ -9,28 +9,43 @@
 	color: var(--muted);
 }
 
+.editor-empty-import {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.55rem;
+	width: 100%;
+	min-height: 48px;
+	margin: 1.4rem 0 0.5rem;
+	padding: 0.65rem 1rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--panel);
+	color: var(--text);
+	font: inherit;
+	cursor: pointer;
+}
+
 .editor-empty-actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0 1.5rem;
+	margin-top: 0.5rem;
 }
 
 .editor-empty-link {
 	display: inline-flex;
 	align-items: center;
 	min-height: 44px;
-	padding: 0;
-	border: 0;
-	border-radius: 0;
-	background: none;
-	color: var(--text);
-	font: inherit;
+	color: var(--muted);
+	font-size: 0.9rem;
 	text-decoration: underline;
 	text-underline-offset: 0.18em;
 	cursor: pointer;
 }
 
-.editor-empty-link:focus-visible {
+.editor-empty-link:focus-visible,
+.editor-empty-import:focus-visible {
 	outline: 2px solid currentColor;
 	outline-offset: 3px;
 }
