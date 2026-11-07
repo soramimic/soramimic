@@ -221,8 +221,8 @@ try {
 	const svsOpened = context.waitForEvent("page");
 	await source.click("#send");
 	const fromSvs = await svsOpened;
-	await fromSvs.waitForFunction(() => !document.getElementById("editor-setup").hidden &&
-		!document.getElementById("btn-setup-convert").disabled);
+	await fromSvs.waitForFunction(() => document.getElementById("editor-setup")?.hidden === false &&
+		document.getElementById("btn-setup-convert")?.disabled === false);
 	assert.deepEqual(await fromSvs.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")).results), []);
 	await fromSvs.click("#btn-setup-convert");
 	await fromSvs.waitForFunction(() => !document.getElementById("editor-toolbar").hidden &&
