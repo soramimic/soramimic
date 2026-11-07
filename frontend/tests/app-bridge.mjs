@@ -8,6 +8,7 @@ const editor = "https://dev.soramimic.pages.dev";
 const video = "https://dev-video.soramimic.com";
 const bridge = await readFile(new URL("../src/appBridge.js", import.meta.url), "utf8");
 const historySource = await readFile(new URL("../src/generationHistory.js", import.meta.url), "utf8");
+const editorDataSource = await readFile(new URL("../src/editorData.js", import.meta.url), "utf8");
 const { url: local, close: closePreview } = await startPreview({
 	host: "127.0.0.1", port: Number(process.env.BRIDGE_TEST_PORT || 0),
 });
@@ -21,6 +22,7 @@ try {
 		const url = new URL(route.request().url());
 		if (url.origin === editor) {
 			if (url.pathname === "/__history-test.js") return route.fulfill({ contentType: "application/javascript", body: historySource });
+			if (url.pathname === "/editorData.js") return route.fulfill({ contentType: "application/javascript", body: editorDataSource });
 			return route.fulfill({ response: await route.fetch({ url: local + url.pathname + url.search }) });
 		}
 		if (url.origin === video) {
