@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 import { buildApp } from "../../tests/golden/harness-lib.mjs";
@@ -27,18 +27,9 @@ const seed = {
 	dirtyLines: [0, 3], history: [], future: [],
 	weightsList: [[1, 2, 1], [1, 1], [], [1, 1]],
 };
-const port = 4613;
-const base = `http://localhost:${port}`;
-const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], {
-	stdio: "ignore", detached: true,
-});
+const { url: base, close: closePreview } = await startPreview();
 let browser;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-	}
 	browser = await (process.env.EDITOR_SEARCH_BROWSER === "webkit" ? webkit : chromium).launch();
 	const context = await browser.newContext({ viewport: { width: 390, height: 740 }, isMobile: true, hasTouch: true });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -47,7 +38,12 @@ try {
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto(`${base}/editor.html`);
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
-	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
+	const ready = () => page.waitForFunction(() =>
+		document.getElementById("editor-toolbar")?.hidden === false &&
+		document.getElementById("editor-status")?.hidden === true &&
+		document.getElementById("btn-regenerate")?.disabled === false &&
+		document.getElementById("reverse-word")?.disabled === false,
+		undefined, { timeout: 60000 });
 	const searchDone = () => page.waitForFunction(() => document.querySelector(".reverse-word-match") && !document.getElementById("reverse-status").textContent);
 	for (const review of [false, true]) {
 		const session = structuredClone(seed);
@@ -490,6 +486,5 @@ try {
 	assert.deepEqual(errors, []);
 	print("[ok] standalone/review kana search, touch navigation and wrapping, keyboard/IME, stationary header, visual viewport resizing/panning, adjacent highlights, replacement, inline clear, responsive layout, isolated regeneration, locks, duplicate avoidance, history and persistence");
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid, "SIGTERM"); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }
