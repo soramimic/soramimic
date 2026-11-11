@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { selectRange } from "./editor-ui.mjs";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const port = Number(process.env.EDITOR_REVIEW_PORT || 4612);
-const base = `http://localhost:${port}`;
-const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], {
-	stdio: "ignore", detached: true,
-});
+const { url: base, close: closePreview } = await startPreview({ port: Number(process.env.EDITOR_REVIEW_PORT || 0) });
 let browser;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-	}
 	browser = await chromium.launch();
 	const context = await browser.newContext({ viewport: { width: 390, height: 740 }, colorScheme: "dark" });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -38,6 +29,8 @@ try {
 	await page.waitForSelector(".review-word", { timeout: 60000 });
 	const seed = await page.evaluate(() => {
 		const data = JSON.parse(sessionStorage.getItem("soramimic-editor"));
+		// Later cases copy this as a new incoming review, not a stale saved edit.
+		delete data.generationHistoryId; delete data.editorSessionId; delete data.editorSavedAt;
 		data.host = { review: true, songs: [], canUploadSong: false };
 		data.lyrics = "青い空を見上げて\n白い雲を追いかける\n小さな風を感じて";
 		data.originalLines = ["青い空を見上げて", "白い雲を追いかける", "小さな風を感じて"];
@@ -493,6 +486,5 @@ try {
 	assert.deepEqual(errors, []);
 	console.log("[ok] compact review: source spelling, mobile layout, candidates, visible range, unmatched gaps, assignment clearing, fixed-word priority, undo/redo, recovery");
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

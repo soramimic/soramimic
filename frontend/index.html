@@ -58,14 +58,26 @@
             <div class="field">
               <textarea id="input-text" class="input" rows="7" aria-label="歌詞またはソラミミックの歌詞JSON"
                 placeholder="歌詞を行ごとに入力、またはソラミミックの歌詞JSONを貼り付け"></textarea>
-              <input id="lyrics-file" class="generation-file-input" type="file"
-                accept=".txt,.md,.json,text/plain,text/markdown,application/json"
-                aria-label="歌詞またはJSONファイル" aria-describedby="lyrics-file-hint" disabled />
+              <button id="btn-lyrics-upload" class="btn generation-upload" type="button"
+                aria-describedby="lyrics-file-hint" disabled>
+                <span id="lyrics-upload-label">＋ 歌詞をアップロード</span>
+                <span id="lyrics-upload-file" class="generation-upload-file" hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                    <path d="M14 2v6h6M8 13h8M8 17h8" />
+                  </svg>
+                  <span id="lyrics-file-name" class="generation-file-name"><span id="lyrics-file-stem"></span><span id="lyrics-file-extension"></span></span>
+                  <span class="generation-file-change">変更</span>
+                </span>
+              </button>
+              <input id="lyrics-file" type="file" hidden
+                accept=".txt,.md,.json,.mid,.midi,text/plain,text/markdown,application/json,audio/midi,audio/x-midi"
+                aria-label="歌詞・MIDI・JSONファイル" aria-describedby="lyrics-file-hint" disabled />
               <div class="generation-input-actions">
                 <button id="btn-sample-lyrics" class="generation-source-link" type="button"
                   aria-controls="sample-picker" aria-haspopup="dialog" aria-expanded="false" disabled>サンプル歌詞で試す</button>
               </div>
-              <span id="lyrics-file-hint" class="visually-hidden">歌詞（TXT・Markdown）／編集データ（JSON）</span>
+              <span id="lyrics-file-hint" class="visually-hidden">歌詞（TXT・Markdown・歌詞入りMIDI）／編集データ（JSON）</span>
               <p id="lyrics-file-status" class="midi-status" role="status" hidden></p>
             </div>
             <div class="field generation-wordlist-row">
@@ -93,11 +105,6 @@
                   <button class="btn active" data-value="false">なし</button>
                 </div>
               </div>
-              <div class="field input-source-row">
-                <button id="btn-midi-import" class="btn" title="XF形式のMIDIから歌詞の読みを取り込みます">MIDIから取り込み</button>
-                <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" hidden />
-              </div>
-              <p id="midi-status" class="midi-status" hidden></p>
             </details>
             <div class="convert-row generation-actions">
               <button id="btn-convert" class="btn btn-primary" disabled>読み込み中...</button>
@@ -151,7 +158,7 @@
             <span class="visually-hidden" role="status" aria-live="polite"></span>
           </div>
           <div class="history-body">
-            <p class="history-meta"><span class="history-wordlist"></span> · <time></time></p>
+            <p class="history-meta"><span class="history-wordlist"></span> · <time class="history-created"></time><span class="history-update" hidden>更新 <time></time></span></p>
             <div class="history-preview"></div>
             <details class="history-full">
               <summary>全文を表示</summary>

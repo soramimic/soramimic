@@ -8,12 +8,11 @@ import { menuAction } from "./editor-ui.mjs";
 //   書き出しJSONにも lyrics / originalLines が載る。
 //   ホストも lyrics も無いシード(本家単体)では欄ごと出ない=従来どおり。
 // 実行: npm run build && node tests/editor-lyrics.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
-const PORT = 4604;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
 
 const SONGS = [
@@ -25,22 +24,6 @@ const PHRASES = ["夢は今もめぐりて", "忘れがたきふるさと", "ラ
 const LYRICS = "夢は今も めぐりて\n忘れがたき ふるさと";
 const NEXT_PHRASES = ["でんでんむしむし", "かたつむり"];
 const NEXT_LYRICS = "でんでんむしむし かたつむり";
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -86,16 +69,10 @@ async function seed(page, obj) {
 	await page.reload();
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
 
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -192,6 +169,12 @@ try {
 	]);
 	const exported = JSON.parse(await readFile(await download.path(), "utf8"));
 	assert(exported.lyrics === NEXT_LYRICS, "書き出しJSONに元歌詞が入っていない");
+	assert(exported.format === "soramimic-editor/1", "既存の編集JSON形式を維持する");
+	assert(exported.originalReadingAlignments.every((alignment, i) =>
+		alignment?.format === "soramimic-lyric-alignment/1"
+		&& alignment.text === exported.originalLines[i]
+		&& alignment.reading === exported.unitsList[i].map(u => u.pronunciation).join("")),
+		"元歌詞と確定済みの読みの対応をJSONへ保存する");
 	assert(Array.isArray(exported.originalLines)
 		&& exported.originalLines.length === exported.phrases.length,
 		"書き出しJSONの originalLines が phrases と同じ長さでない: "
@@ -217,13 +200,6 @@ try {
 	}
 
 	console.log("[ok] editor lyrics test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

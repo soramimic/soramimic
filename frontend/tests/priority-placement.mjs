@@ -1,19 +1,13 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 import { menuAction, regenerateAll } from "./editor-ui.mjs";
 
-const base = "http://localhost:4796";
-const server = spawn("npx", ["vite", "preview", "--port", "4796", "--strictPort"], { stdio: "ignore", detached: true });
+const { url: base, close: closePreview } = await startPreview();
 const csv = "id,original,surface,pronunciation,type\n0,通常語,通常語,カカカカ,family\n1,前半,前半,カカ,family\n2,後半,後半,カカ,family\n3,優先語,優先語,ササ,family\n";
 let browser;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (i > 100) throw new Error("preview server did not start");
-		await new Promise(resolve => setTimeout(resolve, 300));
-	}
 	for (const engine of [chromium, webkit]) {
 		browser = await engine.launch();
 		const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -96,6 +90,5 @@ try {
 		await browser.close(); browser = null;
 	}
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }

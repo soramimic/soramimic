@@ -14,41 +14,19 @@ import { selectReading } from "./editor-ui.mjs";
 //   ヘンカンが付く)を入力→修正実行。
 //
 // 実行: npm run build && node tests/regression-readingfix-kana.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4499;
+const { url: base, close: closePreview } = await startPreview();
 const STORAGE_KEY = "soramimic-editor";
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`http://localhost:${PORT}/`);
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、常にkuromojiフォールバックの
 	// 決定的なトークナイズでテストする
@@ -61,7 +39,7 @@ try {
 	page.on("pageerror", (e) => pageErrors.push(e));
 
 	// ---- 生成画面: 「変換する」を変換して編集ツールを開く ----
-	await page.goto(`http://localhost:${PORT}/`);
+	await page.goto(`${base}/`);
 	await page.waitForFunction(
 		() => document.getElementById("btn-convert").textContent === "生成",
 		{ timeout: 60000 },
@@ -70,7 +48,6 @@ try {
 	await page.click("#btn-convert");
 	await page.waitForURL("**/editor.html", { timeout: 120000 });
 	const editor = page;
-
 
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 60000 });
 	await editor.waitForFunction(
@@ -178,13 +155,6 @@ try {
 	}
 
 	console.log("[ok] regression-readingfix-kana test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err.message);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

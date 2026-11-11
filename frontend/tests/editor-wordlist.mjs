@@ -1,16 +1,15 @@
-import { regenerateAll, selectRange, menuAction, closeSelection } from "./editor-ui.mjs";
+import { regenerateAll, selectRange, menuAction, closeSelection, clearSavedEditor } from "./editor-ui.mjs";
 // 編集ツールの設定モーダルにある「単語リスト」選択のE2E。
 // リストを切り替えても今の歌詞と固定を保持し、新しい候補を使えること、
 // 設定変更を戻る1回で取り消せること、
 // 自作リストをその場で書いて使えること、書き出しJSONが自作リストごと
 // 自己完結する(csvText契約)ことを確認する。
 // 実行: npm run build && node tests/editor-wordlist.mjs
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
-const PORT = 4599;
-const BASE = `http://localhost:${PORT}`;
+const { url: BASE, close: closePreview } = await startPreview();
 const EDITOR_KEY = "soramimic-editor";
 const ORIGINAL_KEY = "originalWordlist"; // appCore.js の ORIGINAL_STORAGE_KEY
 
@@ -30,22 +29,6 @@ const ORIGINAL_PLAIN = [
 ].join("\n");
 const ORIGINAL_SURFACES = new Set(
 	ORIGINAL_PLAIN.split("\n").filter((l) => l && !l.startsWith("#")));
-
-function waitForServer(url, timeoutMs = 60000) {
-	return new Promise((resolve, reject) => {
-		const started = Date.now();
-		(async function poll() {
-			try {
-				const res = await fetch(url);
-				if (res.ok) return resolve();
-			} catch {}
-			if (Date.now() - started > timeoutMs) {
-				return reject(new Error("preview server did not start"));
-			}
-			setTimeout(poll, 300);
-		})();
-	});
-}
 
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
@@ -134,14 +117,8 @@ async function waitCandidatesChanged(page, previous) {
 	}
 }
 
-const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
-	stdio: "ignore",
-	detached: true,
-});
-
-let exitCode = 1;
+let browser;
 try {
-	await waitForServer(`${BASE}/`);
 
 	// 切替先(ポケモン)の表記集合。結果・候補が新リストの語だけになったかを見る
 	const pokeCsv = await (await fetch(`${BASE}/wordlists/pokemon.csv`)).text();
@@ -151,7 +128,7 @@ try {
 		pokeRows.slice(1).map((r) => r.split(",")[iPokeSurface]).filter(Boolean));
 	assert(pokemonSurfaces.size > 0, "ポケモンの表記集合が空(テストデータ不備)");
 
-	const browser = await chromium.launch();
+	browser = await chromium.launch();
 	const context = await browser.newContext();
 	// 外部リクエスト(読みAPI・GA等)を遮断し、kuromojiの決定的なトークナイズに固定
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -395,11 +372,8 @@ try {
 		"csvTextの中身が想定と違う:\n" + exported.wordlist.csvText.slice(0, 200));
 
 	// ---- 読み込み: localStorage が空でも csvText からDBが組める ----
-	await editor.evaluate((k) => {
-		sessionStorage.clear();
-		localStorage.removeItem(k);
-	}, ORIGINAL_KEY);
-	await editor.reload();
+	await clearSavedEditor(editor);
+	await editor.evaluate(k => localStorage.removeItem(k), ORIGINAL_KEY);
 	await editor.waitForSelector("#editor-empty:not([hidden])", { timeout: 10000 });
 	await editor.setInputFiles("#import-file", exportPath);
 	await editor.waitForSelector(".editor-line .review-word", { timeout: 30000 });
@@ -436,13 +410,6 @@ try {
 	}
 
 	console.log("[ok] editor wordlist test passed");
-	exitCode = 0;
-	await browser.close();
-} catch (err) {
-	console.error("[FAIL]", err);
 } finally {
-	try {
-		process.kill(-preview.pid);
-	} catch {}
-	process.exit(exitCode);
+	await Promise.all([browser?.close(), closePreview()]);
 }

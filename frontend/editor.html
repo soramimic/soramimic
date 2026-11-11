@@ -37,6 +37,8 @@
       </header>
 
       <main>
+        <p id="editor-recovery-status" class="editor-status" role="status" hidden></p>
+        <p id="editor-save-status" class="editor-status" role="status" hidden></p>
         <!-- セットアップ画面(第1ステップ)。変換済みの results を持たずに開いたとき
              (=phrasesだけ渡されたとき)と、ホストが setupFirst を立てたときに出る。
              設定UIの中身は「変換のしかた」モーダルと同じ #editor-settings-body を
@@ -68,12 +70,19 @@
             <span id="setup-progress" class="editor-status" hidden></span>
           </div>
         </section>
-        <p id="editor-empty" class="editor-empty" hidden>
-          編集する生成結果がありません。<a href="./">生成画面</a>で歌詞を入力して生成してください。
-          書き出したファイル(JSON)があれば
-          <button id="btn-import-empty" class="btn">ファイルを読み込む</button>
-          から再開できます。
-        </p>
+        <section id="editor-empty" class="editor-empty" hidden>
+          <p>このタブに編集中のデータがありません。</p>
+          <button id="btn-import-empty" class="editor-empty-import" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M12 16V4m-4 4 4-4 4 4M4 15v5h16v-5" />
+            </svg>
+            ファイルを読み込む
+          </button>
+          <p class="editor-empty-actions">
+            <a id="editor-history-link" class="editor-empty-link" href="./#output-field">過去の結果を開く</a>
+            <a class="editor-empty-link" href="./">新しく生成する</a>
+          </p>
+        </section>
         <p id="editor-status" class="editor-status" hidden>候補機能を読み込み中...</p>
         <p id="bridge-status" class="editor-status" role="status" hidden></p>
         <div id="editor-toolbar" class="editor-toolbar" hidden>

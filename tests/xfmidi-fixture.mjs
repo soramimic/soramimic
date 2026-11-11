@@ -71,3 +71,30 @@ export function buildXfMidi() {
 	];
 	return new Uint8Array(bytes);
 }
+
+// 標準Lyric Meta Event。文字列はUTF-8、バイト配列なら指定された文字コードのまま。
+export function buildLyricMidi({
+	lyrics = [[0, "は"], [240, "る"], [960, "\nな"], [1200, "つ"]],
+	channel = 0, separate = false, format = 1, channelPrefix = null,
+} = {}) {
+	const notes = [[0, 240, 60], [240, 240, 62], [960, 240, 64], [1200, 240, 65]];
+	const lyricEvents = lyrics.map(([tick, text]) => [tick, 1,
+		meta(0, 0x05, typeof text === "string" ? new TextEncoder().encode(text) : text)]);
+	const noteEvents = notes.flatMap(([tick, duration, pitch]) => [
+		[tick, 2, noteOn(0, channel, pitch)], [tick + duration, 0, noteOff(0, channel, pitch)],
+	]);
+	const bodies = separate && format === 1 ? [noteEvents, lyricEvents] : [[...noteEvents, ...lyricEvents]];
+	if (channelPrefix !== null) bodies.at(-1).unshift([0, -1, meta(0, 0x20, [channelPrefix])]);
+	const tracks = bodies.map(events => {
+		let previous = 0;
+		const data = events.sort((a, b) => a[0] - b[0] || a[1] - b[1]).flatMap(([tick, , bytes]) => {
+			const result = [...varint(tick - previous), ...bytes.slice(1)];
+			previous = tick;
+			return result;
+		});
+		return chunk("MTrk", [...data, ...meta(0, 0x2f, [])]);
+	});
+	return new Uint8Array([
+		...chunk("MThd", [0, format, 0, tracks.length, 0x01, 0xe0]), ...tracks.flat(),
+	]);
+}

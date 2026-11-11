@@ -1,34 +1,28 @@
 // Exercise the real editor and popup handshake on distinct origins.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 
-const local = "http://127.0.0.1:4624";
 const editor = "https://dev.soramimic.pages.dev";
 const video = "https://dev-video.soramimic.com";
 const bridge = await readFile(new URL("../src/appBridge.js", import.meta.url), "utf8");
 const historySource = await readFile(new URL("../src/generationHistory.js", import.meta.url), "utf8");
-const preview = spawn(process.execPath, [
-	fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)),
-	"preview", "--host", "127.0.0.1", "--port", "4624", "--strictPort",
-], { cwd: new URL("..", import.meta.url), stdio: "ignore", detached: true });
-let browser;
+const editorDataSource = await readFile(new URL("../src/editorData.js", import.meta.url), "utf8");
+const { url: local, close: closePreview } = await startPreview({
+	host: "127.0.0.1", port: Number(process.env.BRIDGE_TEST_PORT || 0),
+});
+let browser, context;
 try {
-	for (let i = 0; ; i++) {
-		try { if ((await fetch(local)).ok) break; } catch {}
-		if (i > 120) throw new Error("preview did not start");
-		await new Promise((resolve) => setTimeout(resolve, 250));
-	}
 	browser = await (process.env.BRIDGE_BROWSER === "webkit" ? webkit : chromium).launch();
-	const context = await browser.newContext();
+	context = await browser.newContext();
 	const errors = [];
 	context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
 	await context.route("**/*", async (route) => {
 		const url = new URL(route.request().url());
 		if (url.origin === editor) {
 			if (url.pathname === "/__history-test.js") return route.fulfill({ contentType: "application/javascript", body: historySource });
+			if (url.pathname === "/editorData.js") return route.fulfill({ contentType: "application/javascript", body: editorDataSource });
 			return route.fulfill({ response: await route.fetch({ url: local + url.pathname + url.search }) });
 		}
 		if (url.origin === video) {
@@ -36,7 +30,7 @@ try {
 			<button id="send">歌詞を編集</button><p id="status"></p><script>${bridge}</script><script>
 			SoramimicBridge.receive(SoramimicBridge.peer("editor"), data => {window.received = data;});
 			document.getElementById("send").onclick = async () => {
-				await SoramimicBridge.send(SoramimicBridge.peer("editor"), () => window.payload);
+				await SoramimicBridge.send(SoramimicBridge.peer("editor"), () => window.payload, {allowSetup:true});
 				document.getElementById("status").textContent = "accepted";
 			};</script>` });
 		}
@@ -51,6 +45,8 @@ try {
 		results: [[{ id: "0", surface: "清水", kana: "シミズ", pronunciation: "シミズ", originalkana: "シミズ", period: [0, 3], locked: true }]],
 		param: {}, wordlist: { value: "ORIGINAL", text: "テスト", textOnly: true,
 			csvText: "id,original,surface,pronunciation\n0,清水,清水,シミズ\n" },
+		originalReadingAlignments: [{ format: "soramimic-lyric-alignment/1", text: "沈む", reading: "シズム",
+			spans: [{ surface: [0, 2], reading: [0, 3], exact: true }] }],
 		lyrics: "沈む", originalLines: ["沈む"], song: { title: "テスト曲" },
 		videoMetadata: {songTitle: "手入力の曲名", songCredit: "作詞・作曲: テスト\n許諾表記", thumbnailWordlistLabel: "表示用の名前", secret: "not portable"},
 		host: { review: true }, hostRequest: { secret: true }, history: ["old"],
@@ -72,6 +68,7 @@ try {
 	const received = await target.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	assert.deepEqual(received.results, payload.results);
 	assert.deepEqual(received.unitsList, payload.unitsList);
+	assert.deepEqual(received.originalReadingAlignments, payload.originalReadingAlignments);
 	assert.deepEqual(received.videoMetadata, {
 		songTitle: payload.videoMetadata.songTitle, songCredit: payload.videoMetadata.songCredit,
 		thumbnailWordlistLabel: payload.videoMetadata.thumbnailWordlistLabel,
@@ -125,6 +122,7 @@ try {
 	const returned = await back.evaluate(() => window.received);
 	assert.deepEqual(returned.results, [[{ ...payload.results[0][0], locked: false }]]);
 	assert.deepEqual(returned.unitsList, payload.unitsList);
+	assert.deepEqual(returned.originalReadingAlignments, payload.originalReadingAlignments);
 	assert.equal(returned.lyrics, payload.lyrics);
 	assert.equal(returned.song.title, payload.song.title);
 	assert.deepEqual(returned.videoMetadata, received.videoMetadata);
@@ -157,6 +155,11 @@ try {
 		catch { return true; }
 		return false;
 	}), true);
+	assert.equal(await target.evaluate(() => {
+		const portable = SoramimicBridge.portable({ results: [[]], unitsList: [[]], lyrics: "歌詞",
+			originalReadingAlignments: [{ extra: "x".repeat(4 * 1024 * 1024) }] });
+		return portable.lyrics === "歌詞" && !portable.originalReadingAlignments;
+	}), true, "optional derived maps cannot prevent transferring otherwise compatible lyrics");
 
 	// Invalid origin, nonce and WindowProxy must never replace the editor's data.
 	const nonce = "11111111-2222-4333-8444-555555555555";
@@ -175,6 +178,8 @@ try {
 	await source.evaluate(({nonce,payload,editor}) => window.pending.postMessage({type:"soramimic:lyrics-transfer/1", action:"data", nonce, payload},editor), {nonce,payload,editor});
 	await pending.waitForFunction(() => JSON.parse(sessionStorage.getItem("soramimic-editor"))?.lyrics === "沈む");
 	assert.equal(await pending.evaluate(() => window.opener), null);
+	await waitForReceivedEditor(pending);
+	await pending.close();
 
 	// Start at the real conversion screen. Long annotations and separators in
 	// their surface must preserve the supplied reading all the way to Video.
@@ -202,6 +207,8 @@ try {
 	assert.deepEqual(annotatedResult.tokensList.map((row) => row.map((t) => t.surface_form).join("")),
 		["未来".repeat(10), "雲/空", "キ空"]);
 	console.log("[ok] annotated lyrics keep reading and spelling from conversion to Video");
+	await annotatedEditor.close();
+	await annotatedVideo.close();
 
 	await target.evaluate(() => { window.open = () => null; });
 	await target.click("#btn-video");
@@ -229,6 +236,9 @@ try {
 	console.log("[ok] received lyrics persist, edits update one item, duplicate/return trips reuse it, old receipts and storage failure preserve edits");
 	console.log("[ok] cross-origin editor roundtrip, portable custom list, size and sender validation");
 } finally {
-	await browser?.close();
-	try { process.kill(-preview.pid); } catch {}
+	try {
+		await context?.unrouteAll({behavior:"ignoreErrors"});
+	} finally {
+		await Promise.all([browser?.close(), closePreview()]);
+	}
 }

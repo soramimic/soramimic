@@ -220,27 +220,6 @@ function smallVowelToBar(text){
 
 
 //2文字カナの一部でない小文字(ッを除く)を大文字にする
-//look-behindなのでsafariでは使えない
-function smallVowelToLarge_lookbehind(text){
-	
-	//後よみはsafariで使えないので注意
-	let re_ao = "(?<![ウクスツヌフムユルグズヅブプヴ])[ァヮォ]";//ウ段の後ろ以外のァヮェォ
-	let re_u = "(?<![トド])ゥ";
-	let re_y = "(?<![キシチニヒミリギジヂビピテデ])[ャュョ]";//イ段の後ろ以外のャュョ
-	let re_i = "(?<![ウクスツヌフムユルグズヅブプヴテデ])ィ";//テデの後ろ以外のィ
-	let re_e = "(?<![ウクスツヌフムユルグズヅブプヴイキシチニヒミリギジヂビピ])ェ";//ウ段、イ段の後ろ以外のェ
-	
-	let re = [re_ao,re_y,re_u,re_i,re_e].join("|");//上記のいずれかにマッチさせる
-	
-	let s2l = {"ァ":"ア","ィ":"イ","ゥ":"ウ","ェ":"エ","ォ":"オ","ヮ":"ワ","ャ":"ヤ","ュ":"ユ","ョ":"ヨ"}
-	//マッチした小文字を大文字にして返す
-	let replaced_text = text.replace(new RegExp(re,"g"),function(match){
-		let large = s2l[match];
-		return large;
-	});
-	return replaced_text;
-}
-//2文字カナの一部でない小文字(ッを除く)を大文字にする
 //look-behindを使わない実装
 function smallVowelToLarge(text){
 	let s2l = {"ァ":"ア","ィ":"イ","ゥ":"ウ","ェ":"エ","ォ":"オ","ヮ":"ワ","ャ":"ヤ","ュ":"ユ","ョ":"ヨ"}

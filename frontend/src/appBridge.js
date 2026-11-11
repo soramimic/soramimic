@@ -29,7 +29,7 @@
 		}
 		const result = { format: "soramimic-editor/1" };
 		for (const key of ["phrases", "tokensList", "results", "param", "wordlist", "where",
-			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "song"]) {
+			"unitsList", "weightsList", "noteLengthRawList", "noteLengthAlpha", "lyrics", "originalLines", "originalReadingAlignments", "song"]) {
 			if (data[key] !== undefined) result[key] = data[key];
 		}
 		const entry = result.wordlist;
@@ -51,12 +51,15 @@
 			}
 			result.videoMetadata = metadata;
 		}
+		// Derived optional maps must not make a previously transferable song too large.
+		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) delete result.originalReadingAlignments;
 		if (new Blob([JSON.stringify(result)]).size > MAX_BYTES) {
 			throw new Error("歌詞データが4MBを超えるため開けません。");
 		}
 		return result;
 	}
-	function send(target, getData) {
+	function send(target, getData, { signal } = {}) {
+		if (signal?.aborted) return Promise.reject(new DOMException("転送を中断しました。", "AbortError"));
 		if (!target) return Promise.reject(new Error("この環境では接続先が設定されていません。"));
 		const url = new URL(target);
 		const nonce = crypto.randomUUID();
@@ -65,8 +68,16 @@
 		const popup = window.open("about:blank", "_blank");
 		if (!popup) return Promise.reject(new Error("ポップアップを許可して、もう一度お試しください。"));
 		return new Promise((resolve, reject) => {
-			let sending = false;
+			let sending = false, finished = false;
+			const onAbort = () => {
+				try { popup.postMessage({ type: TYPE, nonce, action: "error" }, url.origin); }
+				catch { /* The peer may already have closed. */ }
+				finish(new DOMException("転送を中断しました。", "AbortError"));
+			};
 			const finish = (error) => {
+				if (finished) return;
+				finished = true;
+				signal?.removeEventListener("abort", onAbort);
 				clearTimeout(timer);
 				clearInterval(closed);
 				window.removeEventListener("message", receive);
@@ -74,7 +85,7 @@
 			};
 			const receive = async (event) => {
 				const message = event.data;
-				if (event.source !== popup || event.origin !== url.origin ||
+				if (finished || event.source !== popup || event.origin !== url.origin ||
 					message?.type !== TYPE || message.nonce !== nonce) return;
 				if (message.action === "accepted") return finish();
 				if (message.action === "error") return finish(new Error("歌詞を渡せませんでした。開いた画面をご確認ください。"));
@@ -82,9 +93,12 @@
 				sending = true;
 				try {
 					const payload = portable(await getData());
+					if (finished) return;
 					popup.postMessage({ type: TYPE, nonce, action: "data", payload }, url.origin);
 				} catch (error) {
-					popup.postMessage({ type: TYPE, nonce, action: "error" }, url.origin);
+					if (finished) return;
+					try { popup.postMessage({ type: TYPE, nonce, action: "error" }, url.origin); }
+					catch { /* Complete cleanup even if the peer is gone. */ }
 					finish(error);
 				}
 			};
@@ -93,10 +107,12 @@
 				if (popup.closed) finish(new Error("歌詞を渡す前に画面が閉じられました。"));
 			}, 1000);
 			window.addEventListener("message", receive);
+			signal?.addEventListener("abort", onAbort, { once: true });
+			if (signal?.aborted) { onAbort(); return; }
 			popup.location = url.href;
 		});
 	}
-	async function receive(target, apply) {
+	async function receive(target, apply, { signal, onApplying = () => {} } = {}) {
 		const nonce = new URL(location.href).searchParams.get(PARAM);
 		if (!nonce) return false;
 		if (!target || !window.opener || !/^[\da-f-]{36}$/i.test(nonce)) {
@@ -105,9 +121,17 @@
 		const source = window.opener;
 		const origin = new URL(target).origin;
 		return new Promise((resolve, reject) => {
-			let applying = false;
+			let applying = false, finished = false;
+			const onAbort = () => {
+				if (applying) return;
+				try { post("error"); } catch { /* The peer may already have closed. */ }
+				finish(new DOMException("受け取りを中断しました。", "AbortError"));
+			};
 			const post = (action) => source.postMessage({ type: TYPE, nonce, action }, origin);
 			const finish = (error) => {
+				if (finished) return;
+				finished = true;
+				signal?.removeEventListener("abort", onAbort);
 				clearInterval(ready);
 				clearTimeout(timer);
 				window.removeEventListener("message", onMessage);
@@ -119,24 +143,28 @@
 			};
 			const onMessage = async (event) => {
 				const message = event.data;
-				if (event.source !== source || event.origin !== origin ||
+				if (finished || event.source !== source || event.origin !== origin ||
 					message?.type !== TYPE || message.nonce !== nonce || applying) return;
 				if (message.action === "error") return finish(new Error("歌詞を受け取れませんでした。元の画面をご確認ください。"));
 				if (message.action !== "data") return;
 				applying = true;
 				clearInterval(ready);
+				clearTimeout(timer);
 				try {
+					onApplying();
 					await apply(portable(message.payload));
 					post("accepted");
 					finish();
 				} catch (error) {
-					post("error");
+					try { post("error"); } catch { /* Complete cleanup even if the peer is gone. */ }
 					finish(error);
 				}
 			};
 			const ready = setInterval(() => post("ready"), 500);
 			const timer = setTimeout(() => finish(new Error("受け取りがタイムアウトしました。元の画面からもう一度開いてください。")), TIMEOUT);
 			window.addEventListener("message", onMessage);
+			signal?.addEventListener("abort", onAbort, { once: true });
+			if (signal?.aborted) { onAbort(); return; }
 			post("ready");
 		});
 	}

@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { startPreview } from "./preview.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, webkit } from "playwright";
 import { menuAction } from "./editor-ui.mjs";
 
 const browserType = process.env.DISPLAY_BROWSER === "webkit" ? webkit : chromium;
-const port = browserType === webkit ? 4772 : 4771;
-const base = `http://localhost:${port}`;
+const { url: base, close: closePreview } = await startPreview();
 const phrases = ["カタヒカリ", "ソラ", "カゼ", ""];
 const word = (id, surface, kana, start, end, locked = false) => ({
 	id, surface, kana, pronunciation: [...kana], period: [start, end], locked,
@@ -22,14 +21,8 @@ const seed = {
 	wordlist: { value: "ORIGINAL", csvText: "id,original,surface,pronunciation\n1,型,型,カタ\n2,光,光,ヒカリ\n3,空,空,ソラ\n" },
 	param: { VOWEL_RATIO: .8, DUPLICATE: true }, history: [], future: [], dirtyLines: [],
 };
-const server = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort"], { stdio: "ignore", detached: true });
 let browser;
 try {
-	for (let attempt = 0; ; attempt++) {
-		try { if ((await fetch(base)).ok) break; } catch {}
-		if (attempt > 100) throw new Error("preview did not start");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-	}
 	browser = await browserType.launch();
 	const context = await browser.newContext({ viewport: { width: 390, height: 812 }, hasTouch: true });
 	await context.route((url) => url.hostname !== "localhost", (route) => route.abort());
@@ -41,7 +34,11 @@ try {
 	await page.evaluate(() => localStorage.setItem("soramimic-editor-display", JSON.stringify({
 		wordClear: false, wordLock: false, lineLock: false,
 	})));
-	const ready = () => page.waitForFunction(() => !document.getElementById("btn-regenerate").disabled, undefined, { timeout: 60000 });
+	const ready = () => page.waitForFunction(() =>
+		document.getElementById("editor-toolbar")?.hidden === false &&
+		document.getElementById("editor-status")?.hidden === true &&
+		document.getElementById("btn-regenerate")?.disabled === false,
+		undefined, { timeout: 60000 });
 	const state = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("soramimic-editor")));
 	const row = (line = 0) => page.locator(`.review-line[data-line="${line}"]`);
 	const openDisplay = () => menuAction(page, "#btn-display-settings");
@@ -193,6 +190,5 @@ try {
 	assert.deepEqual(errors, []);
 	console.log(`[ok] editor display (${browserType.name()}): presets, independent source/parody readings, legacy preferences, persistent overview actions, per-word clear/lock, row lock/unlock, regeneration, undo/redo, review and responsive layout`);
 } finally {
-	await browser?.close();
-	try { process.kill(-server.pid, "SIGTERM"); } catch {}
+	await Promise.all([browser?.close(), closePreview()]);
 }
