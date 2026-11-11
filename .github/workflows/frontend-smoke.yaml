@@ -14,6 +14,10 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    container:
+      # Match the Playwright version in frontend/package-lock.json.
+      image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      options: --ipc=host
     defaults:
       run:
         working-directory: frontend
@@ -28,7 +32,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
       - name: DBキャッシュの上限・LRU・並行構築テスト
         run: node tests/lru-cache.mjs
       - name: UIスモークテスト(ビルド+実ブラウザで変換導線を確認)
