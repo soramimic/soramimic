@@ -9,8 +9,11 @@ export async function startPreview({ host = "localhost", port = 0 } = {}) {
 		root: fileURLToPath(new URL("..", import.meta.url)),
 		preview: { host, port, strictPort: true, open: false },
 	});
+	const url = new URL(server.resolvedUrls.local[0]);
+	// Keep the requested origin when Vite substitutes a loopback IP.
+	if (host === "localhost") url.hostname = host;
 	return {
-		url: new URL(server.resolvedUrls.local[0]).origin,
+		url: url.origin,
 		close: () => server.close(),
 	};
 }
